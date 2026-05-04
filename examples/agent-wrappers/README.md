@@ -27,4 +27,6 @@ It contains only the selected context pack, not the full repository.
 - [Codex](codex/README.md)
 - [Claude Code](claude-code/README.md)
 - [OpenCode](opencode/README.md)
+- [GitHub Copilot](copilot/README.md)
+- [OpenClaw](openclaw/README.md)
 

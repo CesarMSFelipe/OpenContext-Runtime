@@ -24,16 +24,18 @@ LLMs are only as safe and useful as the context they receive. Dumping a whole re
 
 ## Start In Two Minutes
 
-You do not need to understand every subsystem to use OpenContext. The shortest useful path is:
+### Once Published on PyPI (Simple)
 
 ```bash
-python3 -m pip install opencontext-core opencontext-cli
+# Install from PyPI
+pip install opencontext-core opencontext-cli
+
 cd your-project
 opencontext onboard
 opencontext pack . --query "Review authentication" --mode plan --copy
 ```
 
-For embedded use, skip the CLI and call the runtime:
+For embedded use:
 
 ```python
 from opencontext_core import OpenContextRuntime
@@ -44,9 +46,23 @@ prepared = runtime.prepare_context("Review authentication", max_tokens=6000)
 print(prepared.context)
 ```
 
+### Current Development Installation
+
+```bash
+git clone https://github.com/CesarMSFelipe/OpenContext-Runtime.git
+cd OpenContext-Runtime
+pip install -e packages/opencontext_core -e packages/opencontext_cli
+
+cd your-project
+opencontext onboard
+opencontext pack . --query "Review authentication" --mode plan --copy
+```
+
 That is enough to get a compact, redacted, task-specific context pack with source refs, token
 accounting, omission reasons, and a trace id. The rest of the documentation explains how to tune
 policies, memory, workflows, integrations, and enterprise controls after the basic flow works.
+
+**Publishing to PyPI**: See [docs/getting-started/publishing-to-pypi.md](docs/getting-started/publishing-to-pypi.md) for setup and release instructions.
 
 ## Runtime-First Quickstart
 

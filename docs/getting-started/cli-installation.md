@@ -1,17 +1,26 @@
-# Optional CLI Installation
+# CLI Installation
 
 The CLI is a convenience adapter, not the required runtime path. Install it when a user or team
 wants explicit `opencontext` commands for local diagnosis, context packs, memory operations, or
 release checks.
 
-Use the CLI when the human operator wants terminal control. Use the runtime/API path when an IDE,
-agent wrapper, service, or product should hide OpenContext-specific commands from the end user.
+## From PyPI (After Publishing)
 
 ```bash
-python3 -m pip install opencontext-cli
+pip install opencontext-cli
 ```
 
-Typical CLI setup:
+This also installs `opencontext-core` and `opencontext-profiles` as dependencies.
+
+## From Source (Current Development)
+
+```bash
+git clone https://github.com/CesarMSFelipe/OpenContext-Runtime.git
+cd OpenContext-Runtime
+pip install -e packages/opencontext_cli
+```
+
+## Typical Usage
 
 ```bash
 opencontext onboard
@@ -19,7 +28,9 @@ opencontext index .
 opencontext pack . --query "Review authentication" --mode plan --copy
 ```
 
-The commands map directly to the runtime-first APIs:
+## Command Mapping
+
+The CLI commands map directly to runtime-first APIs:
 
 | CLI command | Runtime/API equivalent |
 | --- | --- |
@@ -27,6 +38,8 @@ The commands map directly to the runtime-first APIs:
 | `opencontext index .` | `runtime.index_project(...)` |
 | `opencontext pack . --query ...` | `runtime.prepare_context(...)` or `POST /v1/context` |
 | `opencontext trace last` | `runtime.latest_trace()` |
+
+## When to Use the CLI
 
 Use the CLI for:
 
