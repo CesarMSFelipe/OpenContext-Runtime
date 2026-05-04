@@ -1,0 +1,111 @@
+"""Token-aware context packing."""
+
+from __future__ import annotations
+
+from opencontext_core.context.ranking import SOURCE_TRUST
+from opencontext_core.models.context import (
+    ContextItem,
+    ContextOmission,
+    ContextPackResult,
+    ContextPriority,
+)
+from opencontext_core.safety.redaction import SinkGuard
+
+
+class ContextPackBuilder:
+    """Packs ranked context under a hard token budget with traceable decisions."""
+
+    def pack(
+        self,
+        items: list[ContextItem],
+        available_tokens: int,
+        required_priorities: set[ContextPriority] | None = None,
+    ) -> ContextPackResult:
+        """Pack context under budget using priority and value density."""
+
+        required = required_priorities or {ContextPriority.P0, ContextPriority.P1}
+        ordered_items = sorted(items, key=self._sort_key)
+        included: list[ContextItem] = []
+        omitted: list[ContextItem] = []
+        omissions: list[ContextOmission] = []
+        used_tokens = 0
+        for item in ordered_items:
+            if item.tokens > available_tokens:
+                omitted_item = _with_pack_metadata(item, "item_exceeds_available_budget")
+                omitted.append(omitted_item)
+                omissions.append(_omission(omitted_item, "item_exceeds_available_budget"))
+                continue
+            if used_tokens + item.tokens <= available_tokens:
+                included.append(_with_pack_metadata(item, "included"))
+                used_tokens += item.tokens
+                continue
+            reason = (
+                "required_priority_budget_exhausted"
+                if item.priority in required
+                else "token_budget_exceeded"
+            )
+            omitted_item = _with_pack_metadata(item, reason)
+            omitted.append(omitted_item)
+            omissions.append(_omission(omitted_item, reason))
+        return ContextPackResult(
+            included=included,
+            omitted=omitted,
+            used_tokens=used_tokens,
+            available_tokens=available_tokens,
+            omissions=omissions,
+        )
+
+    def _sort_key(self, item: ContextItem) -> tuple[int, float, float, float, str]:
+        source_trust = SOURCE_TRUST.get(item.source_type, 0.5)
+        value_density = item.score / max(item.tokens, 1)
+        return (
+            int(item.priority),
+            -item.score,
+            -value_density,
+            -source_trust,
+            item.id,
+        )
+
+
+def _with_pack_metadata(item: ContextItem, decision: str) -> ContextItem:
+    metadata = dict(item.metadata)
+    metadata["context_pack"] = {
+        "decision": decision,
+        "value_per_token": item.score / max(item.tokens, 1),
+        "source_trust": SOURCE_TRUST.get(item.source_type, 0.5),
+    }
+    return item.model_copy(update={"metadata": metadata})
+
+
+def _omission(item: ContextItem, reason: str) -> ContextOmission:
+    return ContextOmission(
+        item_id=item.id,
+        reason=reason,
+        tokens=item.tokens,
+        score=item.score,
+    )
+
+
+def sanitize_context_pack(result: ContextPackResult) -> ContextPackResult:
+    """Redact pack content before CLI/API/export sinks."""
+
+    guard = SinkGuard()
+    return result.model_copy(
+        update={
+            "included": [_sanitize_item(guard, item) for item in result.included],
+            "omitted": [_sanitize_item(guard, item) for item in result.omitted],
+        }
+    )
+
+
+def _sanitize_item(guard: SinkGuard, item: ContextItem) -> ContextItem:
+    content, redacted = guard.redact(item.content)
+    metadata = dict(item.metadata)
+    metadata["redacted"] = redacted or bool(metadata.get("redacted", False))
+    return item.model_copy(
+        update={
+            "content": content,
+            "metadata": metadata,
+            "redacted": redacted or item.redacted,
+        }
+    )

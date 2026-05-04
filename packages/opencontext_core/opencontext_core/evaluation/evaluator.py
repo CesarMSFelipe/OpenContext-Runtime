@@ -1,0 +1,185 @@
+"""Evaluation interfaces and basic structural evaluator."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Protocol
+
+import yaml  # type: ignore[import-untyped]
+
+from opencontext_core.evaluation.models import (
+    ContextBenchCase,
+    ContextBenchCaseResult,
+    ContextBenchSuiteResult,
+    EvalCase,
+    EvalResult,
+)
+from opencontext_core.runtime import OpenContextRuntime
+
+
+class Evaluator(Protocol):
+    """Evaluator interface for future quality checks."""
+
+    def evaluate(self, case: EvalCase) -> EvalResult:
+        """Evaluate one case."""
+
+
+class BasicEvaluator:
+    """Performs basic structural checks without model calls."""
+
+    def evaluate(self, case: EvalCase) -> EvalResult:
+        """Validate that the case is structurally usable."""
+
+        reasons: list[str] = []
+        if not case.input.strip():
+            reasons.append("input is empty")
+        if not case.workflow.strip():
+            reasons.append("workflow is empty")
+        if set(case.expected_sources) & set(case.forbidden_sources):
+            reasons.append("same source appears in expected and forbidden sources")
+        passed = not reasons
+        return EvalResult(
+            case_id=case.id,
+            passed=passed,
+            score=1.0 if passed else 0.0,
+            reasons=reasons or ["basic structural checks passed"],
+        )
+
+
+def load_eval_cases(path: str | Path) -> list[EvalCase]:
+    """Load eval cases from YAML or JSON."""
+
+    eval_path = Path(path)
+    raw_text = eval_path.read_text(encoding="utf-8")
+    if eval_path.suffix.lower() == ".json":
+        raw_data = json.loads(raw_text)
+    else:
+        raw_data = yaml.safe_load(raw_text)
+    if isinstance(raw_data, dict) and "cases" in raw_data:
+        raw_cases = raw_data["cases"]
+    else:
+        raw_cases = raw_data
+    if not isinstance(raw_cases, list):
+        raise ValueError("Eval file must contain a list of cases or a mapping with `cases`.")
+    return [EvalCase.model_validate(raw_case) for raw_case in raw_cases]
+
+
+class ContextBenchEvaluator:
+    """Runs deterministic context quality and token-efficiency benchmark cases."""
+
+    def __init__(
+        self,
+        runtime: OpenContextRuntime,
+        *,
+        root: str | Path = ".",
+        max_tokens: int = 6000,
+        min_token_reduction: float = 0.5,
+    ) -> None:
+        self.runtime = runtime
+        self.root = Path(root)
+        self.max_tokens = max_tokens
+        self.min_token_reduction = min_token_reduction
+
+    def evaluate_suite(self, cases: list[ContextBenchCase]) -> ContextBenchSuiteResult:
+        """Evaluate a list of golden context benchmark cases."""
+
+        baseline_tokens = _manifest_token_baseline(self.runtime)
+        results = [self.evaluate_case(case, baseline_tokens=baseline_tokens) for case in cases]
+        average_source_coverage = (
+            sum(result.source_coverage for result in results) / len(results) if results else 0.0
+        )
+        average_token_reduction = (
+            sum(result.token_reduction for result in results) / len(results) if results else 0.0
+        )
+        return ContextBenchSuiteResult(
+            passed=all(result.passed for result in results),
+            cases=results,
+            average_source_coverage=average_source_coverage,
+            average_token_reduction=average_token_reduction,
+        )
+
+    def evaluate_case(
+        self,
+        case: ContextBenchCase,
+        *,
+        baseline_tokens: int | None = None,
+    ) -> ContextBenchCaseResult:
+        """Evaluate one golden context benchmark case."""
+
+        baseline = baseline_tokens or _manifest_token_baseline(self.runtime)
+        prepared = self.runtime.prepare_context(
+            case.query,
+            root=self.root,
+            max_tokens=self.max_tokens,
+            refresh_index=False,
+        )
+        included_sources = prepared.included_sources
+        missing_sources = [
+            expected
+            for expected in case.expected_sources
+            if not _source_fragment_present(expected, included_sources)
+        ]
+        forbidden_hits = [
+            forbidden
+            for forbidden in case.forbidden_sources
+            if _source_fragment_present(forbidden, included_sources)
+        ]
+        expected_count = len(case.expected_sources)
+        source_coverage = (
+            (expected_count - len(missing_sources)) / expected_count if expected_count > 0 else 1.0
+        )
+        context_tokens = prepared.token_usage.get(
+            "final_context_pack",
+            prepared.token_usage.get("prompt", 0),
+        )
+        token_reduction = max(0.0, 1.0 - (context_tokens / baseline)) if baseline > 0 else 0.0
+        reasons: list[str] = []
+        if source_coverage < case.min_source_coverage:
+            reasons.append(
+                f"source coverage {source_coverage:.2f} below required "
+                f"{case.min_source_coverage:.2f}"
+            )
+        if forbidden_hits:
+            reasons.append(f"forbidden sources included: {', '.join(forbidden_hits)}")
+        if token_reduction < self.min_token_reduction:
+            reasons.append(
+                f"token reduction {token_reduction:.2f} below required "
+                f"{self.min_token_reduction:.2f}"
+            )
+        return ContextBenchCaseResult(
+            case_id=case.id,
+            passed=not reasons,
+            source_coverage=source_coverage,
+            token_reduction=token_reduction,
+            context_tokens=context_tokens,
+            baseline_tokens=baseline,
+            included_sources=included_sources,
+            missing_sources=missing_sources,
+            forbidden_hits=forbidden_hits,
+            reasons=reasons or ["context coverage and token gates passed"],
+        )
+
+
+def load_context_bench_cases(path: str | Path) -> list[ContextBenchCase]:
+    """Load context benchmark cases from YAML or JSON."""
+
+    eval_path = Path(path)
+    raw_text = eval_path.read_text(encoding="utf-8")
+    if eval_path.suffix.lower() == ".json":
+        raw_data = json.loads(raw_text)
+    else:
+        raw_data = yaml.safe_load(raw_text)
+    raw_cases = raw_data.get("cases", raw_data) if isinstance(raw_data, dict) else raw_data
+    if not isinstance(raw_cases, list):
+        raise ValueError("ContextBench file must contain a list or a mapping with `cases`.")
+    return [ContextBenchCase.model_validate(raw_case) for raw_case in raw_cases]
+
+
+def _source_fragment_present(fragment: str, sources: list[str]) -> bool:
+    return any(fragment in source for source in sources)
+
+
+def _manifest_token_baseline(runtime: OpenContextRuntime) -> int:
+    manifest = runtime.load_manifest()
+    return sum(max(1, file.size_bytes // 4) for file in manifest.files)

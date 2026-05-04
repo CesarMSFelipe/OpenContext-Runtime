@@ -1,0 +1,189 @@
+"""Safe and explicitly lossy context compression."""
+
+from __future__ import annotations
+
+from opencontext_core.compression.caveman import CavemanCompressor
+from opencontext_core.config import CompressionConfig
+from opencontext_core.context.budgeting import estimate_tokens
+from opencontext_core.context.protection import ProtectedSpanManager
+from opencontext_core.models.context import CompressionResult, CompressionStrategy, ContextItem
+
+
+class CompressionEngine:
+    """Applies deterministic compression strategies and records lossiness."""
+
+    def __init__(self, config: CompressionConfig) -> None:
+        self.config = config
+        self.protected_spans = ProtectedSpanManager()
+
+    def compress_item(self, item: ContextItem) -> CompressionResult:
+        """Compress a single context item according to configuration."""
+
+        if not self.config.enabled or self.config.strategy is CompressionStrategy.NONE:
+            return self._result(item, item, CompressionStrategy.NONE, "none")
+
+        spans = self.protected_spans.detect(item.content) if self.config.protected_spans else []
+        if spans:
+            metadata = dict(item.metadata)
+            metadata["protected_spans"] = [span.model_dump() for span in spans]
+            metadata["compression"] = {
+                "original_token_estimate": item.tokens,
+                "compressed_token_estimate": item.tokens,
+                "strategy": CompressionStrategy.NONE.value,
+                "lossiness": "none",
+                "reason": "protected_spans_detected",
+            }
+            preserved = item.model_copy(update={"metadata": metadata})
+            return self._result(preserved, preserved, CompressionStrategy.NONE, "none")
+
+        target_tokens = max(1, int(item.tokens * self.config.max_compression_ratio))
+        strategy = self.config.strategy
+        strategy_value = strategy.value
+        if strategy_value == CompressionStrategy.NONE.value:
+            return self._result(item, item, CompressionStrategy.NONE, "none")
+        elif strategy_value == CompressionStrategy.CAVEMAN.value:
+            return self._compress_caveman(item)
+        elif strategy_value == CompressionStrategy.TRUNCATE.value:
+            compressed_content = _truncate_to_tokens(item.content, target_tokens)
+            lossiness = "lossy_truncation"
+        elif strategy_value == CompressionStrategy.EXTRACTIVE_HEAD_TAIL.value:
+            compressed_content = _extractive_head_tail(item.content, target_tokens)
+            lossiness = "lossy_extractive"
+        elif strategy_value == CompressionStrategy.BULLET_FACTS_PLACEHOLDER.value:
+            compressed_content = _bullet_facts_placeholder(item.content, target_tokens)
+            lossiness = "lossy_placeholder"
+        else:
+            raise ValueError(f"Unsupported compression strategy: {strategy_value}")
+
+        compressed_tokens = estimate_tokens(compressed_content)
+        if compressed_tokens > target_tokens:
+            compressed_content = _truncate_to_tokens(compressed_content, target_tokens)
+            compressed_tokens = estimate_tokens(compressed_content)
+
+        metadata = dict(item.metadata)
+        metadata["compression"] = {
+            "original_token_estimate": item.tokens,
+            "compressed_token_estimate": compressed_tokens,
+            "strategy": strategy.value,
+            "lossiness": lossiness,
+        }
+        compressed_item = item.model_copy(
+            update={
+                "content": compressed_content,
+                "tokens": compressed_tokens,
+                "metadata": metadata,
+            }
+        )
+        return self._result(item, compressed_item, strategy, lossiness)
+
+    def compress_items(
+        self,
+        items: list[ContextItem],
+        budget_tokens: int | None = None,
+    ) -> tuple[list[ContextItem], list[CompressionResult]]:
+        """Compress items and optionally keep only those that fit a token budget."""
+
+        results: list[CompressionResult] = []
+        compressed_items: list[ContextItem] = []
+        used_tokens = 0
+        for item in items:
+            result = self.compress_item(item)
+            candidate = result.item
+            if budget_tokens is not None and used_tokens + candidate.tokens > budget_tokens:
+                remaining_tokens = budget_tokens - used_tokens
+                if remaining_tokens <= 0:
+                    results.append(result)
+                    continue
+                candidate = _clamp_to_budget(candidate, remaining_tokens)
+                result = CompressionResult(
+                    item=candidate,
+                    original_tokens=result.original_tokens,
+                    compressed_tokens=candidate.tokens,
+                    strategy=result.strategy,
+                    lossiness="lossy_budget_clamp",
+                )
+            results.append(result)
+            if budget_tokens is None or used_tokens + candidate.tokens <= budget_tokens:
+                compressed_items.append(candidate)
+                used_tokens += candidate.tokens
+        return compressed_items, results
+
+    def _result(
+        self,
+        original_item: ContextItem,
+        compressed_item: ContextItem,
+        strategy: CompressionStrategy,
+        lossiness: str,
+    ) -> CompressionResult:
+        return CompressionResult(
+            item=compressed_item,
+            original_tokens=original_item.tokens,
+            compressed_tokens=compressed_item.tokens,
+            strategy=strategy,
+            lossiness=lossiness,
+        )
+
+    def _compress_caveman(self, item: ContextItem) -> CompressionResult:
+        """Apply caveman compression to preserve technical content."""
+
+        compressor = CavemanCompressor(intensity=self.config.caveman_intensity)
+        compressed_content = compressor.compress(item.content)
+        compressed_tokens = estimate_tokens(compressed_content)
+
+        metadata = dict(item.metadata)
+        savings = compressor.get_token_savings(item.content, compressed_content)
+        metadata["compression"] = {
+            "original_token_estimate": item.tokens,
+            "compressed_token_estimate": compressed_tokens,
+            "strategy": CompressionStrategy.CAVEMAN.value,
+            "lossiness": "lossy_caveman",
+            "savings": savings,
+        }
+        compressed_item = item.model_copy(
+            update={
+                "content": compressed_content,
+                "tokens": compressed_tokens,
+                "metadata": metadata,
+            }
+        )
+        return self._result(item, compressed_item, CompressionStrategy.CAVEMAN, "lossy_caveman")
+
+
+def _truncate_to_tokens(content: str, target_tokens: int) -> str:
+    target_chars = max(1, target_tokens * 4)
+    return content[:target_chars].rstrip()
+
+
+def _extractive_head_tail(content: str, target_tokens: int) -> str:
+    if estimate_tokens(content) <= target_tokens:
+        return content
+    target_chars = max(1, target_tokens * 4)
+    if target_chars < 40:
+        return content[:target_chars].rstrip()
+    head_chars = target_chars // 2
+    tail_chars = target_chars - head_chars - len("\n[... lossy excerpt ...]\n")
+    tail_chars = max(0, tail_chars)
+    tail = content[-tail_chars:].lstrip() if tail_chars else ""
+    return (content[:head_chars].rstrip() + "\n[... lossy excerpt ...]\n" + tail).strip()
+
+
+def _bullet_facts_placeholder(content: str, target_tokens: int) -> str:
+    lines = [line.strip("-* \t") for line in content.splitlines() if line.strip()]
+    selected = lines[: max(1, min(len(lines), target_tokens // 6 or 1))]
+    if not selected:
+        selected = [content[: max(1, target_tokens * 4)].strip()]
+    bullets = "\n".join(f"- {line}" for line in selected if line)
+    suffix = "\n- Additional details omitted by lossy placeholder compression."
+    return (bullets + suffix).strip()
+
+
+def _clamp_to_budget(item: ContextItem, remaining_tokens: int) -> ContextItem:
+    content = _truncate_to_tokens(item.content, remaining_tokens)
+    tokens = estimate_tokens(content)
+    metadata = dict(item.metadata)
+    compression_metadata = dict(metadata.get("compression", {}))
+    compression_metadata["budget_clamped"] = True
+    compression_metadata["compressed_token_estimate"] = tokens
+    compression_metadata["lossiness"] = "lossy_budget_clamp"
+    metadata["compression"] = compression_metadata
+    return item.model_copy(update={"content": content, "tokens": tokens, "metadata": metadata})
