@@ -1,0 +1,30 @@
+cases:
+  - id: runtime-first-context
+    query: "How does the runtime prepare compact context for a non-CLI agent adapter?"
+    expected_sources:
+      - "packages/opencontext_core/opencontext_core/runtime.py"
+      - "examples/agent-wrappers/prepare_context.py"
+    forbidden_sources:
+      - ".storage/"
+      - ".opencontext/"
+    min_source_coverage: 1.0
+
+  - id: api-context-endpoint
+    query: "Which API schemas define the context request and response for external agents?"
+    expected_sources:
+      - "packages/opencontext_api/opencontext_api/schemas.py"
+      - "tests/api/test_api_scaffolds.py"
+    forbidden_sources:
+      - ".storage/"
+      - ".opencontext/"
+    min_source_coverage: 1.0
+
+  - id: token-budgeting
+    query: "Where are context token budgets and packing enforced?"
+    expected_sources:
+      - "packages/opencontext_core/opencontext_core/context/packing.py"
+      - "packages/opencontext_core/opencontext_core/models/context.py"
+    forbidden_sources:
+      - ".storage/"
+      - ".opencontext/"
+    min_source_coverage: 1.0

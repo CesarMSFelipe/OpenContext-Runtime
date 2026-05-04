@@ -1,0 +1,114 @@
+project:
+  name: "codebase-assistant"
+
+models:
+  default:
+    provider: "mock"
+    model: "mock-llm"
+
+project_index:
+  enabled: true
+  root: "."
+  profile: "generic"
+  ignore:
+    - ".git"
+    - ".storage"
+    - ".venv"
+    - "*.egg-info"
+    - "__pycache__"
+    - "*.pyc"
+    - "vendor"
+    - "node_modules"
+
+context:
+  max_input_tokens: 8000
+  reserve_output_tokens: 1000
+  sections:
+    system: 800
+    instructions: 800
+    tool_schemas: 300
+    project_manifest: 800
+    repo_map: 1600
+    workflow_contract: 300
+    memory: 1200
+    retrieved_context: 4200
+    conversation: 700
+    tools: 300
+  ranking:
+    weights:
+      relevance: 0.45
+      priority: 0.25
+      source_trust: 0.15
+      token_efficiency: 0.15
+  compression:
+    enabled: true
+    strategy: "extractive_head_tail"
+    max_compression_ratio: 0.5
+    adaptive: true
+    protected_spans: true
+
+retrieval:
+  strategy: "hybrid"
+  top_k: 20
+  rerank_top_k: 8
+
+repo_map:
+  enabled: true
+  max_tokens: 1600
+  include_symbols: true
+  include_dependencies: true
+
+context_packing:
+  strategy: "priority_value_density"
+  preserve_priorities:
+    - "P0"
+    - "P1"
+
+compression:
+  adaptive: true
+  protected_spans: true
+  default_strategy: "extractive_head_tail"
+
+cache:
+  exact:
+    enabled: true
+    storage: "local"
+  semantic:
+    enabled: false
+    similarity_threshold: 0.92
+    require_same_workflow: true
+    require_same_project_hash: true
+
+safety:
+  secret_scanning:
+    enabled: true
+    redact: true
+  prompt_injection_detection:
+    enabled: false
+
+observability:
+  local_traces:
+    enabled: true
+  opentelemetry:
+    enabled: false
+
+tools:
+  native:
+    enabled: true
+  mcp:
+    enabled: false
+    require_allowlist: true
+    allow_stdio: false
+    sandbox: true
+
+workflows:
+  code_assistant:
+    steps:
+      - "project.load_manifest"
+      - "project.retrieve"
+      - "context.rank"
+      - "context.pack"
+      - "context.compress"
+      - "prompt.assemble"
+      - "llm.generate"
+      - "trace.persist"
