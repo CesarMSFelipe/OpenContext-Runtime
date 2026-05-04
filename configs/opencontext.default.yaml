@@ -1,0 +1,38 @@
+project:
+  name: "opencontext-project"
+
+security:
+  mode: "private_project"
+  fail_closed: true
+  default_classification: "internal"
+  external_providers_enabled: false
+
+providers:
+  external_enabled: false
+
+tools:
+  native:
+    enabled: false
+  mcp:
+    enabled: false
+
+traces:
+  store_raw_context: false
+  store_redacted_context: true
+
+cache:
+  exact:
+    enabled: true
+    storage: "local"
+  semantic:
+    enabled: false
+
+memory:
+  enabled: true
+  harvest_after_run: false
+  require_approval: true
+  store_raw: false
+
+output:
+  mode: "concise"
+  max_output_tokens: 1500

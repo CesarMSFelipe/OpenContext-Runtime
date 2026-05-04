@@ -1,0 +1,37 @@
+project:
+  name: "enterprise-project"
+
+security:
+  mode: "enterprise"
+  fail_closed: true
+  default_classification: "internal"
+  external_providers_enabled: false
+
+providers:
+  external_enabled: false
+
+tools:
+  native:
+    enabled: false
+  mcp:
+    enabled: false
+    require_allowlist: true
+
+traces:
+  store_raw_context: false
+  store_redacted_context: true
+
+memory:
+  enabled: true
+  harvest_after_run: false
+  require_approval: true
+  store_raw: false
+  retention_days: 90
+
+egress:
+  network: "deny"
+  external_urls: "ask"
+  webhooks: "deny"
+  clipboard: "allow_redacted"
+  file_export: "allow_redacted"
+  tool_output_forwarding: "deny"

@@ -1,0 +1,23 @@
+project:
+  name: "ci-project"
+
+security:
+  mode: "private_project"
+  fail_closed: true
+  external_providers_enabled: false
+
+tools:
+  native:
+    enabled: false
+  mcp:
+    enabled: false
+
+memory:
+  enabled: true
+  harvest_after_run: false
+  require_approval: true
+  store_raw: false
+
+output:
+  mode: "technical_terse"
+  max_output_tokens: 1200

@@ -1,0 +1,39 @@
+project:
+  name: "air-gapped-project"
+
+security:
+  mode: "air_gapped"
+  fail_closed: true
+  default_classification: "internal"
+  external_providers_enabled: false
+
+providers:
+  external_enabled: false
+
+observability:
+  local_traces:
+    enabled: true
+  opentelemetry:
+    enabled: false
+
+tools:
+  native:
+    enabled: false
+  mcp:
+    enabled: false
+    allow_stdio: false
+
+cache:
+  exact:
+    enabled: true
+    storage: "local"
+  semantic:
+    enabled: false
+
+provider_cache:
+  explicit_cache_enabled: false
+
+egress:
+  network: "deny"
+  external_urls: "deny"
+  webhooks: "deny"

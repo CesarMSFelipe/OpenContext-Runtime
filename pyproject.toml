@@ -1,0 +1,38 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = [
+  "packages/opencontext_api",
+  "packages/opencontext_cli",
+  "packages/opencontext_core",
+  "packages/opencontext_providers",
+  "packages/opencontext_profiles",
+  "tests",
+]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = [
+  "packages/opencontext_api",
+  "packages/opencontext_cli",
+  "packages/opencontext_core",
+  "packages/opencontext_providers",
+  "packages/opencontext_profiles",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "packages/opencontext_core:packages/opencontext_profiles"
+warn_unreachable = true
+exclude = [
+  "packages/opencontext_core/opencontext_core/agents/",
+]

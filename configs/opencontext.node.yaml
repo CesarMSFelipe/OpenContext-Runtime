@@ -1,0 +1,14 @@
+project:
+  name: "node-project"
+
+project_index:
+  profile: "node"
+  ignore:
+    - "node_modules"
+    - "dist"
+    - "build"
+    - "coverage"
+
+output:
+  mode: "concise"
+  max_output_tokens: 1500

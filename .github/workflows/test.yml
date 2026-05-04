@@ -1,0 +1,47 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install packages and validation tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff mypy pytest build
+          python -m pip install \
+            -e packages/opencontext_core \
+            -e packages/opencontext_profiles \
+            -e packages/opencontext_providers \
+            -e packages/opencontext_cli \
+            -e packages/opencontext_api
+      - name: Lint
+        run: ruff check .
+      - name: Format check
+        run: ruff format --check .
+      - name: Type check core
+        run: mypy packages/opencontext_core
+      - name: Test
+        run: pytest
+      - name: Build distributions
+        run: |
+          python -m build packages/opencontext_core
+          python -m build packages/opencontext_profiles
+          python -m build packages/opencontext_providers
+          python -m build packages/opencontext_cli
+          python -m build packages/opencontext_api

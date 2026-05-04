@@ -1,0 +1,25 @@
+project:
+  name: "drupal-project"
+
+project_index:
+  profile: "drupal"
+  ignore:
+    - "web/sites/default/files"
+    - "var/cache"
+    - "vendor"
+
+workflows:
+  code_assistant:
+    steps:
+      - "project.load_manifest"
+      - "project.retrieve"
+      - "context.rank"
+      - "context.pack"
+      - "context.compress"
+      - "prompt.assemble"
+      - "llm.generate"
+      - "trace.persist"
+
+output:
+  mode: "concise"
+  max_output_tokens: 1500

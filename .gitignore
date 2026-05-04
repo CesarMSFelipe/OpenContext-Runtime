@@ -1,0 +1,46 @@
+# Python environments and bytecode
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Tool caches and coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build and packaging outputs
+dist/
+build/
+*.egg-info/
+pip-wheel-metadata/
+
+# Local OpenContext runtime state
+.storage/
+.opencontext/
+tmp/opencontext-proof/
+
+# Local agent harness state and generated analysis output
+.agents/
+packages/opencontext_core/opencontext_core/agents/
+.instructions.md
+COPILOT_SETUP.md
+opencontext-copilot.sh
+run-self-improvement.sh
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*.local
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db

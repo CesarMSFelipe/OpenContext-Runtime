@@ -1,0 +1,14 @@
+project:
+  name: "python-project"
+
+project_index:
+  profile: "python"
+  ignore:
+    - ".venv"
+    - "__pycache__"
+    - ".mypy_cache"
+    - ".pytest_cache"
+
+output:
+  mode: "concise"
+  max_output_tokens: 1500

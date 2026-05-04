@@ -1,0 +1,13 @@
+project:
+  name: "symfony-project"
+
+project_index:
+  profile: "symfony"
+  ignore:
+    - "var/cache"
+    - "vendor"
+    - "public/build"
+
+output:
+  mode: "concise"
+  max_output_tokens: 1500
