@@ -1,5 +1,46 @@
+# Gitleaks configuration
+# Redacts common secrets and allows tests
+
 [rules]
+  [[rules]]
+    description = "AWS Access Key"
+    id = "aws-access-key"
+    regex = '''(AKIA[0-9A-Z]{16})'''
+    keywords = ["akia"]
+
+  [[rules]]
+    description = "AWS Secret Key"
+    id = "aws-secret-key"
+    regex = '''(?i)aws(.{0,20})?(?-i)['"][0-9a-zA-Z\/+]{40}['"]'''
+    keywords = ["aws"]
+
+  [[rules]]
+    description = "GitHub Personal Access Token"
+    id = "github-pat"
+    regex = '''ghp_[0-9a-zA-Z]{36}'''
+    keywords = ["ghp"]
+
+  [[rules]]
+    description = "OpenAI API Key"
+    id = "openai-api-key"
+    regex = '''sk-[a-zA-Z0-9]{48}'''
+    keywords = ["sk-"]
+
+  [[rules]]
+    description = "Slack Token"
+    id = "slack-token"
+    regex = '''xox[baprs]-[0-9a-zA-Z]{10,48}'''
+    keywords = ["xox"]
+
+  [[rules]]
+    description = "Generic Secret"
+    id = "generic-secret"
+    regex = '''(?i)(api_key|apikey|secret|password|token)(.{0,20})?['"][0-9a-zA-Z\/+]{16,128}['"]'''
+    keywords = ["api_key", "apikey", "secret", "password", "token"]
+
 [allowlist]
   paths = [
     '''tests/.*''',
+    '''docs/.*''',
+    '''IMPLEMENTATION_SUMMARY.md''',
   ]

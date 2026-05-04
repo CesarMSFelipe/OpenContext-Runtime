@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opencontext-profiles"
+version = "0.1.0"
+description = "First-party technology profiles for OpenContext Runtime"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "OpenContext Runtime maintainers" }]
+keywords = ["ai", "llm", "context-engineering", "technology-profiles"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "opencontext-core>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/CesarMSFelipe/OpenContext-Runtime"
+Documentation = "https://github.com/CesarMSFelipe/OpenContext-Runtime#readme"
+Issues = "https://github.com/CesarMSFelipe/OpenContext-Runtime/issues"
+Source = "https://github.com/CesarMSFelipe/OpenContext-Runtime"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["opencontext_profiles*"]

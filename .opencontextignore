@@ -1,0 +1,9 @@
+# OpenContext token/noise defaults
+**/node_modules/**
+**/vendor/**
+**/dist/**
+**/build/**
+**/.git/**
+**/*.min.js
+.opencontext-proof/**
+tmp/opencontext-proof/**

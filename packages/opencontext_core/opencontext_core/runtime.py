@@ -18,6 +18,7 @@ from opencontext_core.config import (
 )
 from opencontext_core.context.assembler import PromptAssembler
 from opencontext_core.context.budgeting import TokenBudgetManager
+from opencontext_core.context.compression import CompressionEngine
 from opencontext_core.context.packing import ContextPackBuilder, sanitize_context_pack
 from opencontext_core.context.ranking import ContextRanker
 from opencontext_core.embeddings.extractors import items_from_manifest
@@ -102,6 +103,7 @@ class OpenContextRuntime:
         self.llm_gateway = llm_gateway or self._gateway_from_config()
         self.technology_profiles = technology_profiles
         self.tunnel_store = GraphTunnelStore(self.storage_path)
+        self.compression_engine = CompressionEngine(self.config.context.compression)
         vector_store = LocalVectorStore(self.storage_path)
         self.embedding_worker = embedding_worker or create_worker(
             self.config, vector_store=vector_store
@@ -252,6 +254,7 @@ class OpenContextRuntime:
             ranked,
             available_tokens=max_tokens or self.config.context.sections.retrieved_context,
             required_priorities=required,
+            compression_engine=self.compression_engine,
         )
         sanitized_pack = sanitize_context_pack(pack_result)
         ContextFirewall(self.config).check_context_export(

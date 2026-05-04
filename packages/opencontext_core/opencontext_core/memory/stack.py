@@ -1,4 +1,4 @@
-"""Memory Stack - Progressive context loading (MemPalace-inspired).
+"""Memory Stack - Progressive context loading.
 
 Implements 4-layer memory architecture:
 - L0 (Identity): ~50-100 tokens, always loaded
@@ -35,7 +35,7 @@ class MemoryLayerStats:
 class MemoryStack:
     """4-layer progressive memory loading system.
 
-    Inspired by MemPalace's memory stack architecture. Each layer
+    Each layer
     loads progressively more data only when needed, preventing
     context window pollution and reducing token usage.
 
@@ -561,7 +561,7 @@ class MemoryStack:
     ) -> str:
         """Build progressive context for "wake-up" (L0 + L1 + optional L2).
 
-        This is the equivalent of MemPalace's `mempalace wake-up` command.
+        This is the equivalent of a "wake-up" command to prepare baseline context.
         Always includes identity and essential story, optionally
         includes room-specific context.
 

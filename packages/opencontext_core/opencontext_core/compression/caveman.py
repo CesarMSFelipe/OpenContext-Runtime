@@ -1,9 +1,7 @@
 """Caveman token compression - deterministic prose compaction.
 
-Implements the caveman grammar for ~65-75% reduction in output tokens
+Implements a deterministic grammar for ~65-75% reduction in output tokens
 while preserving 100% of technical content (code, URLs, paths, commands).
-
-Based on the caveman protocol: https://github.com/JuliusBrussee/caveman
 
 Grammar preserves:
 - Code blocks (fenced ``` and indented)
@@ -651,8 +649,8 @@ class CavemanCompressor:
             (r"\bbc\b", "because"),
             (r"\bif\b", "in the event that"),
             (r"\bnote:\b", "it is important to note that"),
-            (r"\brec:\b", "I would recommend"),
-            (r"\bsug:\b", "I suggest"),
+            (r"\brec:\b", "recommendation"),
+            (r"\bsug:\b", "suggestion"),
             (r"\be\.g\.\b", "for example"),
             (r"\bincl\.\b", "including"),
             (r"\bre:\b", "regarding"),

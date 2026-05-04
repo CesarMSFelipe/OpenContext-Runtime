@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from opencontext_core.context.ranking import SOURCE_TRUST
 from opencontext_core.models.context import (
     ContextItem,
@@ -10,6 +12,9 @@ from opencontext_core.models.context import (
     ContextPriority,
 )
 from opencontext_core.safety.redaction import SinkGuard
+
+if typing.TYPE_CHECKING:
+    from opencontext_core.context.compression import CompressionEngine
 
 
 class ContextPackBuilder:
@@ -20,6 +25,7 @@ class ContextPackBuilder:
         items: list[ContextItem],
         available_tokens: int,
         required_priorities: set[ContextPriority] | None = None,
+        compression_engine: CompressionEngine | None = None,
     ) -> ContextPackResult:
         """Pack context under budget using priority and value density."""
 
@@ -30,15 +36,34 @@ class ContextPackBuilder:
         omissions: list[ContextOmission] = []
         used_tokens = 0
         for item in ordered_items:
+            # If item itself exceeds total available budget, it can never fit
             if item.tokens > available_tokens:
                 omitted_item = _with_pack_metadata(item, "item_exceeds_available_budget")
                 omitted.append(omitted_item)
                 omissions.append(_omission(omitted_item, "item_exceeds_available_budget"))
                 continue
+
+            # Check if it fits as-is
             if used_tokens + item.tokens <= available_tokens:
                 included.append(_with_pack_metadata(item, "included"))
                 used_tokens += item.tokens
                 continue
+
+            # If it doesn't fit, try dynamic compression if engine provided
+            if compression_engine and item.priority in required:
+                # Attempt compression to fit remaining budget
+                remaining = available_tokens - used_tokens
+                if remaining > 10:  # Only bother if there's meaningful space
+                    compressed_result = compression_engine.compress_item(item)
+                    candidate = compressed_result.item
+                    if used_tokens + candidate.tokens <= available_tokens:
+                        included.append(
+                            _with_pack_metadata(candidate, "included_with_dynamic_compression")
+                        )
+                        used_tokens += candidate.tokens
+                        continue
+
+            # Still doesn't fit
             reason = (
                 "required_priority_budget_exhausted"
                 if item.priority in required

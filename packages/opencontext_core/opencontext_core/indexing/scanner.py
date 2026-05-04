@@ -12,7 +12,8 @@ from opencontext_core.compat import UTC
 from opencontext_core.config import DEFAULT_IGNORE_PATTERNS
 from opencontext_core.context.budgeting import estimate_tokens
 from opencontext_core.indexing.classifier import classify_file, detect_language
-from opencontext_core.models.project import FileKind, ProjectFile
+from opencontext_core.indexing.symbol_extractor import ExtractableFile, SymbolExtractor
+from opencontext_core.models.project import FileKind, ProjectFile, Symbol
 from opencontext_core.safety.secrets import SecretScanner
 
 MAX_TEXT_READ_BYTES = 1_000_000
@@ -75,6 +76,7 @@ class ProjectScanner:
     def __init__(self, ignore_patterns: list[str] | None = None) -> None:
         self.ignore_patterns = list(ignore_patterns or DEFAULT_IGNORE_PATTERNS)
         self.secret_scanner = SecretScanner()
+        self.symbol_extractor = SymbolExtractor()
 
     def scan(self, root: Path) -> list[ScannedFile]:
         """Scan a project root and return indexed files."""
@@ -120,10 +122,25 @@ class ProjectScanner:
         indexed_content = self.secret_scanner.redact(content) if secret_findings else content
         tokens = estimate_tokens(indexed_content) if indexed_content else max(1, size_bytes // 4)
         modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
-        summary = summarize_file(relative_path, language, file_type, tokens, indexed_content)
+
+        # Extract symbols for enrichment
+        symbols = []
+        if indexed_content and language in {"python", "php"}:
+            symbols = self.symbol_extractor.extract(
+                ExtractableFile(
+                    relative_path=relative_path,
+                    language=language,
+                    content=indexed_content,
+                )
+            )
+
+        summary = summarize_file(
+            relative_path, language, file_type, tokens, indexed_content, symbols
+        )
         metadata: dict[str, str | bool] = {
             "modified_at": modified_at,
             "truncated_at_indexing": truncated,
+            "symbol_count": str(len(symbols)),
         }
         if secret_findings:
             metadata["contains_potential_secrets"] = True
@@ -150,15 +167,27 @@ def summarize_file(
     file_type: FileKind,
     tokens: int,
     content: str,
+    symbols: list[Symbol] | None = None,
 ) -> str:
     """Generate a deterministic basic file summary."""
 
     first_line = next((line.strip() for line in content.splitlines() if line.strip()), "")
     first_line_part = f" First content: {first_line[:120]}" if first_line else ""
-    return (
+
+    summary = (
         f"{relative_path} is a {language} {file_type.value} file with "
         f"approximately {tokens} tokens.{first_line_part}"
     )
+
+    if symbols:
+        important_symbols = [s.name for s in symbols if s.kind in {"class", "interface", "trait"}]
+        if not important_symbols:
+            important_symbols = [s.name for s in symbols][:5]
+
+        if important_symbols:
+            summary += f" Key symbols: {', '.join(important_symbols[:10])}."
+
+    return summary
 
 
 def _read_text(path: Path) -> tuple[str, bool]:

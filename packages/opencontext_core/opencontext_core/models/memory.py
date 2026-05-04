@@ -30,7 +30,7 @@ class MemoryType(StrEnum):
 class MemoryItem(BaseModel):
     """A typed memory record that can be persisted or retrieved.
 
-    Based on MemPalace's drawer structure, with support for
+    Based on a hierarchical drawer structure, with support for
     hierarchical organization (wing/room) and priority-based
     retrieval.
     """

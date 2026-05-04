@@ -389,7 +389,7 @@ OpenContext reduces input and output waste with:
 - Output budgets and output modes.
 - Cache-aware prompt prefix planning.
 - Progressive disclosure memory.
-- TOON-inspired and compact table serialization for structured metadata.
+- Compact table serialization for structured metadata.
 
 Token savings are measurable with:
 

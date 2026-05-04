@@ -29,8 +29,8 @@ class PromptPrefixCachePlanner:
         return sorted(
             sections,
             key=lambda section: (
-                index.get(section.name, len(PREFIX_SECTION_ORDER)),
-                not section.stable,
+                not section.stable,  # Priority 1: Stable sections first
+                index.get(section.name, len(PREFIX_SECTION_ORDER)),  # Priority 2: Defined order
                 int(section.priority),
                 section.name,
             ),
