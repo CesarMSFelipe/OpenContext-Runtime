@@ -9,10 +9,12 @@ from opencontext_core.safety.secrets import SecretScanner
 
 
 def test_secret_scanner_redacts_common_patterns() -> None:
+    _openai = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+    _github = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
     text = "\n".join(
         [
-            "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456",
-            "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+            f"OPENAI_API_KEY={_openai}",
+            f"GITHUB_TOKEN={_github}",
             "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
             "safe text remains",
         ]
@@ -20,21 +22,23 @@ def test_secret_scanner_redacts_common_patterns() -> None:
 
     redacted = SecretScanner().redact(text)
 
-    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in redacted
-    assert "ghp_abcdefghijklmnopqrstuvwxyz1234567890" not in redacted
+    assert _openai not in redacted
+    assert _github not in redacted
     assert "-----BEGIN PRIVATE KEY-----" not in redacted
     assert "safe text remains" in redacted
 
 
 def test_secret_scanner_covers_enterprise_patterns_without_raw_findings() -> None:
+    _anthropic = "sk-ant-api03-" + "abcdefghijklmnopqrstuvwxyz123456"
     _slack = "xoxb" + "-123456789012-mock-slack-token-12345"
+    _google = "AIza" + "0123456789abcdef0123456789abcdef012"
     _stripe = "sk_" + "test_0123456789abcdef012345"
     text = "\n".join(
         [
-            "ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
+            f"ANTHROPIC_API_KEY={_anthropic}",
             "DATABASE_URL=postgres://user:pass@example.com/db",
             f"SLACK_TOKEN={_slack}",
-            "GOOGLE_API_KEY=AIza0123456789abcdef0123456789abcdef012",
+            f"GOOGLE_API_KEY={_google}",
             f"STRIPE_SECRET_KEY={_stripe}",
             "JWT=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcdefghijklmnop.qrstuvwxyz123456",
         ]
