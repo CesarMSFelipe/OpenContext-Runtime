@@ -91,7 +91,7 @@ class RetrievalScorer:
 
 class SemanticReranker:
     """State-of-the-art semantic reranker for high-signal context selection.
-    
+
     Refines hybrid scores using semantic similarity or cross-encoder signals.
     """
 
@@ -113,15 +113,15 @@ class SemanticReranker:
         for score, file in candidates[:top_k]:
             semantic_boost = 0.0
             content_hint = (file.summary + " " + file.path).lower()
-            
+
             # Boost based on exact semantic intersection and hierarchy
             matches = sum(1 for term in query_terms if term in content_hint)
             if matches:
                 semantic_boost = (matches / len(query_terms)) * 0.5
-            
+
             # Recency and depth bonus
             depth_penalty = min(0.1, file.path.count("/") * 0.02)
-            
+
             new_score = min(1.0, score + semantic_boost - depth_penalty)
             results.append((new_score, file))
 
