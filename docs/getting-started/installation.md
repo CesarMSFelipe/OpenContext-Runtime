@@ -10,17 +10,17 @@ All packages can be installed from source. PyPI publishing is configured but pac
 ```bash
 git clone https://github.com/CesarMSFelipe/OpenContext-Runtime.git
 cd OpenContext-Runtime
-python3 -m pip install -e packages/opencontext_core -e packages/opencontext_cli
+pip install -e packages/opencontext_core -e packages/opencontext_cli
 # Optional: install API and profiles
-python3 -m pip install -e packages/opencontext_api -e packages/opencontext_profiles
+pip install -e packages/opencontext_api -e packages/opencontext_profiles
 opencontext --help
 ```
 
 ## From PyPI (When Published)
 ```bash
-python3 -m pip install opencontext-core opencontext-cli
+pip install opencontext-core opencontext-cli
 # Optional: install API and profiles
-python3 -m pip install opencontext-api opencontext-profiles
+pip install opencontext-api opencontext-profiles
 ```
 
 ## Implemented Code

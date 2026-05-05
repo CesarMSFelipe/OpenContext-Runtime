@@ -29,4 +29,31 @@ It contains only the selected context pack, not the full repository.
 - [OpenCode](opencode/README.md)
 - [GitHub Copilot](copilot/README.md)
 - [OpenClaw](openclaw/README.md)
+- [Custom Wrapper](custom-wrapper/README.md)
+
+## Python SDK usage
+
+For direct Python integration without CLI:
+
+```python
+from opencontext_core import OpenContextRuntime
+
+runtime = OpenContextRuntime()
+runtime.setup_project("/path/to/project")
+
+prepared = runtime.prepare_context(
+    "Explain the auth module",
+    max_tokens=4000,
+    mode="review"
+)
+
+# Use with any agent
+agent_prompt = f"""
+Task: Explain the auth module
+Context: {prepared.context}
+Sources: {prepared.included_sources}
+Trace: {prepared.trace_id}
+"""
+```
+- [Custom Wrapper](custom-wrapper/README.md)
 
