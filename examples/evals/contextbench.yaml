@@ -28,3 +28,12 @@ cases:
       - ".storage/"
       - ".opencontext/"
     min_source_coverage: 1.0
+
+  - id: python-sdk-usage
+    query: "Show how to use OpenContext as a Python library for context preparation"
+    expected_sources:
+      - "examples/agent-wrappers/prepare_context.py"
+    forbidden_sources:
+      - ".storage/"
+      - ".opencontext/"
+    min_source_coverage: 1.0

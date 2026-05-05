@@ -9,7 +9,7 @@ Zero-key mode works through the deterministic `mock` provider and local context 
 ## Shortest Path
 
 ```bash
-python3 -m pip install opencontext-core opencontext-cli
+pip install opencontext-core opencontext-cli
 cd your-project
 opencontext onboard
 opencontext pack . --query "Review authentication" --mode plan --copy

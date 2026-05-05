@@ -9,6 +9,7 @@ description = "Core context engineering runtime for OpenContext Runtime"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "OpenContext Runtime maintainers" }]
 keywords = ["ai", "llm", "context-engineering", "security", "prompt-engineering"]
 classifiers = [

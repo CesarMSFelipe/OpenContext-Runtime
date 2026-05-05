@@ -13,7 +13,7 @@ pipx install opencontext-runtime
 For local repository development:
 
 ```bash
-python3 -m pip install -e packages/opencontext_core -e packages/opencontext_profiles -e packages/opencontext_cli -e packages/opencontext_api
+pip install -e packages/opencontext_core -e packages/opencontext_profiles -e packages/opencontext_cli -e packages/opencontext_api
 ```
 
 ## 2. Initialize

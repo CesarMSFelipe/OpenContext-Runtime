@@ -12,7 +12,7 @@ interfaces. The CLI remains available, but it is not part of the required user w
 Install only the packages your integration needs:
 
 ```bash
-python3 -m pip install opencontext-core opencontext-api opencontext-profiles
+pip install opencontext-core opencontext-api opencontext-profiles
 ```
 
 The CLI is optional. Add `opencontext-cli` only when users should run explicit terminal commands.
