@@ -1,21 +1,33 @@
 # Installation
 
 ## Purpose
-Install OpenContext Runtime for local, zero-key use or editable development.
+Install OpenContext Runtime for local development, testing, or production use.
 
 ## Current Status
-The repository supports editable installs for `opencontext_core`, `opencontext_cli`, `opencontext_api`, and `opencontext_profiles`. Published package commands are documented as the intended distribution path.
+All packages can be installed from source. PyPI publishing is configured but packages are not yet published.
 
-## Commands
+## From Source (Development)
 ```bash
-pipx install opencontext-runtime
-python3 -m pip install -e packages/opencontext_core -e packages/opencontext_profiles -e packages/opencontext_cli -e packages/opencontext_api
+git clone https://github.com/CesarMSFelipe/OpenContext-Runtime.git
+cd OpenContext-Runtime
+pip install -e packages/opencontext_core -e packages/opencontext_cli
+# Optional: install API and profiles
+pip install -e packages/opencontext_api -e packages/opencontext_profiles
 opencontext --help
+```
+
+## From PyPI (When Published)
+```bash
+pip install opencontext-core opencontext-cli
+# Optional: install API and profiles
+pip install opencontext-api opencontext-profiles
 ```
 
 ## Implemented Code
 - CLI entry point: `packages/opencontext_cli/opencontext_cli/main.py`
-- Core config loader: `packages/opencontext_core/opencontext_core/config.py`
+- Core runtime: `packages/opencontext_core/opencontext_core/`
+- API server: `packages/opencontext_api/opencontext_api/`
+- Technology profiles: `packages/opencontext_profiles/opencontext_profiles/`
 
-## Planned Contents
-Package publishing notes, signed release evidence, and platform-specific installation troubleshooting.
+## Publishing
+Packages are built and ready for PyPI publishing. The GitHub Actions workflow will publish on releases.

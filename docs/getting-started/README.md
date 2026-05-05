@@ -4,20 +4,34 @@ OpenContext has two supported setup paths:
 
 - [Runtime-first setup](runtime-first.md): embed OpenContext in an IDE, service, or agent host
   without asking users to run OpenContext commands.
-- [Optional CLI installation](cli-installation.md): install `opencontext-cli` when operators want
+- [CLI installation](cli-installation.md): install `opencontext-cli` when operators want
   explicit terminal commands for local workflows.
 
 For new integrations, start with runtime-first setup.
 
+## Installation Options
+
+- [Installation Guide](installation.md) - How to install from source or PyPI
+- [Publishing to PyPI](publishing-to-pypi.md) - Release packages to PyPI
+- [GitHub Secrets Setup](github-secrets-setup.md) - Configure automated publishing
+
 ## Recommended Reading Order
 
-1. [Runtime-first setup](runtime-first.md)
-2. [First context pack](first-context-pack.md)
-3. [Zero-key mode](zero-key-mode.md)
-4. [Configuration overview](../configuration/overview.md)
-5. [Memory overview](../memory/overview.md)
-6. [Token efficiency overview](../token-efficiency/overview.md)
-7. [Security threat model](../security/threat-model.md)
+1. [Installation Guide](installation.md)
+2. [Runtime-first setup](runtime-first.md)
+3. [First context pack](first-context-pack.md)
+4. [Zero-key mode](zero-key-mode.md)
+5. [Configuration overview](../configuration/overview.md)
+6. [Memory overview](../memory/overview.md)
+7. [Token efficiency overview](../token-efficiency/overview.md)
+8. [Security threat model](../security/threat-model.md)
+
+## Publishing & Deployment
+
+For package maintainers:
+
+1. [Publishing to PyPI](publishing-to-pypi.md) - Complete PyPI release process
+2. [GitHub Secrets Setup](github-secrets-setup.md) - One-time GitHub Actions configuration
 
 The root [README](../../README.md) remains the canonical product overview and links to the full
 [documentation map](../README.md).
