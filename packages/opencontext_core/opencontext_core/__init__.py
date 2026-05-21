@@ -1,18 +1,186 @@
 """OpenContext Runtime core package."""
 
-from opencontext_core.config import OpenContextConfig, load_config
+from opencontext_core.config import (
+    ArtifactStoreConfig,
+    ArtifactStoreMode,
+    ChainStrategy,
+    DeliveryStrategy,
+    KnowledgeGraphConfig,
+    OpenContextConfig,
+    SDDConfig,
+    SkillsConfig,
+    load_config,
+)
 from opencontext_core.runtime import (
     OpenContextRuntime,
     PreparedContext,
     ProjectSetupResult,
     RuntimeResult,
 )
+from opencontext_core.user_prefs import (
+    UserConfigStore,
+    UserFeatures,
+    UserPreferences,
+)
+from opencontext_core.wizard import (
+    reconfigure,
+    reset_config,
+    run_wizard,
+    show_config,
+)
+from opencontext_core.setup.presets import (
+    COMPONENT_CATALOG,
+    PRESET_CATALOG,
+    PROFILE_CATALOG,
+    PresetDef,
+    ProfileDef,
+    ComponentDef,
+    get_available_presets,
+    get_available_profiles,
+    get_available_components,
+    resolve_preset_components,
+)
+from opencontext_core.plugin_system import (
+    InstallResult,
+    Plugin,
+    PluginInfo,
+    PluginInstaller,
+    PluginRegistry,
+    PluginUpdater,
+    RegistryFetcher,
+    RegistryPlugin,
+    RegistryVersion,
+)
+from opencontext_core.setup.plan import (
+    InstallPlan,
+    InstallAction,
+    FileChange,
+    build_plan,
+)
+from opencontext_core.state import (
+    ComponentState,
+    InstallationState,
+    StateStore,
+)
+from opencontext_core.verification import (
+    CheckResult,
+    VerificationReport,
+    run_all_checks,
+)
+from opencontext_core.update import (
+    UpdateCheck,
+    UpdateChecker,
+)
+from opencontext_core.doctor.deep import (
+    DeepDiagnostic,
+    DeepReport,
+    run_deep_diagnostics,
+)
+from opencontext_core.context.observability import (
+    ContextDashboard,
+    MetricsCollector,
+    MetricPoint,
+    OtelExporter,
+    format_cost,
+    format_duration,
+    format_tokens,
+)
+from opencontext_core.evaluation.benchmark_suite import (
+    BenchmarkSuite,
+    BenchmarkSuiteResult,
+    ContextScore,
+    ContextScorer,
+    QualityDimension,
+    format_benchmark_result,
+    format_benchmark_result_json,
+    compare_results,
+)
+from opencontext_core.safety.proxy import (
+    AuditEntry,
+    ContextFirewall,
+    ProxyAction,
+    ProxyDecision,
+    ProxyPolicy,
+    SimpleProxyServer,
+)
 
 __all__ = [
+    "ArtifactStoreConfig",
+    "ArtifactStoreMode",
+    "ChainStrategy",
+    "DeliveryStrategy",
+    "KnowledgeGraphConfig",
     "OpenContextConfig",
     "OpenContextRuntime",
     "PreparedContext",
     "ProjectSetupResult",
     "RuntimeResult",
+    "SDDConfig",
+    "SkillsConfig",
+    "UserConfigStore",
+    "UserFeatures",
+    "UserPreferences",
     "load_config",
+    "reconfigure",
+    "reset_config",
+    "run_wizard",
+    "show_config",
+    "COMPONENT_CATALOG",
+    "PRESET_CATALOG",
+    "PROFILE_CATALOG",
+    "PresetDef",
+    "ProfileDef",
+    "ComponentDef",
+    "get_available_presets",
+    "get_available_profiles",
+    "get_available_components",
+    "resolve_preset_components",
+    "InstallResult",
+    "Plugin",
+    "PluginInfo",
+    "PluginInstaller",
+    "PluginRegistry",
+    "PluginUpdater",
+    "RegistryFetcher",
+    "RegistryPlugin",
+    "RegistryVersion",
+    "InstallPlan",
+    "InstallAction",
+    "FileChange",
+    "build_plan",
+    "ComponentState",
+    "InstallationState",
+    "StateStore",
+    "CheckResult",
+    "VerificationReport",
+    "run_all_checks",
+    "UpdateCheck",
+    "UpdateChecker",
+    "DeepDiagnostic",
+    "DeepReport",
+    "run_deep_diagnostics",
+    # Observability
+    "ContextDashboard",
+    "MetricsCollector",
+    "MetricPoint",
+    "OtelExporter",
+    "format_cost",
+    "format_duration",
+    "format_tokens",
+    # Benchmark
+    "BenchmarkSuite",
+    "BenchmarkSuiteResult",
+    "ContextScore",
+    "ContextScorer",
+    "QualityDimension",
+    "format_benchmark_result",
+    "format_benchmark_result_json",
+    "compare_results",
+    # Firewall
+    "AuditEntry",
+    "ContextFirewall",
+    "ProxyAction",
+    "ProxyDecision",
+    "ProxyPolicy",
+    "SimpleProxyServer",
 ]
