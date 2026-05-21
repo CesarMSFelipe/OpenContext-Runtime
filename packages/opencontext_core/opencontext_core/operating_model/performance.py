@@ -176,8 +176,17 @@ class LatencyBudgetManager:
 class ModelRoleRouter:
     """Selects models by role without escalating to expensive providers first."""
 
-    def __init__(self, roles: Mapping[str, Mapping[str, str]] | None = None) -> None:
+    def __init__(
+        self,
+        roles: Mapping[str, Mapping[str, str]] | None = None,
+        budget_manager: Any = None,
+        local_providers: list[str] | None = None,
+        free_registry: Any = None,
+    ) -> None:
         self.roles = dict(roles or {})
+        self.budget_manager = budget_manager
+        self.local_providers = local_providers or ["ollama", "lmstudio", "localai", "mock"]
+        self.free_registry = free_registry
 
     def route(self, role: str) -> dict[str, str]:
         """Return provider/model for a role."""
@@ -188,6 +197,64 @@ class ModelRoleRouter:
             "provider": str(selected.get("provider", "mock")),
             "model": str(selected.get("model", "mock-llm")),
         }
+
+    def route_with_budget(
+        self, role: str, task_complexity: str = "standard"
+    ) -> dict[str, str]:
+        """Route considering call budget and task complexity."""
+
+        preferred = self.route(role)
+
+        if self.budget_manager is None:
+            return preferred
+
+        provider = preferred["provider"]
+        model = preferred["model"]
+
+        # 1. Check if task can be handled by local model regardless of budget
+        should_delegate = False
+        if self.free_registry and hasattr(self.free_registry, "should_delegate_to_local"):
+            should_delegate = self.free_registry.should_delegate_to_local(task_complexity)
+        elif task_complexity in ("summarize", "format", "classify", "extract", "translate"):
+            should_delegate = True
+
+        if should_delegate:
+            for local in self.local_providers:
+                # Check if provider is working according to registry
+                if self.free_registry and hasattr(self.free_registry, "is_working"):
+                    if not self.free_registry.is_working(local):
+                        continue
+                
+                available, _ = self.budget_manager.check_budget(local, model)
+                if available:
+                    return {"provider": local, "model": model}
+
+        # 2. Use budget manager to select best provider based on remaining calls
+        if hasattr(self.budget_manager, "select_provider"):
+            # Filter working local providers
+            working_locals = self.local_providers
+            if self.free_registry and hasattr(self.free_registry, "is_working"):
+                working_locals = [l for l in self.local_providers if self.free_registry.is_working(l)]
+                
+            provider, model, _ = self.budget_manager.select_provider(
+                provider, model, working_locals
+            )
+            return {"provider": provider, "model": model}
+
+        # Fallback to simple budget check
+        available, _ = self.budget_manager.check_budget(provider, model)
+        if not available:
+            for local in self.local_providers:
+                # Check if provider is working according to registry
+                if self.free_registry and hasattr(self.free_registry, "is_working"):
+                    if not self.free_registry.is_working(local):
+                        continue
+                        
+                local_available, _ = self.budget_manager.check_budget(local, model)
+                if local_available:
+                    return {"provider": local, "model": model}
+
+        return {"provider": provider, "model": model}
 
 
 class ModelEscalationPolicy:

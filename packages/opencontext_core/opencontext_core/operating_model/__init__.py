@@ -45,6 +45,13 @@ from opencontext_core.operating_model.performance import (
     OfflinePrecomputer,
     ProviderContextCacheAdapter,
 )
+from opencontext_core.operating_model.call_budget import (
+    CallBudgetConfig,
+    CallBudgetManager,
+    CallUsage,
+    FreeProviderRegistry,
+    ProviderType,
+)
 from opencontext_core.operating_model.quality import (
     CriticStep,
     PlanDriftDetector,
@@ -78,6 +85,9 @@ __all__ = [
     "CacheAwarePromptCompiler",
     "CachePlan",
     "CacheWarmer",
+    "CallBudgetConfig",
+    "CallBudgetManager",
+    "CallUsage",
     "ContextLayer",
     "ContextLayerManager",
     "ContextTaintTracker",
@@ -89,6 +99,7 @@ __all__ = [
     "EgressPolicyEngine",
     "EncodedPayloadDetector",
     "FileEvidence",
+    "FreeProviderRegistry",
     "HookRegistry",
     "HumanApprovalNode",
     "IndirectPromptInjectionFirewall",
@@ -105,6 +116,7 @@ __all__ = [
     "PolicyDiffEngine",
     "PostLLMQualityGate",
     "PreLLMQualityGate",
+    "ProviderType",
     "PromptConfigSanitizer",
     "PromptContextSBOM",
     "PromptContextSBOMBuilder",
