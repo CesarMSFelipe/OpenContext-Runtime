@@ -21,7 +21,7 @@ and architecture notes live under `docs/`.
 Install for local development with:
 
 ```bash
-python3 -m pip install -e packages/opencontext_core -e packages/opencontext_cli -e packages/opencontext_api
+pip install -e packages/opencontext_core -e packages/opencontext_cli -e packages/opencontext_api
 ```
 
 Run validation from the repository root:
