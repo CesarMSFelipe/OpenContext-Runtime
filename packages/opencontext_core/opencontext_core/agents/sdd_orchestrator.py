@@ -60,13 +60,9 @@ class SDDOrchestrator:
         if mode == ArtifactStoreMode.ENGRAM:
             return EngramStore()
         elif mode == ArtifactStoreMode.OPEN_SPEC:
-            return OpenSpecStore(
-                root=self.config.artifact_store.openspec.path
-            )
+            return OpenSpecStore(root=self.config.artifact_store.openspec.path)
         elif mode == ArtifactStoreMode.HYBRID:
-            return HybridStore(
-                openspec_root=self.config.artifact_store.openspec.path
-            )
+            return HybridStore(openspec_root=self.config.artifact_store.openspec.path)
         else:
             return NoneStore()
 
@@ -93,10 +89,7 @@ class SDDOrchestrator:
 
         ready: list[str] = []
         for phase in PHASE_ORDER:
-            if (
-                not self.state.is_phase_completed(phase)
-                and self.can_run_phase(phase)
-            ):
+            if not self.state.is_phase_completed(phase) and self.can_run_phase(phase):
                 ready.append(phase)
 
         return ready
@@ -130,9 +123,7 @@ class SDDOrchestrator:
             )
 
         # Save artifact
-        artifact_ref = self.store.save(
-            self.state.change, phase, content
-        )
+        artifact_ref = self.store.save(self.state.change, phase, content)
 
         # Update state
         self.state.mark_completed(phase)
@@ -192,7 +183,4 @@ class SDDOrchestrator:
         if self.state is None:
             return False
 
-        return all(
-            self.state.is_phase_completed(phase)
-            for phase in PHASE_ORDER
-        )
+        return all(self.state.is_phase_completed(phase) for phase in PHASE_ORDER)

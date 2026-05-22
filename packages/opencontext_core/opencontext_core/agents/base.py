@@ -1,12 +1,11 @@
 """Base agent class for OpenContext agents."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import yaml
 from pydantic import BaseModel, Field
 
 
@@ -17,7 +16,7 @@ class AgentConfig(BaseModel):
     type: str = Field(..., description="Agent type")
     enabled: bool = Field(default=True)
     objectives: list[str] = Field(default_factory=list)
-    scope: Optional[dict[str, Any]] = Field(default=None)
+    scope: dict[str, Any] | None = Field(default=None)
     token_budget: dict[str, Any] = Field(default_factory=dict)
     memory_policy: dict[str, Any] = Field(default_factory=dict)
     provider: dict[str, Any] = Field(default_factory=dict)
@@ -35,7 +34,7 @@ class AgentMetadata:
     agent_name: str
     agent_type: str
     started_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     tokens_used: int = 0
     tokens_max: int = 0
     duration_seconds: float = 0.0

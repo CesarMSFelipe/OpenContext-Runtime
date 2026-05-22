@@ -1,14 +1,13 @@
 """Agent orchestrator for coordinating analysis across multiple agents."""
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from .base import AgentConfig, BaseAgent
-from .loader import list_available_agents, load_agent_config
+from .loader import list_available_agents
 from .memory_manager import MemoryManager
 from .token_manager import TokenBudget
 
@@ -23,7 +22,7 @@ class AgentResult(BaseModel):
     report: str = Field(default="", description="Formatted report")
     metrics: dict[str, Any] = Field(default_factory=dict, description="Analysis metrics")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Execution metadata")
-    error: Optional[str] = Field(None, description="Error message if failed")
+    error: str | None = Field(None, description="Error message if failed")
 
     class Config:
         arbitrary_types_allowed = True
@@ -43,8 +42,8 @@ class AgentOrchestrator:
     def __init__(
         self,
         project_root: Path | str = ".",
-        agents_dir: Optional[Path] = None,
-        cache_dir: Optional[Path] = None,
+        agents_dir: Path | None = None,
+        cache_dir: Path | None = None,
     ):
         """Initialize orchestrator.
 
@@ -54,12 +53,8 @@ class AgentOrchestrator:
             cache_dir: Directory for caching results (default: .agents/cache/)
         """
         self.project_root = Path(project_root).resolve()
-        self.agents_dir = (
-            Path(agents_dir) if agents_dir else self.project_root / ".agents"
-        )
-        self.cache_dir = (
-            Path(cache_dir) if cache_dir else self.agents_dir / "cache"
-        )
+        self.agents_dir = Path(agents_dir) if agents_dir else self.project_root / ".agents"
+        self.cache_dir = Path(cache_dir) if cache_dir else self.agents_dir / "cache"
 
         # Create directories if needed
         self.agents_dir.mkdir(parents=True, exist_ok=True)
@@ -83,7 +78,7 @@ class AgentOrchestrator:
         """
         return list(self.agents.keys())
 
-    def get_agent_config(self, agent_name: str) -> Optional[AgentConfig]:
+    def get_agent_config(self, agent_name: str) -> AgentConfig | None:
         """Get configuration for specific agent.
 
         Args:
@@ -97,8 +92,8 @@ class AgentOrchestrator:
     def run_agent(
         self,
         agent_name: str,
-        custom_objectives: Optional[list[str]] = None,
-        **kwargs,
+        custom_objectives: list[str] | None = None,
+        **kwargs: Any,
     ) -> AgentResult:
         """Run a single agent analysis.
 
@@ -169,6 +164,7 @@ class AgentOrchestrator:
                 status="success",
                 findings=result_data.get("findings", []),
                 report=result_data.get("report", ""),
+                error=None,
                 metrics={
                     "token_budget": token_budget.to_dict(),
                     "memory_usage": memory.to_dict(),
@@ -205,7 +201,7 @@ class AgentOrchestrator:
         config: AgentConfig,
         memory: MemoryManager,
         token_budget: TokenBudget,
-    ) -> Optional[BaseAgent]:
+    ) -> BaseAgent | None:
         """Create appropriate agent instance based on type.
 
         Args:
@@ -221,7 +217,7 @@ class AgentOrchestrator:
         # (CodeReviewAgent, SecurityAuditAgent, etc.)
         return None
 
-    def _mock_agent_execution(self, config: AgentConfig, agent: Optional[BaseAgent]) -> dict[str, Any]:
+    def _mock_agent_execution(self, config: AgentConfig, agent: BaseAgent | None) -> dict[str, Any]:
         """Generate mock execution result for demonstration.
 
         Args:
@@ -244,7 +240,7 @@ class AgentOrchestrator:
 # {config.name} Report
 
 **Objectives:**
-{chr(10).join(f'- {obj}' for obj in config.objectives)}
+{chr(10).join(f"- {obj}" for obj in config.objectives)}
 
 **Status:** Analysis configured and ready
 **Project:** {self.project_root.name}

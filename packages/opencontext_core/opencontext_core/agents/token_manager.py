@@ -1,7 +1,7 @@
 """Token budget management for agents."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any
 
 
 @dataclass
@@ -66,7 +66,7 @@ class TokenBudget:
         self.total_used = 0
         self.query_count = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "max_per_query": self.max_per_query,
