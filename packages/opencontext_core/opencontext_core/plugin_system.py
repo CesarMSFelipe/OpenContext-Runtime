@@ -932,7 +932,7 @@ class PluginRegistry:
     def discover(self) -> list[PluginInfo]:
         """Discover available plugins."""
 
-        plugins = []
+        plugins: list[PluginInfo] = []
         if not self.plugins_dir.exists():
             return plugins
 
@@ -991,7 +991,7 @@ class PluginRegistry:
 
             plugin = plugin_class()
             self._plugins[name] = plugin
-            return plugin
+            return plugin  # type: ignore[no-any-return]
 
         except Exception:
             return None

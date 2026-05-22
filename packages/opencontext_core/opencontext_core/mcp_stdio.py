@@ -235,15 +235,15 @@ class MCPServer:
         if node_id is None:
             return {"error": f"Symbol not found: {symbol}"}
 
-        callers = self.call_graph.get_callers(node_id, max_depth=depth)
+        callers = self.call_graph.get_callers(node_id, depth=depth)
         return {
             "symbol": symbol,
             "callers": [
                 {
-                    "name": c.name,
-                    "kind": c.kind,
-                    "file": c.file_path,
-                    "line": c.line,
+                    "name": c.get("name", ""),
+                    "kind": c.get("kind", ""),
+                    "file": c.get("file_path", ""),
+                    "line": c.get("line", 0),
                 }
                 for c in callers
             ],
@@ -260,15 +260,15 @@ class MCPServer:
         if node_id is None:
             return {"error": f"Symbol not found: {symbol}"}
 
-        callees = self.call_graph.get_callees(node_id, max_depth=depth)
+        callees = self.call_graph.get_callees(node_id, depth=depth)
         return {
             "symbol": symbol,
             "callees": [
                 {
-                    "name": c.name,
-                    "kind": c.kind,
-                    "file": c.file_path,
-                    "line": c.line,
+                    "name": c.get("name", ""),
+                    "kind": c.get("kind", ""),
+                    "file": c.get("file_path", ""),
+                    "line": c.get("line", 0),
                 }
                 for c in callees
             ],
@@ -285,13 +285,13 @@ class MCPServer:
         if node_id is None:
             return {"error": f"Symbol not found: {symbol}"}
 
-        impact = self.impact.get_impact_radius(node_id, max_depth=radius)
+        impact = self.impact.analyze(node_id, depth=radius)
         return {
             "symbol": symbol,
-            "affected_nodes": len(impact.affected_nodes),
+            "affected_nodes": len(impact.direct_callers) + len(impact.transitive_dependents),
             "affected_files": list(impact.affected_files),
-            "test_files": list(impact.test_files),
-            "risk_level": impact.risk_level,
+            "test_files": list(impact.affected_tests),
+            "risk_level": "unknown",
         }
 
     def _handle_node(self, params: dict[str, Any]) -> dict[str, Any]:

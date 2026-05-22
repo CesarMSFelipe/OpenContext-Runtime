@@ -221,30 +221,28 @@ class OpenContextTUI:
         if not symbol:
             return
 
-        from opencontext_core.indexing.impact_analysis import ImpactAnalyzer
-
-        impact = ImpactAnalyzer()
-        # Find node first
         from opencontext_core.indexing.graph_db import GraphDatabase
 
         db = GraphDatabase()
+        from opencontext_core.indexing.impact_analysis import ImpactAnalyzer
+
+        impact = ImpactAnalyzer(db)
         results = db.search_fts(symbol, limit=10)
         node_id = None
         for r in results:
             if r.get("name") == symbol:
                 node_id = r.get("id")
                 break
-        db.close()
 
         if node_id is None:
             print(f"Symbol not found: {symbol}")
+            db.close()
             return
 
-        result = impact.get_impact_radius(node_id, max_depth=2)
-        impact.close()
+        result = impact.analyze(node_id, depth=2)
 
         print(f"\nImpact analysis for {symbol}:")
-        print(f"  Risk level: {result.risk_level}")
+        print("  Risk level: N/A")
         print(f"  Affected files: {len(result.affected_files)}")
         for f in sorted(result.affected_files)[:10]:
             print(f"    {f}")
@@ -296,7 +294,8 @@ class OpenContextTUI:
         from opencontext_core.doctor.checks import run_doctor
 
         try:
-            config = load_config(str(self.config_path) if self.config_path.exists() else None)
+            config_path: str | None = str(self.config_path) if self.config_path.exists() else None
+            config = load_config(config_path)  # type: ignore[arg-type]
             checks = run_doctor(config)
             for check in checks:
                 status = "PASS" if check.ok else "FAIL"

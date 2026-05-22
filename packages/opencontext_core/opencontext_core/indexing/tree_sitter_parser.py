@@ -84,7 +84,7 @@ class TreeSitterParser:
         """Attempt to import tree-sitter and load language grammars."""
 
         try:
-            from tree_sitter import Parser  # type: ignore[import-not-found]
+            from tree_sitter import Parser
 
             self._available = True
             self._parser_class = Parser

@@ -139,7 +139,7 @@ class ComponentDoctor:
         checks = []
 
         # Check if server module loads
-        import importlib
+        import importlib.util
 
         try:
             if importlib.util.find_spec("opencontext_core.mcp_stdio"):
@@ -229,7 +229,7 @@ class ComponentDoctor:
 
         checks = []
 
-        import importlib
+        import importlib.util
 
         try:
             if importlib.util.find_spec("opencontext_core.agents.sdd_orchestrator"):
@@ -293,7 +293,7 @@ class ComponentDoctor:
         checks = []
 
         try:
-            from opencontext_core.skills.registry import SkillRegistry
+            from opencontext_core.skills.registry import SkillRegistry  # type: ignore[attr-defined]
 
             SkillRegistry()
             checks.append(
@@ -321,7 +321,7 @@ class ComponentDoctor:
 
         checks = []
 
-        import importlib
+        import importlib.util
 
         try:
             if importlib.util.find_spec("opencontext_core.memory.topic_keys"):

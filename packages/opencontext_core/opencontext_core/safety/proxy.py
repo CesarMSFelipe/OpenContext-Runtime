@@ -508,7 +508,7 @@ class SimpleProxyServer:
         import http.server as server
 
         class ProxyHandler(server.BaseHTTPRequestHandler):
-            def log_message(self, fmt, *args):
+            def log_message(self, fmt: str, *args: Any) -> None:
                 logger.debug(fmt, *args)
 
             def _send_json(self, status: int, data: dict[str, Any]) -> None:
@@ -519,7 +519,7 @@ class SimpleProxyServer:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def do_GET(self):
+            def do_GET(self) -> None:
                 if self.path == "/health":
                     stats = firewall.get_stats()
                     self._send_json(
@@ -538,7 +538,7 @@ class SimpleProxyServer:
                 else:
                     self._send_json(404, {"error": "not_found"})
 
-            def do_POST(self):
+            def do_POST(self) -> None:
                 if self.path != "/proxy":
                     self._send_json(404, {"error": "not_found"})
                     return

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Protocol
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from opencontext_core.evaluation.models import (
     ContextBenchCase,

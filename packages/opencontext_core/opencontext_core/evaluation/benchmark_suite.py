@@ -112,7 +112,7 @@ class ContextScorer:
 
     def score_from_trace(
         self,
-        trace: RuntimeTrace,  # noqa: F821
+        trace: Any,  # RuntimeTrace
         baseline_tokens: int = 0,
     ) -> ContextScore:
         """Compute quality score from a RuntimeTrace."""
@@ -175,7 +175,7 @@ class ContextScorer:
 
     def score_from_pack(
         self,
-        pack: ContextPackResult,  # noqa: F821
+        pack: Any,  # ContextPackResult
         repo_root: str = ".",
         has_pii: bool = False,
         age_hours: float = 0,
@@ -496,12 +496,12 @@ class BenchmarkSuite:
         for r in results:
             all_recs.extend(r.score.recommendations)
         # Deduplicate
-        seen = set()
-        unique_recs = []
-        for r in all_recs:
-            if r not in seen:
-                seen.add(r)
-                unique_recs.append(r)
+        seen: set[str] = set()
+        unique_recs: list[str] = []
+        for rec in all_recs:
+            if rec not in seen:
+                seen.add(rec)
+                unique_recs.append(rec)
 
         return BenchmarkSuiteResult(
             timestamp=datetime.now().isoformat(),

@@ -111,37 +111,42 @@ class ContextBuilder:
 
         # Step 2: Find related symbols (callers, callees, same file)
         if len(nodes) < max_nodes:
-            for node in list(nodes):
+            for ctx_node in list(nodes):
                 if len(nodes) >= max_nodes:
                     break
 
                 # Find node ID
-                node_id = self._find_node_id(node.name, node.file_path)
+                node_id = self._find_node_id(ctx_node.name, ctx_node.file_path)
                 if node_id is None:
                     continue
 
                 # Get callers
-                callers = self.call_graph.get_callers(node_id, max_depth=1)
+                callers = self.call_graph.get_callers(node_id, depth=1)
                 for caller in callers[:3]:
-                    if caller.id in seen_ids:
+                    caller_id = caller.get("id")
+                    if caller_id is not None and caller_id in seen_ids:
                         continue
-                    seen_ids.add(caller.id)
+                    if caller_id is not None:
+                        seen_ids.add(caller_id)
 
                     source_code = ""
                     if include_code:
+                        caller_file_path = caller.get("file_path", "")
+                        caller_line = caller.get("line", 0)
+                        caller_end_line = caller.get("end_line", caller_line)
                         source_code = self._get_source_snippet(
-                            root_path, caller.file_path, caller.line, caller.end_line
+                            root_path, caller_file_path, caller_line, caller_end_line
                         )
 
                     nodes.append(
                         ContextNode(
-                            name=caller.name,
-                            kind=caller.kind,
-                            file_path=caller.file_path,
-                            line=caller.line,
+                            name=caller.get("name", ""),
+                            kind=caller.get("kind", ""),
+                            file_path=caller.get("file_path", ""),
+                            line=caller.get("line", 0),
                             source_code=source_code,
                             relevance_score=0.7,
-                            relationships=[f"calls:{node.name}"],
+                            relationships=[f"calls:{ctx_node.name}"],
                         )
                     )
 

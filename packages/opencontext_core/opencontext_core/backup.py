@@ -222,7 +222,7 @@ class BackupManager:
 
         if self.index_path.exists():
             try:
-                return json.loads(self.index_path.read_text(encoding="utf-8"))
+                return json.loads(self.index_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
             except (json.JSONDecodeError, OSError):
                 pass
         return {"backups": []}
