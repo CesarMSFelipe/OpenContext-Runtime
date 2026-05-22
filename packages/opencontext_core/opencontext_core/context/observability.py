@@ -118,8 +118,9 @@ def _trace_to_otlp_json(trace: RuntimeTrace) -> dict[str, Any]:
     }
 
     # Token estimates as events
+    attrs: list[dict[str, Any]] = root_span["attributes"]  # type: ignore[assignment]
     for key, val in trace.token_estimates.items():
-        root_span["attributes"].append(
+        attrs.append(
             {
                 "key": f"tokens.{key}",
                 "value": {"intValue": str(val)},
@@ -128,7 +129,7 @@ def _trace_to_otlp_json(trace: RuntimeTrace) -> dict[str, Any]:
 
     # Timings as attributes
     for step, ms in trace.timings_ms.items():
-        root_span["attributes"].append(
+        attrs.append(
             {
                 "key": f"timing.{step}",
                 "value": {"doubleValue": ms},
@@ -420,7 +421,7 @@ class MetricsCollector:
 class ContextDashboard:
     """Provides aggregated context metrics for the TUI dashboard."""
 
-    def __init__(self, trace_logger: LocalTraceLogger | None = None):  # noqa: F821
+    def __init__(self, trace_logger: Any | None = None):
         from opencontext_core.trace.logger import LocalTraceLogger
 
         self._logger = trace_logger or LocalTraceLogger()
@@ -473,7 +474,7 @@ class ContextDashboard:
 
         cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
-        hourly: dict[str, dict] = {}
+        hourly: dict[str, dict[str, Any]] = {}
         total_traces = 0
         total_tokens = 0
         total_cost = 0.0
@@ -560,7 +561,9 @@ class ContextDashboard:
         except Exception:
             pass
 
-        top_workflow = max(top_workflows, key=top_workflows.get) if top_workflows else "none"
+        top_workflow = (
+            max(top_workflows, key=lambda k: top_workflows[k]) if top_workflows else "none"
+        )
         avg_quality = (
             sum(self._quality_scores) / len(self._quality_scores) if self._quality_scores else None
         )

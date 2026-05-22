@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from opencontext_core.compat import UTC

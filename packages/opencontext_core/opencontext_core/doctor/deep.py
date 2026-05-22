@@ -363,15 +363,15 @@ def _from_plugins() -> list[DeepDiagnostic]:
     try:
         from opencontext_core.plugin_system import PluginUpdater
 
-        updater = PluginUpdater(registry)
+        updater = PluginUpdater()
         updates = updater.check_updates()
-        for p in updates:
-            if p.status in ("updated", "installed"):
+        for update in updates:
+            if update.status in ("updated", "installed"):
                 diagnostics.append(
                     DeepDiagnostic(
-                        name=f"plugin_update.{p.name}",
+                        name=f"plugin_update.{update.name}",
                         status="warning",
-                        message=f"{p.name}: {p.version}",
+                        message=f"{update.name}: {update.version}",
                         recommendation=f"Run 'opencontext plugin update {p.name}'",
                     )
                 )

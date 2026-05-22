@@ -32,21 +32,21 @@ BRAND_DIM = "#6C757D"
 
 # Styles (only if rich is available)
 if RICH_AVAILABLE:
-    STYLE_SUCCESS = Style(color=BRAND_SUCCESS, bold=True)
-    STYLE_ERROR = Style(color=BRAND_ERROR, bold=True)
-    STYLE_WARNING = Style(color=BRAND_WARNING, bold=True)
-    STYLE_INFO = Style(color=BRAND_INFO, bold=True)
-    STYLE_DIM = Style(color=BRAND_DIM)
-    STYLE_PRIMARY = Style(color=BRAND_PRIMARY, bold=True)
-    STYLE_SECONDARY = Style(color=BRAND_SECONDARY)
+    STYLE_SUCCESS: Style = Style(color=BRAND_SUCCESS, bold=True)
+    STYLE_ERROR: Style = Style(color=BRAND_ERROR, bold=True)
+    STYLE_WARNING: Style = Style(color=BRAND_WARNING, bold=True)
+    STYLE_INFO: Style = Style(color=BRAND_INFO, bold=True)
+    STYLE_DIM: Style = Style(color=BRAND_DIM)
+    STYLE_PRIMARY: Style = Style(color=BRAND_PRIMARY, bold=True)
+    STYLE_SECONDARY: Style = Style(color=BRAND_SECONDARY)
 else:
-    STYLE_SUCCESS = None
-    STYLE_ERROR = None
-    STYLE_WARNING = None
-    STYLE_INFO = None
-    STYLE_DIM = None
-    STYLE_PRIMARY = None
-    STYLE_SECONDARY = None
+    STYLE_SUCCESS = None  # type: ignore[assignment]
+    STYLE_ERROR = None  # type: ignore[assignment]
+    STYLE_WARNING = None  # type: ignore[assignment]
+    STYLE_INFO = None  # type: ignore[assignment]
+    STYLE_DIM = None  # type: ignore[assignment]
+    STYLE_PRIMARY = None  # type: ignore[assignment]
+    STYLE_SECONDARY = None  # type: ignore[assignment]
 
 
 class BrandConsole:

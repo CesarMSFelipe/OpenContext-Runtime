@@ -69,7 +69,8 @@ class AffectedTestFinder:
 
             for node in nodes:
                 # Trace transitive callers
-                callers = self._trace_callers(node.id, max_depth)
+                node_id_val: int = node.id  # type: ignore[assignment]
+                callers = self._trace_callers(node_id_val, max_depth)
 
                 for caller in callers:
                     caller_file = caller.get("file_path", "")

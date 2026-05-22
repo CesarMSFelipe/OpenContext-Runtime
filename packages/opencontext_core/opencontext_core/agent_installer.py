@@ -161,7 +161,7 @@ class AgentInstaller:
                 "reason": f"Generator '{gen_name}' not implemented",
             }
 
-        return generator(location, target)
+        return generator(location, target)  # type: ignore[no-any-return]
 
     def _gen_claude_config(
         self, location: str, target: AgentTarget = AgentTarget.CLAUDE_CODE
