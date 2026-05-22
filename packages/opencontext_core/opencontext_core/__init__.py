@@ -1,18 +1,186 @@
 """OpenContext Runtime core package."""
 
-from opencontext_core.config import OpenContextConfig, load_config
+from opencontext_core.config import (
+    ArtifactStoreConfig,
+    ArtifactStoreMode,
+    ChainStrategy,
+    DeliveryStrategy,
+    KnowledgeGraphConfig,
+    OpenContextConfig,
+    SDDConfig,
+    SkillsConfig,
+    load_config,
+)
+from opencontext_core.context.observability import (
+    ContextDashboard,
+    MetricPoint,
+    MetricsCollector,
+    OtelExporter,
+    format_cost,
+    format_duration,
+    format_tokens,
+)
+from opencontext_core.doctor.deep import (
+    DeepDiagnostic,
+    DeepReport,
+    run_deep_diagnostics,
+)
+from opencontext_core.evaluation.benchmark_suite import (
+    BenchmarkSuite,
+    BenchmarkSuiteResult,
+    ContextScore,
+    ContextScorer,
+    QualityDimension,
+    compare_results,
+    format_benchmark_result,
+    format_benchmark_result_json,
+)
+from opencontext_core.plugin_system import (
+    InstallResult,
+    Plugin,
+    PluginInfo,
+    PluginInstaller,
+    PluginRegistry,
+    PluginUpdater,
+    RegistryFetcher,
+    RegistryPlugin,
+    RegistryVersion,
+)
 from opencontext_core.runtime import (
     OpenContextRuntime,
     PreparedContext,
     ProjectSetupResult,
     RuntimeResult,
 )
+from opencontext_core.safety.proxy import (
+    AuditEntry,
+    ContextFirewall,
+    ProxyAction,
+    ProxyDecision,
+    ProxyPolicy,
+    SimpleProxyServer,
+)
+from opencontext_core.setup.plan import (
+    FileChange,
+    InstallAction,
+    InstallPlan,
+    build_plan,
+)
+from opencontext_core.setup.presets import (
+    COMPONENT_CATALOG,
+    PRESET_CATALOG,
+    PROFILE_CATALOG,
+    ComponentDef,
+    PresetDef,
+    ProfileDef,
+    get_available_components,
+    get_available_presets,
+    get_available_profiles,
+    resolve_preset_components,
+)
+from opencontext_core.state import (
+    ComponentState,
+    InstallationState,
+    StateStore,
+)
+from opencontext_core.update import (
+    UpdateCheck,
+    UpdateChecker,
+)
+from opencontext_core.user_prefs import (
+    UserConfigStore,
+    UserFeatures,
+    UserPreferences,
+)
+from opencontext_core.verification import (
+    CheckResult,
+    VerificationReport,
+    run_all_checks,
+)
+from opencontext_core.wizard import (
+    reconfigure,
+    reset_config,
+    run_wizard,
+    show_config,
+)
 
 __all__ = [
+    "COMPONENT_CATALOG",
+    "PRESET_CATALOG",
+    "PROFILE_CATALOG",
+    "ArtifactStoreConfig",
+    "ArtifactStoreMode",
+    # Firewall
+    "AuditEntry",
+    # Benchmark
+    "BenchmarkSuite",
+    "BenchmarkSuiteResult",
+    "ChainStrategy",
+    "CheckResult",
+    "ComponentDef",
+    "ComponentState",
+    # Observability
+    "ContextDashboard",
+    "ContextFirewall",
+    "ContextScore",
+    "ContextScorer",
+    "DeepDiagnostic",
+    "DeepReport",
+    "DeliveryStrategy",
+    "FileChange",
+    "InstallAction",
+    "InstallPlan",
+    "InstallResult",
+    "InstallationState",
+    "KnowledgeGraphConfig",
+    "MetricPoint",
+    "MetricsCollector",
     "OpenContextConfig",
     "OpenContextRuntime",
+    "OtelExporter",
+    "Plugin",
+    "PluginInfo",
+    "PluginInstaller",
+    "PluginRegistry",
+    "PluginUpdater",
     "PreparedContext",
+    "PresetDef",
+    "ProfileDef",
     "ProjectSetupResult",
+    "ProxyAction",
+    "ProxyDecision",
+    "ProxyPolicy",
+    "QualityDimension",
+    "RegistryFetcher",
+    "RegistryPlugin",
+    "RegistryVersion",
     "RuntimeResult",
+    "SDDConfig",
+    "SimpleProxyServer",
+    "SkillsConfig",
+    "StateStore",
+    "UpdateCheck",
+    "UpdateChecker",
+    "UserConfigStore",
+    "UserFeatures",
+    "UserPreferences",
+    "VerificationReport",
+    "build_plan",
+    "compare_results",
+    "format_benchmark_result",
+    "format_benchmark_result_json",
+    "format_cost",
+    "format_duration",
+    "format_tokens",
+    "get_available_components",
+    "get_available_presets",
+    "get_available_profiles",
     "load_config",
+    "reconfigure",
+    "reset_config",
+    "resolve_preset_components",
+    "run_all_checks",
+    "run_deep_diagnostics",
+    "run_wizard",
+    "show_config",
 ]

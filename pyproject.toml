@@ -34,5 +34,4 @@ strict = true
 mypy_path = "packages/opencontext_core:packages/opencontext_profiles"
 warn_unreachable = true
 exclude = [
-  "packages/opencontext_core/opencontext_core/agents/",
 ]

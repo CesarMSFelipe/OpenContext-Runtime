@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from opencontext_core.compat import StrEnum
@@ -606,6 +606,140 @@ class WorkflowConfig(BaseModel):
     steps: list[str] = Field(description="Ordered workflow step names.")
 
 
+class ArtifactStoreMode(StrEnum):
+    """Artifact store backend mode."""
+
+    ENGRAM = "engram"
+    OPEN_SPEC = "openspec"
+    HYBRID = "hybrid"
+    NONE = "none"
+
+
+class EngramStoreConfig(BaseModel):
+    """Engram artifact store configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project: str | None = Field(default=None, description="Engram project override.")
+
+
+class OpenSpecStoreConfig(BaseModel):
+    """OpenSpec file-based artifact store configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(default="openspec/", description="OpenSpec root path.")
+
+
+class ArtifactStoreConfig(BaseModel):
+    """Artifact store configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: ArtifactStoreMode = Field(
+        default=ArtifactStoreMode.NONE, description="Artifact store backend."
+    )
+    engram: EngramStoreConfig = Field(default_factory=EngramStoreConfig)
+    openspec: OpenSpecStoreConfig = Field(default_factory=OpenSpecStoreConfig)
+
+
+class DeliveryStrategy(StrEnum):
+    """Delivery and review strategy."""
+
+    ASK_ON_RISK = "ask-on-risk"
+    AUTO_CHAIN = "auto-chain"
+    SINGLE_PR = "single-pr"
+    EXCEPTION_OK = "exception-ok"
+    PLAN_ONLY = "plan-only"
+
+
+class ChainStrategy(StrEnum):
+    """Chained PR merge strategy."""
+
+    STACKED_TO_MAIN = "stacked-to-main"
+    FEATURE_BRANCH_CHAIN = "feature-branch-chain"
+
+
+class SDDConfig(BaseModel):
+    """SDD orchestrator configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_store: ArtifactStoreConfig = Field(default_factory=ArtifactStoreConfig)
+    delivery_strategy: DeliveryStrategy = Field(default=DeliveryStrategy.PLAN_ONLY)
+    chain_strategy: ChainStrategy = Field(default=ChainStrategy.STACKED_TO_MAIN)
+    model_assignments: dict[str, str] = Field(
+        default_factory=lambda: {
+            "explore": "default",
+            "propose": "default",
+            "spec": "default",
+            "design": "default",
+            "tasks": "default",
+            "apply": "default",
+            "verify": "default",
+            "archive": "default",
+        },
+        description="Per-phase model assignment map.",
+    )
+    interactive: bool = Field(default=False, description="Pause after each phase for review.")
+
+
+class KnowledgeGraphConfig(BaseModel):
+    """Code knowledge graph configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=True, description="Whether knowledge graph indexing is enabled.")
+    languages: list[str] = Field(
+        default_factory=list, description="Languages to index; empty = auto-detect."
+    )
+    exclude: list[str] = Field(
+        default_factory=lambda: [
+            "node_modules/**",
+            "vendor/**",
+            "__pycache__/**",
+            ".git/**",
+            "*.min.js",
+            "*.min.css",
+        ],
+        description="Glob patterns to exclude from indexing.",
+    )
+    max_file_size: int = Field(
+        default=1_048_576, ge=1024, description="Skip files larger than this in bytes."
+    )
+    track_call_sites: bool = Field(default=True, description="Track call site locations.")
+    auto_sync: bool = Field(default=True, description="Auto-sync on file changes.")
+    track_class_hierarchy: bool = Field(default=True, description="Track extends/implements edges.")
+
+
+class SkillsConfig(BaseModel):
+    """Skill registry configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False, description="Whether skill registry is enabled.")
+    registry_path: str = Field(
+        default=".atl/skill-registry.md", description="Skill registry file path."
+    )
+    auto_discover: bool = Field(
+        default=True, description="Auto-discover skills from configured directories."
+    )
+    user_dirs: list[str] = Field(
+        default_factory=lambda: [
+            "~/.config/opencode/skills/",
+            "~/.claude/skills/",
+        ],
+        description="User-level skill directories.",
+    )
+    project_dirs: list[str] = Field(
+        default_factory=lambda: [
+            ".claude/skills/",
+            "skills/",
+        ],
+        description="Project-level skill directories.",
+    )
+
+
 class OpenContextConfig(BaseModel):
     """Top-level runtime configuration."""
 
@@ -640,6 +774,13 @@ class OpenContextConfig(BaseModel):
     profiles: dict[str, Any] = Field(default_factory=dict)
     server: ServerConfig = Field(default_factory=ServerConfig)
     workflows: dict[str, WorkflowConfig] = Field(description="Named workflows.")
+    sdd: SDDConfig = Field(default_factory=SDDConfig, description="SDD orchestrator configuration.")
+    knowledge_graph: KnowledgeGraphConfig = Field(
+        default_factory=KnowledgeGraphConfig, description="Code knowledge graph configuration."
+    )
+    skills: SkillsConfig = Field(
+        default_factory=SkillsConfig, description="Skill registry configuration."
+    )
 
 
 def load_config(path: str | Path = "configs/opencontext.yaml") -> OpenContextConfig:
@@ -991,5 +1132,54 @@ def default_config_data() -> dict[str, Any]:
                     "trace.sdd_persist",
                 ],
             },
+        },
+        "sdd": {
+            "artifact_store": {
+                "mode": "none",
+                "engram": {},
+                "openspec": {"path": "openspec/"},
+            },
+            "delivery_strategy": "plan-only",
+            "chain_strategy": "stacked-to-main",
+            "model_assignments": {
+                "explore": "default",
+                "propose": "default",
+                "spec": "default",
+                "design": "default",
+                "tasks": "default",
+                "apply": "default",
+                "verify": "default",
+                "archive": "default",
+            },
+            "interactive": False,
+        },
+        "knowledge_graph": {
+            "enabled": True,
+            "languages": [],
+            "exclude": [
+                "node_modules/**",
+                "vendor/**",
+                "__pycache__/**",
+                ".git/**",
+                "*.min.js",
+                "*.min.css",
+            ],
+            "max_file_size": 1048576,
+            "track_call_sites": True,
+            "auto_sync": True,
+            "track_class_hierarchy": True,
+        },
+        "skills": {
+            "enabled": False,
+            "registry_path": ".atl/skill-registry.md",
+            "auto_discover": True,
+            "user_dirs": [
+                "~/.config/opencode/skills/",
+                "~/.claude/skills/",
+            ],
+            "project_dirs": [
+                ".claude/skills/",
+                "skills/",
+            ],
         },
     }

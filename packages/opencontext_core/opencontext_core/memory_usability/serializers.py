@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from opencontext_core.compat import StrEnum
 from opencontext_core.safety.redaction import SinkGuard
