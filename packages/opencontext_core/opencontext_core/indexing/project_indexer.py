@@ -8,6 +8,7 @@ from pathlib import Path
 from opencontext_core.compat import UTC
 from opencontext_core.config import ProjectIndexConfig
 from opencontext_core.indexing.dependency_graph import DependencyGraphBuilder
+from opencontext_core.indexing.knowledge_graph import KnowledgeGraph
 from opencontext_core.indexing.scanner import ProjectScanner, ScannedFile
 from opencontext_core.indexing.symbol_extractor import ExtractableFile, SymbolExtractor
 from opencontext_core.models.project import ProjectManifest, Symbol
@@ -27,12 +28,14 @@ class ProjectIndexer:
         config: ProjectIndexConfig,
         project_name: str,
         profiles: list[TechnologyProfile] | None = None,
+        knowledge_graph: KnowledgeGraph | None = None,
     ) -> None:
         self.config = config
         self.project_name = project_name
         self.scanner = ProjectScanner(config.ignore)
         self.symbol_extractor = SymbolExtractor()
         self.profiles = profiles or [GenericTechnologyProfile()]
+        self.knowledge_graph = knowledge_graph
 
     def build_manifest(self, root: Path | None = None) -> ProjectManifest:
         """Scan and analyze a project root."""
@@ -45,6 +48,22 @@ class ProjectIndexer:
         detections = self._detect_profiles(project_root, [file.path for file in project_files])
         profiles = self._profiles_from_detections(detections)
         primary_profile = self._primary_profile(detections, profiles)
+
+        # Populate knowledge graph if available
+        kg_stats = {"files_indexed": 0, "nodes": 0, "edges": 0}
+        if self.knowledge_graph is not None:
+            for scanned_file in scanned_files:
+                if scanned_file.language in ("python", "php"):
+                    try:
+                        stats = self.knowledge_graph.index_file(
+                            scanned_file.relative_path, scanned_file.content
+                        )
+                        kg_stats["files_indexed"] += 1
+                        kg_stats["nodes"] += stats.get("nodes", 0)
+                        kg_stats["edges"] += stats.get("edges", 0)
+                    except Exception:
+                        pass
+
         metadata = {
             "file_count": len(project_files),
             "symbol_count": len(symbols),
@@ -76,6 +95,7 @@ class ProjectIndexer:
                 "unresolved_edges": len(dependency_graph.unresolved),
             },
             "ignore_patterns": self.config.ignore,
+            "knowledge_graph": kg_stats,
         }
         return ProjectManifest(
             project_name=self.project_name,

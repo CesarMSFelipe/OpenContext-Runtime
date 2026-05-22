@@ -23,6 +23,11 @@ classifiers = [
 dependencies = [
   "pydantic>=2.6",
   "PyYAML>=6.0",
+  "tree-sitter>=0.24",
+  "tree-sitter-python>=0.25",
+  "watchdog>=6.0",
+  "rich>=13.0",
+  "prompt-toolkit>=3.0",
 ]
 
 [project.urls]
@@ -34,4 +39,4 @@ Source = "https://github.com/CesarMSFelipe/OpenContext-Runtime"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["opencontext_core*"]
-exclude = ["opencontext_core.agents", "opencontext_core.agents.*"]
+exclude = []

@@ -18,7 +18,7 @@ SOURCE_MAP_RE = re.compile(r"sourceMappingURL=|\.map(?:\s|$)", re.IGNORECASE)
 EXTERNAL_URL_RE = re.compile(r"https?://[^\s)>\"]+")
 BASE64ISH_RE = re.compile(r"\b[A-Za-z0-9+/]{40,}={0,2}\b")
 CONTROL_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
-AI_CONFIG_DIRS = {".claude", ".cursor", ".continue", ".opencontext", ".codex"}
+AI_CONFIG_DIRS = {".claude", ".cursor", ".opencontext", ".codex"}
 RELEASE_RISK_NAMES = {".env", ".env.local", ".env.production", "opencontext.trace.json"}
 
 

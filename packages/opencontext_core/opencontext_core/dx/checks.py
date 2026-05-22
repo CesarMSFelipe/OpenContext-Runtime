@@ -1,24 +1,21 @@
-"""Local check registry scaffolding."""
+"""Local check registry."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-CHECK_FILES: tuple[str, ...] = (
-    "security-review.md",
-    "context-leakage-review.md",
-    "provider-policy-review.md",
-    "profile-specific-review.md",
-    "test-coverage-review.md",
-)
+CHECK_NAMES = ["security", "quality", "docs", "performance", "dependencies"]
 
 
 def ensure_checks(root: Path) -> list[Path]:
-    base = root / ".opencontext" / "checks"
-    base.mkdir(parents=True, exist_ok=True)
+    """Ensure local checks exist and return their paths."""
+
+    checks_dir = root / ".opencontext" / "checks"
+    checks_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    for name in CHECK_FILES:
-        path = base / name
-        path.touch(exist_ok=True)
+    for name in CHECK_NAMES:
+        path = checks_dir / f"{name}.yaml"
+        if not path.exists():
+            path.write_text(f"# {name} check\nenabled: true\n", encoding="utf-8")
         paths.append(path)
     return paths

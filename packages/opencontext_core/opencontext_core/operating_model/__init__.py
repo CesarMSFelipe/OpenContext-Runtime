@@ -22,6 +22,13 @@ from opencontext_core.operating_model.ai_leak import (
     TaintedContext,
     UnicodeObfuscationScanner,
 )
+from opencontext_core.operating_model.call_budget import (
+    CallBudgetConfig,
+    CallBudgetManager,
+    CallUsage,
+    FreeProviderRegistry,
+    ProviderType,
+)
 from opencontext_core.operating_model.evidence import (
     FileEvidence,
     PromptContextSBOM,
@@ -78,6 +85,9 @@ __all__ = [
     "CacheAwarePromptCompiler",
     "CachePlan",
     "CacheWarmer",
+    "CallBudgetConfig",
+    "CallBudgetManager",
+    "CallUsage",
     "ContextLayer",
     "ContextLayerManager",
     "ContextTaintTracker",
@@ -89,6 +99,7 @@ __all__ = [
     "EgressPolicyEngine",
     "EncodedPayloadDetector",
     "FileEvidence",
+    "FreeProviderRegistry",
     "HookRegistry",
     "HumanApprovalNode",
     "IndirectPromptInjectionFirewall",
@@ -111,6 +122,7 @@ __all__ = [
     "PromptContract",
     "PromptSecretLinter",
     "ProviderContextCacheAdapter",
+    "ProviderType",
     "PublicSafePromptExporter",
     "QualityGateReport",
     "ReleaseAuditReport",

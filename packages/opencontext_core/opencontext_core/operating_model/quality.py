@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import pairwise
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,6 +30,9 @@ class PreLLMQualityGate:
         max_tokens: int,
         provider_allowed: bool,
         source_count: int,
+        budget_manager: Any | None = None,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> QualityGateReport:
         """Return a pre-generation quality decision."""
 
@@ -39,6 +43,14 @@ class PreLLMQualityGate:
             risks.append("provider_blocked")
         if source_count == 0:
             risks.append("missing_sources")
+
+        if budget_manager and provider and model:
+            available, remaining = budget_manager.check_budget(provider, model)
+            if not available:
+                risks.append("call_budget_exhausted")
+            elif remaining < 10:  # Critical low budget
+                risks.append("call_budget_critical")
+
         return QualityGateReport(
             passed=not risks,
             reason="passed" if not risks else "blocked_before_llm",

@@ -29,7 +29,6 @@ tmp/opencontext-proof/
 
 # Local agent harness state and generated analysis output
 .agents/
-packages/opencontext_core/opencontext_core/agents/
 .instructions.md
 COPILOT_SETUP.md
 opencontext-copilot.sh
@@ -44,3 +43,4 @@ run-self-improvement.sh
 # Editor and OS noise
 .DS_Store
 Thumbs.db
+.kilo/*
