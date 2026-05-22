@@ -22,9 +22,9 @@ def _default_config_dir() -> Path:
     """
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        return base / "opencontext"
-    # Linux / macOS — keep existing convention: ~/.config/opencontext
-    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))  # type: ignore[unreachable]
+    else:
+        # Linux / macOS — keep existing convention: ~/.config/opencontext
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     return base / "opencontext"
 
 
