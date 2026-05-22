@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -13,7 +13,7 @@ class MemoryEntry:
     value: Any
     created_at: datetime = field(default_factory=datetime.now)
     accessed_at: datetime = field(default_factory=datetime.now)
-    ttl_minutes: Optional[int] = None
+    ttl_minutes: int | None = None
 
     @property
     def is_expired(self) -> bool:
@@ -31,7 +31,7 @@ class MemoryEntry:
 class MemoryManager:
     """Manages agent memory with TTL and eviction."""
 
-    def __init__(self, max_entries: int = 100, ttl_minutes: Optional[int] = None):
+    def __init__(self, max_entries: int = 100, ttl_minutes: int | None = None):
         """Initialize memory manager.
 
         Args:
@@ -42,7 +42,7 @@ class MemoryManager:
         self.ttl_minutes = ttl_minutes
         self.store: dict[str, MemoryEntry] = {}
 
-    def set(self, key: str, value: Any, ttl_minutes: Optional[int] = None) -> None:
+    def set(self, key: str, value: Any, ttl_minutes: int | None = None) -> None:
         """Store value in memory.
 
         Args:
@@ -57,7 +57,7 @@ class MemoryManager:
         if len(self.store) > self.max_entries:
             self._evict_lru()
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Retrieve value from memory.
 
         Args:
@@ -106,9 +106,7 @@ class MemoryManager:
         Returns:
             Number of entries cleaned
         """
-        expired_keys = [
-            k for k, v in self.store.items() if v.is_expired
-        ]
+        expired_keys = [k for k, v in self.store.items() if v.is_expired]
         for key in expired_keys:
             del self.store[key]
         return len(expired_keys)
@@ -118,7 +116,7 @@ class MemoryManager:
         """Get current memory size."""
         return len(self.store)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "max_entries": self.max_entries,

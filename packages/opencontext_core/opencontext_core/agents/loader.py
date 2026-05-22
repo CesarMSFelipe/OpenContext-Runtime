@@ -1,8 +1,7 @@
 """Load and manage agent configurations."""
 
-import json
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import yaml
 
@@ -61,7 +60,7 @@ def list_available_agents(agents_dir: Path) -> list[tuple[str, Path, AgentConfig
     return agents
 
 
-def validate_config_against_schema(config_data: dict, schema_path: Path) -> bool:
+def validate_config_against_schema(config_data: dict[str, Any], schema_path: Path) -> bool:
     """Validate configuration against JSON schema.
 
     Args:
@@ -84,7 +83,7 @@ def create_agent_config_file(
     name: str,
     agent_type: str,
     objectives: list[str],
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Create a new agent configuration file.
 

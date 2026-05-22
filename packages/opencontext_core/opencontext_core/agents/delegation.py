@@ -10,18 +10,18 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 
-class DelegationMode(str, Enum):
+class DelegationMode(StrEnum):
     """How to execute sub-agent tasks."""
 
-    LOCAL = "local"           # Run in-process
+    LOCAL = "local"  # Run in-process
     SUBPROCESS = "subprocess"  # Run as subprocess
-    REMOTE = "remote"         # Call remote API
-    MOCK = "mock"             # Mock for testing
+    REMOTE = "remote"  # Call remote API
+    MOCK = "mock"  # Mock for testing
 
 
 @dataclass
@@ -82,7 +82,7 @@ class SubAgentDelegate:
         if self.mode == DelegationMode.REMOTE:
             return self._remote_delegate(phase, context)
 
-        return SubAgentResult(
+        return SubAgentResult(  # type: ignore[unreachable]
             status="error",
             output="",
             error=f"Unknown delegation mode: {self.mode}",
@@ -146,9 +146,7 @@ class SubAgentDelegate:
         # Write context to temp file
         import tempfile
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(context, f)
             context_path = f.name
 
