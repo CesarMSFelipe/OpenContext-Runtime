@@ -303,3 +303,28 @@ class OnboardingService:
             yaml.safe_dump(harness, sort_keys=False, default_flow_style=False),
             encoding="utf-8",
         )
+
+
+def is_first_run(root: str | Path) -> bool:
+    """Detect whether this project has been set up yet.
+
+    Checks both opencontext.yaml existence and the setup_completed flag
+    in user preferences. Returns True if the project needs onboarding.
+    """
+    root_path = Path(root)
+    config_path = root_path / "opencontext.yaml"
+
+    # No config at all → first run
+    if not config_path.exists():
+        return True
+
+    # Config exists — check if setup was completed
+    try:
+        from opencontext_core.user_prefs import UserConfigStore
+
+        store = UserConfigStore()
+        prefs = store.load()
+        return not prefs.setup_completed
+    except Exception:
+        # If we can't read user prefs, config existence is good enough
+        return False
