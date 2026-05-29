@@ -132,7 +132,8 @@ class TestBenchmarkSuite:
         suite = BenchmarkSuite()
         result = suite.run_all()
         assert result.passed == len(suite.list_cases()), (
-            f"Expected all {len(suite.list_cases())} cases to pass, got {result.passed}/{result.total_cases}"
+            f"Expected all {len(suite.list_cases())} cases to pass, "
+            f"got {result.passed}/{result.total_cases}"
         )
 
     def test_run_invalid_id_raises(self) -> None:

@@ -10,7 +10,7 @@ from opencontext_core.compat import UTC, StrEnum
 
 def test_utc_is_timezone_utc() -> None:
     """UTC constant must equal datetime.timezone.utc."""
-    assert UTC == timezone.utc
+    assert UTC == timezone.utc  # noqa: UP017
 
 
 def test_utc_is_timezone_instance() -> None:

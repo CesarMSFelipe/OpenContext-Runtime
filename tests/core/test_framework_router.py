@@ -161,7 +161,10 @@ class TestFrameworkRouter:
         assert "POST" in methods
 
     def test_scan_returns_routedefinition_dataclass(self, tmp_path: Path) -> None:
-        """Verify RouteDefinition has expected fields: source_file, framework, method, path_pattern, line."""
+        """Verify RouteDefinition has expected fields.
+
+        Fields: source_file, framework, method, path_pattern, line.
+        """
         _write_file(tmp_path, "views.py", ("@app.get('/ping')\ndef ping(): pass\n"))
         router = FrameworkRouter()
         routes = router.scan(tmp_path)

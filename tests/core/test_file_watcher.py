@@ -124,7 +124,7 @@ class TestFileWatcherWatchdog:
         try:
             from watchdog.observers import Observer  # noqa: F401
         except ImportError:
-            assert False, "watchdog is not installed"
+            raise ImportError("watchdog is not installed") from None
 
     def test_watchdog_backed_watcher(self, tmp_path: Path) -> None:
         """FileWatcher with use_watchdog=True should create an Observer."""
