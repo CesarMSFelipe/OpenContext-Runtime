@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -112,7 +113,7 @@ class TestTelemetry:
             scenario_id = "bench-1"
 
         class MockReport:
-            scenarios = [MockScenario(), MockScenario()]
+            scenarios: ClassVar[list[MockScenario]] = [MockScenario(), MockScenario()]
 
         record_from_benchmark(MockReport(), root=tmp_path)
 

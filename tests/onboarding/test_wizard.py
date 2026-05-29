@@ -22,7 +22,7 @@ class TestOnboardingWizard:
     def test_wizard_accepts_template_override(self, tmp_path: Path) -> None:
         """Template override should be respected."""
         wizard = OnboardingWizard(root=tmp_path)
-        result = wizard.run(
+        wizard.run(
             non_interactive=True,
             template="enterprise",
         )
@@ -37,7 +37,7 @@ class TestOnboardingWizard:
     def test_wizard_accepts_tdd_override(self, tmp_path: Path) -> None:
         """TDD mode override should be respected."""
         wizard = OnboardingWizard(root=tmp_path)
-        result = wizard.run(
+        wizard.run(
             non_interactive=True,
             tdd="strict",
         )
@@ -52,7 +52,7 @@ class TestOnboardingWizard:
     def test_wizard_accepts_security_override(self, tmp_path: Path) -> None:
         """Security mode override should be respected."""
         wizard = OnboardingWizard(root=tmp_path)
-        result = wizard.run(
+        wizard.run(
             non_interactive=True,
             security_mode="cross_project",
         )
@@ -60,7 +60,7 @@ class TestOnboardingWizard:
     def test_wizard_accepts_agents_override(self, tmp_path: Path) -> None:
         """Agent list override should be respected."""
         wizard = OnboardingWizard(root=tmp_path)
-        result = wizard.run(
+        wizard.run(
             non_interactive=True,
             agents=["opencode", "cursor"],
         )

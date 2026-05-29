@@ -53,7 +53,7 @@ def test_errors_catchable_as_base() -> None:
 
 def test_opencontext_error_catchable_as_exception() -> None:
     """OpenContextError itself is catchable as a plain Exception."""
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         raise OpenContextError("base error")
 
 
