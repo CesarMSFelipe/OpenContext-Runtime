@@ -260,13 +260,13 @@ def _notify_outdated(args: argparse.Namespace) -> None:
     check = UpdateChecker.check()
     if check.is_outdated and check.latest_version != check.current_version:
         print(
-            f"Update available: opencontext {check.current_version} → {check.latest_version}."
+            f"Update available: opencontext {check.current_version} -> {check.latest_version}."
             " Run 'opencontext upgrade'",
             file=sys.stderr,
         )
     for eco in EcosystemUpdateChecker.check_cached():
         print(
-            f"Update available: {eco.name} {eco.current_version} → {eco.latest_version}."
+            f"Update available: {eco.name} {eco.current_version} -> {eco.latest_version}."
             f" Run 'pip install --upgrade {eco.name}'",
             file=sys.stderr,
         )
@@ -1860,7 +1860,7 @@ def _doctor(
                 }.get(d.status, "white")
                 console.print(f"  [{style}]{icon}[/] {d.name}: {d.message}")
                 if d.recommendation:
-                    console.print(f"         [dim]→ {d.recommendation}[/dim]")
+                    console.print(f"         [dim]-> {d.recommendation}[/dim]")
             console.print("")
 
         console.section("Summary")
@@ -2421,8 +2421,8 @@ def _harness(
                     "archive",
                 ],
                 "description": (
-                    "Full SDD: explore → propose → spec → design → tasks "
-                    "→ apply → verify → review → archive"
+                    "Full SDD: explore -> propose -> spec -> design -> tasks "
+                    "-> apply -> verify -> review -> archive"
                 ),
             },
             "explore-only": {
@@ -3037,7 +3037,7 @@ def _render_pack_markdown(pack: ContextPackResult, *, query: str, mode: str) -> 
     # generic fallback items (tiny __init__.py files, __main__.py entry points,
     # compat/policies/gateway wrapper files, and JS wrappers).
     # Heuristic: EVERY item is a generic boilerplate file with no query-term
-    # hits in the path → skip rendering to avoid noise output.
+    # hits in the path -> skip rendering to avoid noise output.
     if pack.included:
         query_terms = query.lower().split()
         all_generic = all(

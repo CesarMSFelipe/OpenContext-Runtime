@@ -182,13 +182,13 @@ def _print_update_banner() -> None:
         state = UpdateChecker._load_cache()
         if state.check and state.check.is_outdated:
             notices.append(
-                f"opencontext {state.check.current_version} → {state.check.latest_version}"
+                f"opencontext {state.check.current_version} -> {state.check.latest_version}"
             )
     except Exception:
         pass
     try:
         for eco in EcosystemUpdateChecker.check_cached():
-            notices.append(f"{eco.name} {eco.current_version} → {eco.latest_version}")
+            notices.append(f"{eco.name} {eco.current_version} -> {eco.latest_version}")
     except Exception:
         pass
     if notices:
