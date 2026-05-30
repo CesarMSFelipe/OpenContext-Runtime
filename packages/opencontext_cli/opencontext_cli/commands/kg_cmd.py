@@ -550,7 +550,7 @@ def _find_callers(kg: KnowledgeGraph, symbol: str, depth: int) -> list[dict[str,
 def _build_tree_data(kg: KnowledgeGraph, max_nodes: int = 50) -> dict[str, Any]:
     """Build a JSON-serializable hierarchy for the D3 tree viewer.
 
-    Returns: project root → module nodes → symbol leaves.
+    Returns: project root -> module nodes -> symbol leaves.
     Does NOT close the DB connection (caller is responsible).
     """
     import collections
@@ -619,9 +619,9 @@ def _build_tree_data(kg: KnowledgeGraph, max_nodes: int = 50) -> dict[str, Any]:
 
 
 def _generate_mermaid_graph(kg: KnowledgeGraph, max_nodes: int = 50) -> str:
-    """Generate a Mermaid tree graph: project root → modules → symbols.
+    """Generate a Mermaid tree graph: project root -> modules -> symbols.
 
-    Hierarchy: ROOT node at top → module header nodes → class/function leaves.
+    Hierarchy: ROOT node at top -> module header nodes -> class/function leaves.
     Cross-module call edges are shown as dashed arrows.
     """
     import collections
