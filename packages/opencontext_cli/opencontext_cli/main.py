@@ -16,10 +16,12 @@ from opencontext_cli.commands.benchmark_cmd import add_benchmark_parser, handle_
 from opencontext_cli.commands.bridges_cmd import add_bridges_parser, handle_bridges
 from opencontext_cli.commands.ci_check_cmd import add_ci_check_parser, handle_ci_check
 from opencontext_cli.commands.config_cmd import add_config_parser, handle_config
+from opencontext_cli.commands.contract_cmd import add_contract_commands, handle_contract
 from opencontext_cli.commands.extension_cmd import add_extension_parser, handle_extension
 from opencontext_cli.commands.git_cmd import add_git_parser, handle_git
 from opencontext_cli.commands.hints_cmd import add_hints_parser, handle_hints
 from opencontext_cli.commands.kg_cmd import add_kg_parser, handle_kg
+from opencontext_cli.commands.mutation_cmd import add_mutation_commands, handle_mutation
 from opencontext_cli.commands.plugin_cmd import add_plugin_parser, handle_plugin
 from opencontext_cli.commands.privacy_cmd import add_privacy_parser, handle_privacy
 from opencontext_cli.commands.review_cmd import add_review_parser, handle_review
@@ -91,6 +93,7 @@ from opencontext_core.operating_model import (
     TeamReportGenerator,
 )
 from opencontext_core.project.profiles import TechnologyProfile
+from opencontext_core.retrieval.contracts import VerifiedContextRequest
 from opencontext_core.runtime import OpenContextRuntime
 from opencontext_core.safety.prompt_injection import render_untrusted_context
 from opencontext_core.safety.provider_policy import ProviderPolicyEnforcer
@@ -535,6 +538,36 @@ def _build_parser() -> argparse.ArgumentParser:
     pack_parser.add_argument("--base", default="main", help="Base ref for `pack diff`.")
     pack_parser.add_argument("--head", default="HEAD", help="Head ref for `pack diff`.")
 
+    verified_parser = subparsers.add_parser(
+        "verified-context",
+        help="Generate one-shot verified local context.",
+    )
+    verified_parser.add_argument("query", help="Query used for retrieval and verification.")
+    verified_parser.add_argument(
+        "--root",
+        default=None,
+        help="Project root to index when requested.",
+    )
+    verified_parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Context token budget.",
+    )
+    verified_parser.add_argument("--refresh-index", action="store_true")
+    verified_parser.add_argument("--include-vector", action="store_true")
+    verified_parser.add_argument("--no-memory", action="store_true")
+    verified_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON.",
+    )
+    verified_parser.add_argument(
+        "--allow-failed-gates",
+        action="store_true",
+        help="Return zero even when verification gates fail.",
+    )
+
     ask_parser = subparsers.add_parser("ask", help=argparse.SUPPRESS)
     ask_parser.add_argument("question", help="Question or task for the runtime.")
     ask_parser.add_argument(
@@ -637,7 +670,7 @@ def _build_parser() -> argparse.ArgumentParser:
     mcp_parser = subparsers.add_parser("mcp", help="Start MCP server for agent integration.")
     mcp_parser.add_argument(
         "--db-path",
-        default=".storage/opencontext/codegraph.db",
+        default=".storage/opencontext/context_graph.db",
         help="Path to knowledge graph database.",
     )
     security_parser = subparsers.add_parser("security", help="Security commands.")
@@ -875,6 +908,8 @@ def _build_parser() -> argparse.ArgumentParser:
     add_bridges_parser(subparsers)
     add_routes_parser(subparsers)
     add_telemetry_parser(subparsers)
+    add_contract_commands(subparsers)
+    add_mutation_commands(subparsers)
 
     return parser
 
@@ -1096,6 +1131,10 @@ def _dispatch(args: argparse.Namespace) -> None:
     if command == "upgrade":
         handle_upgrade(args)
         return
+    if command == "contract":
+        sys.exit(handle_contract(args))
+    if command == "mutation":
+        sys.exit(handle_mutation(args))
     runtime = _runtime(args.config)
     if command == "index":
         _index(runtime, args.root, args.incremental)
@@ -1133,6 +1172,8 @@ def _dispatch(args: argparse.Namespace) -> None:
             args.copy,
             args.output,
         )
+    elif command == "verified-context":
+        _verified_context(runtime, args)
     elif command == "workflows":
         _workflows(args.workflows_command, getattr(args, "name", None))
     elif command == "trace":
@@ -1158,7 +1199,7 @@ def _dispatch(args: argparse.Namespace) -> None:
     elif command == "provider":
         _provider_simulate(args.provider, args.classification, runtime, args.mode)
     elif command == "mcp":
-        _mcp_serve(getattr(args, "db_path", ".storage/opencontext/codegraph.db"))
+        _mcp_serve(getattr(args, "db_path", ".storage/opencontext/context_graph.db"))
     else:
         _unreachable(command)
 
@@ -2922,6 +2963,33 @@ def _ask(runtime: OpenContextRuntime, question: str, output_mode: str | None = N
     print("Token usage:")
     for key, value in result.token_usage.items():
         print(f"  {key}: {value}")
+
+
+def _verified_context(runtime: OpenContextRuntime, args: argparse.Namespace) -> None:
+    result = runtime.verify_context(
+        VerifiedContextRequest(
+            query=args.query,
+            root=Path(args.root) if args.root else None,
+            max_tokens=args.max_tokens,
+            refresh_index=args.refresh_index,
+            include_memory=not args.no_memory,
+            include_vector=args.include_vector,
+        )
+    )
+    body = result.model_dump(mode="json")
+    if args.json:
+        print(json.dumps(body, indent=2, sort_keys=True))
+    else:
+        print(body["context"])
+        print(f"Risk: {body['risk_level']}")
+        print(f"Trace ID: {body['trace_id']}")
+        failed = [gate for gate in body["gates"] if not gate["passed"]]
+        if failed:
+            print("Failed gates:")
+            for gate in failed:
+                print(f"  {gate['name']}: {gate['reason']}")
+    if not args.allow_failed_gates and any(not gate["passed"] for gate in body["gates"]):
+        raise SystemExit(1)
 
 
 def _pack(
