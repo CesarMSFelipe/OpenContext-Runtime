@@ -3,7 +3,7 @@
 Tracks token usage, context quality, task types, and outcomes
 to build a learning dataset for optimization.
 
-Uses the shared SQLite database (codegraph.db) when available,
+Uses the shared SQLite graph database when available,
 falling back to JSONL for standalone usage.
 """
 

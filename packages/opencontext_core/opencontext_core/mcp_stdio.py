@@ -16,6 +16,7 @@ from opencontext_core.indexing.context_builder import ContextBuilder
 from opencontext_core.indexing.graph_db import GraphDatabase
 from opencontext_core.indexing.impact_analysis import ImpactAnalyzer
 from opencontext_core.indexing.knowledge_graph import KnowledgeGraph
+from opencontext_core.tools.policy import ToolPermissionPolicy
 
 # Adaptive max_nodes tiers based on indexed file count
 _MAX_NODES_TIERS: list[tuple[int, int]] = [
@@ -52,13 +53,20 @@ class MCPServer:
 
     def __init__(
         self,
-        db_path: str | Path = ".storage/opencontext/codegraph.db",
+        db_path: str | Path = ".storage/opencontext/context_graph.db",
+        policy: ToolPermissionPolicy | None = None,
     ) -> None:
         self.db = GraphDatabase(db_path=db_path)
         self.call_graph = CallGraphAnalyzer(db=self.db)
         self.impact = ImpactAnalyzer(db=self.db)
         self.context_builder = ContextBuilder(db_path=db_path)
         self.kg = KnowledgeGraph(db_path=db_path)
+        # Permission gate: every tool call goes through ``policy.allows()``
+        # before the handler runs. Default policy allowlists every tool the
+        # server exposes; callers can tighten it via the constructor.
+        self.policy: ToolPermissionPolicy = policy or ToolPermissionPolicy(
+            allowed_tools=set(self._default_tool_names())
+        )
 
         # Tool definitions
         self.tools: dict[str, dict[str, Any]] = {
@@ -194,9 +202,43 @@ class MCPServer:
         self._send_error(request_id, -32601, f"Method not found: {method}")
 
     def _call_tool(self, name: str, params: dict[str, Any]) -> dict[str, Any]:
-        """Execute a tool call."""
+        """Execute a tool call.
 
-        handlers = {
+        Every tool call passes through :meth:`ToolPermissionPolicy.allows`
+        before the handler runs. This is the single chokepoint for the
+        9 MCP tools; the handler map below is only consulted if the
+        policy allows the call.
+        """
+
+        # 1. Policy gate. No tool executes without a prior policy check.
+        if not self.policy.allows(name):
+            return {
+                "error": f"Tool '{name}' denied by policy",
+                "reason": "tool_not_allowlisted",
+                "policy": "ToolPermissionPolicy",
+            }
+
+        handlers = self._handlers()
+
+        handler = handlers.get(name)
+        if handler is None:
+            return {"error": f"Unknown tool: {name}"}
+
+        try:
+            return handler(params)
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def _handlers(self) -> dict[str, Any]:
+        """Return the mapping of tool name -> handler. Kept as a method so
+        subclasses can override without forking :meth:`_call_tool`.
+
+        The values are bound methods; we type them as ``Any`` because the
+        return type is uniformly a ``dict[str, dict[str, Any]]`` to callers
+        and a stricter type would not help callers either way.
+        """
+
+        return {
             "opencontext_search": self._handle_search,
             "opencontext_context": self._handle_context,
             "opencontext_callers": self._handle_callers,
@@ -208,14 +250,21 @@ class MCPServer:
             "opencontext_trace": self._handle_trace,
         }
 
-        handler = handlers.get(name)
-        if handler is None:
-            return {"error": f"Unknown tool: {name}"}
+    def _default_tool_names(self) -> list[str]:
+        """Tool names registered at construction time. Used as the default
+        allowlist so a vanilla :class:`MCPServer` keeps working unchanged."""
 
-        try:
-            return handler(params)
-        except Exception as exc:
-            return {"error": str(exc)}
+        return [
+            "opencontext_search",
+            "opencontext_context",
+            "opencontext_callers",
+            "opencontext_callees",
+            "opencontext_impact",
+            "opencontext_node",
+            "opencontext_files",
+            "opencontext_status",
+            "opencontext_trace",
+        ]
 
     def _handle_search(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle search tool."""

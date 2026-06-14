@@ -30,6 +30,7 @@ from opencontext_core.doctor.checks import run_doctor
 from opencontext_core.dx.security_reports import scan_project
 from opencontext_core.dx.tokens import build_token_report
 from opencontext_core.project.profiles import TechnologyProfile
+from opencontext_core.retrieval.contracts import RetrievalSurface
 from opencontext_core.runtime import OpenContextRuntime
 from opencontext_core.safety.redaction import SinkGuard
 
@@ -144,6 +145,9 @@ def prepare_context(request: PreparedContextRequest) -> PreparedContextResponse:
         included_sources=prepared.included_sources,
         omitted_sources=prepared.omitted_sources,
         token_usage=prepared.token_usage,
+        trust_decision=prepared.trust_decision,
+        fallback_actions=prepared.fallback_actions,
+        source_surfaces=prepared.source_surfaces,
     )
 
 
@@ -223,6 +227,7 @@ def agent_context(request: AgentContextRequest) -> ScaffoldResponse:
         root=request.root,
         max_tokens=request.max_tokens,
         refresh_index=request.refresh_index,
+        surface=RetrievalSurface.AGENT_TOOL,
     )
     safe_query, _ = SinkGuard().redact(prepared.query)
     safe_context, _ = SinkGuard().redact(prepared.context)
@@ -238,6 +243,9 @@ def agent_context(request: AgentContextRequest) -> ScaffoldResponse:
             "included_sources": prepared.included_sources,
             "omitted_sources": prepared.omitted_sources,
             "token_usage": prepared.token_usage,
+            "trust_decision": prepared.trust_decision,
+            "fallback_actions": prepared.fallback_actions,
+            "source_surfaces": prepared.source_surfaces,
             "raw_secrets_included": False,
         },
     )
@@ -264,6 +272,7 @@ def sdd_flow(request: PreparedContextRequest) -> ScaffoldResponse:
         root=request.root,
         max_tokens=request.max_tokens,
         refresh_index=request.refresh_index,
+        surface=RetrievalSurface.WORKFLOW,
     )
 
     safe_query, _ = SinkGuard().redact(prepared.query)
@@ -301,6 +310,9 @@ def sdd_flow(request: PreparedContextRequest) -> ScaffoldResponse:
             "included_sources": prepared.included_sources,
             "omitted_sources": prepared.omitted_sources,
             "token_usage": prepared.token_usage,
+            "trust_decision": prepared.trust_decision,
+            "fallback_actions": prepared.fallback_actions,
+            "source_surfaces": prepared.source_surfaces,
             "raw_secrets_included": False,
             "safety": {
                 "test_allowed": test_decision.allowed,

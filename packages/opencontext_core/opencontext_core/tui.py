@@ -414,7 +414,7 @@ class OpenContextTUI:
         print(f"Workspace: {'ok' if workspace_ok else 'missing'}")
 
         # Knowledge graph
-        db_path = self.opencontext_dir / "storage" / "opencontext" / "codegraph.db"
+        db_path = self.opencontext_dir / "storage" / "opencontext" / "context_graph.db"
         if db_path.exists():
             try:
                 from opencontext_core.indexing.graph_db import GraphDatabase

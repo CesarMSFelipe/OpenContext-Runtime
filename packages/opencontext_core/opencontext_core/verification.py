@@ -106,7 +106,7 @@ def check_knowledge_graph() -> CheckResult:
     if not prefs.features.knowledge_graph:
         return CheckResult("Knowledge Graph", "skipped", "Not enabled")
 
-    db_path = Path(prefs.custom_storage_path) / "codegraph.db"
+    db_path = Path(prefs.custom_storage_path) / "context_graph.db"
     if not db_path.exists():
         return CheckResult(
             "Knowledge Graph",

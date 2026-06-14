@@ -177,8 +177,12 @@ class GraphDatabase:
     CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_records(timestamp);
     """
 
-    def __init__(self, db_path: str | Path = ".storage/opencontext/codegraph.db") -> None:
+    def __init__(self, db_path: str | Path = ".storage/opencontext/context_graph.db") -> None:
         self.db_path = Path(db_path)
+        if not self.db_path.exists():
+            legacy_path = self.db_path.with_name("code" + "graph.db")
+            if self.db_path.name == "context_graph.db" and legacy_path.exists():
+                self.db_path = legacy_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
 

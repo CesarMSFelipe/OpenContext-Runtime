@@ -48,7 +48,7 @@ class ComponentDoctor:
         checks = []
 
         # Check database
-        db_path = Path(".storage/opencontext/codegraph.db")
+        db_path = Path(".storage/opencontext/context_graph.db")
         if db_path.exists():
             from opencontext_core.indexing.graph_db import GraphDatabase
 

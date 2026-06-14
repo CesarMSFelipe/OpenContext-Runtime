@@ -13,13 +13,17 @@ Provides tools for AI agents to query the code knowledge graph:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from opencontext_core.config import KnowledgeGraphConfig
+from opencontext_core.config import KnowledgeGraphConfig, RankingWeightsConfig
+from opencontext_core.context.compiler import ContextCompiler
 from opencontext_core.indexing.call_graph import CallGraphAnalyzer
 from opencontext_core.indexing.graph_db import GraphDatabase
 from opencontext_core.indexing.impact_analysis import ImpactAnalyzer
 from opencontext_core.indexing.knowledge_graph import KnowledgeGraph
+from opencontext_core.retrieval.contracts import EvidenceRequest, RetrievalSurface
+from opencontext_core.retrieval.planner import GraphRetrievalSource, RetrievalPlanner
 
 
 class KnowledgeGraphMCPServer:
@@ -28,9 +32,10 @@ class KnowledgeGraphMCPServer:
     def __init__(
         self,
         config: KnowledgeGraphConfig | None = None,
-        db_path: str = ".storage/opencontext/codegraph.db",
+        db_path: str = ".storage/opencontext/context_graph.db",
     ) -> None:
         self.config = config or KnowledgeGraphConfig()
+        self.db_path = db_path
         self.db = GraphDatabase(db_path=db_path)
         self.db.init_schema()
         self.kg = KnowledgeGraph(config=self.config, db_path=db_path)
@@ -50,13 +55,34 @@ class KnowledgeGraphMCPServer:
         }
 
     def opencontext_context(self, task: str, max_nodes: int = 20) -> dict[str, Any]:
-        """Build relevant code context for a task."""
+        """Build relevant code context through the planner/compiler boundary."""
 
-        results = self.db.search_fts(task, max_nodes)
+        planner = RetrievalPlanner([GraphRetrievalSource(self.db_path, ".")])
+        plan = planner.plan(
+            EvidenceRequest(
+                query=task,
+                root=Path("."),
+                surface=RetrievalSurface.AGENT_TOOL,
+                max_tokens=max(max_nodes, 1) * 200,
+            ),
+            top_k=max_nodes,
+        )
+        pack = ContextCompiler(
+            ranking_weights=RankingWeightsConfig(
+                relevance=0.6,
+                priority=0.2,
+                source_trust=0.1,
+                token_efficiency=0.1,
+            )
+        ).compile(plan)
         return {
             "task": task,
-            "count": len(results),
-            "nodes": results,
+            "count": len(pack.included),
+            "nodes": [item.model_dump(mode="json") for item in pack.included],
+            "omissions": [omission.model_dump(mode="json") for omission in pack.omissions],
+            "trust_decision": plan.trust_decision.model_dump(mode="json"),
+            "fallback_actions": plan.fallback_actions,
+            "trace_id": plan.trace_id,
         }
 
     def opencontext_callers(self, symbol: str, depth: int = 1) -> dict[str, Any]:

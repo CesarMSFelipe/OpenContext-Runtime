@@ -1,7 +1,7 @@
 """MCP tool response compression middleware.
 
 Provides transparent compression/decompression for MCP tool call responses
-using the caveman protocol to reduce token usage while preserving technical content.
+using deterministic terse compaction while preserving technical content.
 
 This middleware is designed to be integrated into the MCP adapter boundary.
 It operates on MCP response structures, compressing textual content fields
@@ -15,7 +15,7 @@ from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta
 from typing import Any
 
-from opencontext_core.compression.caveman import CavemanCompressor
+from opencontext_core.compression.terse import TerseCompressor
 from opencontext_core.config import OpenContextConfig
 
 
@@ -64,7 +64,7 @@ class MCPCompressionMiddleware:
 
     def __init__(self, config: OpenContextConfig) -> None:
         self.config = MCPCompressionConfig(config)
-        self.compressor = CavemanCompressor(intensity="full")
+        self.compressor = TerseCompressor(intensity="full")
 
     async def handle(
         self,
@@ -155,6 +155,6 @@ def create_mcp_middleware(config: OpenContextConfig) -> MCPCompressionMiddleware
 
 # Convenience function for direct compression without middleware overhead
 def compress_mcp_response(response: dict[str, Any], config: OpenContextConfig) -> dict[str, Any]:
-    """Compress an MCP response using caveman protocol."""
+    """Compress an MCP response using deterministic terse compaction."""
     middleware = MCPCompressionMiddleware(config)
     return middleware._compress_response(response)
