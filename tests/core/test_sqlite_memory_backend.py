@@ -82,3 +82,27 @@ def test_delete(backend: SQLiteMemoryBackend) -> None:
 def test_empty_search_returns_empty(backend: SQLiteMemoryBackend) -> None:
     results = backend.search("   ")
     assert results == []
+
+
+def test_recall_for_non_adjacent_terms(backend: SQLiteMemoryBackend) -> None:
+    """Query terms need not be adjacent in the stored content.
+
+    A rigid single-phrase MATCH would miss this: "auth failure" is not a
+    contiguous substring of "auth middleware crash failure".
+    """
+    backend.store(make_record(content="auth middleware crash failure trace"))
+    results = backend.search("auth failure")
+    assert len(results) >= 1
+
+
+def test_recall_for_punctuated_natural_language_query(backend: SQLiteMemoryBackend) -> None:
+    """A natural-language question with punctuation still recalls the record."""
+    backend.store(make_record(content="the auth middleware validates tokens"))
+    results = backend.search("How does the auth middleware work?")
+    assert len(results) >= 1
+
+
+def test_search_with_only_punctuation_returns_empty(backend: SQLiteMemoryBackend) -> None:
+    """No usable tokens -> no match, never an FTS5 syntax error."""
+    backend.store(make_record(content="anything"))
+    assert backend.search("?? -- !!") == []

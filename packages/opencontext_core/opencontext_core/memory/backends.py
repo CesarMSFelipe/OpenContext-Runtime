@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,6 +49,19 @@ CREATE TRIGGER IF NOT EXISTS memory_fts_delete AFTER DELETE ON memory_records BE
     VALUES ('delete', OLD.rowid, OLD.id, OLD.layer, OLD.key, OLD.content, OLD.tags);
 END;
 """
+
+
+def _fts_match_query(query: str) -> str:
+    """Turn an arbitrary natural-language query into a safe FTS5 MATCH expression.
+
+    Extracts bare word tokens, drops 1-char noise, quotes each as a phrase, and
+    OR-joins them so any term can match (bm25 ``rank`` then orders by relevance).
+    A single rigid phrase would drop recall the moment query terms are not
+    perfectly adjacent in the stored content, or the query carries punctuation.
+    Returns "" when there are no usable tokens (caller treats that as no match).
+    """
+    tokens = [t for t in re.findall(r"[A-Za-z0-9_]+", query) if len(t) >= 2]
+    return " OR ".join(f'"{t}"' for t in tokens)
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -158,11 +172,9 @@ class SQLiteMemoryBackend:
         self, query: str, layer: MemoryLayer | None = None, limit: int = 10
     ) -> list[MemoryRecord]:
         """Search using FTS5 MATCH."""
-        if not query.strip():
+        fts_query = _fts_match_query(query)
+        if not fts_query:
             return []
-        # Escape FTS5 special chars
-        safe_query = query.replace('"', '""')
-        fts_query = f'"{safe_query}"'
         with self._connect() as conn:
             if layer is not None:
                 sql = """
