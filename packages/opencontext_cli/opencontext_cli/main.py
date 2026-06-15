@@ -1508,9 +1508,7 @@ def _install(args: argparse.Namespace) -> None:
     try:
         import yaml as _yaml
         _cfg = _yaml.safe_load((Path(".") / "opencontext.yaml").read_text(encoding="utf-8"))
-        _provider = _cfg.get("provider", {})
-        if isinstance(_provider, dict):
-            _provider = _provider.get("name", "mock")
+        _provider = _cfg.get("models", {}).get("default", {}).get("provider", "mock")
         if str(_provider) == "mock":
             console.print(
                 "[yellow]Tip:[/] Using mock provider. Run [cyan]opencontext config wizard[/] "

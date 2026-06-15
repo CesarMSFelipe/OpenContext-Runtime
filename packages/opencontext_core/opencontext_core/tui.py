@@ -149,6 +149,9 @@ class OpenContextTUI:
         import yaml
 
         config_data = default_config_data()
+        project = config_data.get("project")
+        if isinstance(project, dict):
+            project["name"] = self.project_root.name or project.get("name", "example-project")
         self.config_path.write_text(
             yaml.safe_dump(config_data, sort_keys=False),
             encoding="utf-8",
@@ -159,9 +162,12 @@ class OpenContextTUI:
             from opencontext_core.indexing.knowledge_graph import KnowledgeGraph
 
             kg = KnowledgeGraph()
-            kg.index_project(self.project_root)
+            stats = kg.index_project(self.project_root)
             kg.close()
-            print("Index complete.")
+            print(
+                f"Indexed: {stats.get('files_indexed', 0)} files, "
+                f"{stats.get('nodes', 0)} nodes, {stats.get('edges', 0)} edges"
+            )
         except Exception as exc:
             print(f"Auto-index skipped: {exc}")
         print("Project initialized. Run 'opencontext onboard' for full setup.")
