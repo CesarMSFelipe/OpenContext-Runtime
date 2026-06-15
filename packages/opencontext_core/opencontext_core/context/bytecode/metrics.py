@@ -31,7 +31,7 @@ def compute_metrics(
 ) -> AICXMetrics:
     original_tokens = sum(item.tokens for item in plan.evidence)
     bytecode_text = AICXRenderer().render_text(bc)
-    # ponytail: rough estimate — 1 token ≈ 4 chars
+    # rough estimate — 1 token ≈ 4 chars
     bytecode_tokens = max(1, len(bytecode_text) // 4)
 
     ratio = original_tokens / bytecode_tokens if bytecode_tokens else 0.0

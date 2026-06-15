@@ -601,7 +601,7 @@ class OpenContextRuntime:
                 _bytecode_metrics = compute_metrics(plan, _bc, decode_time_ms=_decode_ms)
                 _bytecode = _bc
         except Exception:
-            pass  # ponytail: AICX is optional — never block the main pipeline
+            pass  # AICX is optional — never block the main pipeline
 
         candidates = [evidence_to_context_item(item) for item in plan.evidence]
         ranked = candidates

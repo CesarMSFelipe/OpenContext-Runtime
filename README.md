@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/up_to_96%25_token_reduction-benchmarked-00C9A7?style=flat-square" alt="Up to 96% token reduction">
+  <img src="https://img.shields.io/badge/up_to_95%25_token_reduction-benchmarked-00C9A7?style=flat-square" alt="Up to 95% token reduction">
   <img src="https://img.shields.io/badge/offline--first-no_API_key-00A8E8?style=flat-square&logo=python&logoColor=white" alt="Works offline">
-  <img src="https://img.shields.io/badge/1110%2B_tests-passing-00C9A7?style=flat-square" alt="1110+ tests passing">
-  <img src="https://img.shields.io/badge/13%2B_agents-Claude_%7C_Cursor_%7C_Copilot-845EC2?style=flat-square" alt="13+ agents">
+  <img src="https://img.shields.io/badge/1125%2B_tests-passing-00C9A7?style=flat-square" alt="1125+ tests passing">
+  <img src="https://img.shields.io/badge/14%2B_agents-Claude_%7C_Cursor_%7C_Copilot-845EC2?style=flat-square" alt="14+ agents">
   <img src="https://img.shields.io/badge/license-MIT-gray?style=flat-square" alt="MIT">
 </p>
 
@@ -32,30 +32,22 @@
 ---
 
 ```sh
-$ opencontext loop --task "fix crash in auth middleware" --flow full
+$ opencontext loop --task "fix crash in auth middleware" --flow full --dry-run
 
-────────────────────────────────────────────────────
+------------------------------------------------------------
   OpenContext Loop  [full]  compress:efficient
   Task: fix crash in auth middleware
-────────────────────────────────────────────────────
+------------------------------------------------------------
 
-◆ EXPLORE    status:passed  gates:3/3  artifacts:2
-  Continue past explore? [Y/n]
-
-◆ PROPOSE    task_type:bugfix  risk_tier:critical  budget:28000tok
-  Continue past propose? [Y/n]
-
-◆ SPEC       artifacts:1
-◆ DESIGN     artifacts:1
-  Continue past design? [Y/n]
-
-◆ TASKS      checklist:7 items
-  Continue past tasks? [Y/n]
-
-◆ APPLY      status:passed  gates:5/5
-◆ VERIFY     tests:1110 passed  mutation:87.3%  gates:7/7
-
-✓ Loop complete.
+Dry run — phases that would execute:
+  - EXPLORE
+  - PROPOSE
+  - SPEC
+  - DESIGN
+  - TASKS
+  - APPLY
+  - VERIFY
+  - ARCHIVE
 ```
 
 ---
@@ -79,10 +71,10 @@ opencontext loop --task "fix crash in auth middleware" --flow full
 
 `opencontext install` does five things automatically:
 
-1. **Detects your stack** — Python, Node, Go, Rust, Terraform, 200+ profiles
+1. **Detects your stack** — Python, Node, Go, Rust, Terraform, and more
 2. **Builds the knowledge graph** — symbols, call chains, imports, framework routes
 3. **Configures your agent** — generates the right instruction file for your editor
-4. **Sets up MCP tools** — pre-approves 9 knowledge graph tools
+4. **Sets up MCP tools** — pre-approves 8 knowledge graph tools
 5. **Verifies the setup** — health check before finishing
 
 > **No API keys. No external services.** Everything runs offline on your machine.
@@ -104,13 +96,13 @@ OpenContext is not a RAG wrapper. It's a runtime that **plans, verifies, remembe
 <td>
 
 ```
-Agent sees:
+Agent sees every file in scope:
   src/auth.py        (maybe relevant)
   src/models.py      (maybe relevant)
   tests/ (50 files)  (probably not)
-  ...161 more files  (almost certainly not)
+  ...and more
 
-~95,000 tokens per query
+Tens of thousands of tokens per query
 Secrets may be in plaintext
 No call graph — deps guessed or missed
 No memory of past failures
@@ -121,18 +113,18 @@ No verification before shipping
 <td>
 
 ```
-Agent sees:
+Agent sees only what the task needs:
   src/auth/middleware.py   ✓ verified required
   src/auth/token.py        ✓ verified required
   tests/test_auth.py       ✓ required by risk tier
   ─────────────────────────────────────────────
   Everything else filtered out
 
-~3,500 tokens (up to 96% less)
+Up to 95% fewer tokens (benchmarked)
 Secrets auto-redacted
 Call chain traced precisely
 Past failures boost relevant symbols
-15 quality gates validated before delivery
+16 quality gates validated before delivery
 ```
 
 </td>
@@ -148,45 +140,45 @@ receive task
   → classify task type + risk (deterministic, no LLM)
   → build ContextContract (known / unknown / must verify)
   → plan context (budget: 8k / 16k / 28k tokens by risk tier)
-  → retrieve from knowledge graph + memory (5 layers)
-  → expand progressively (callers → tests → dependencies)
-  → score with 9 signals (graph centrality, failure history, risk...)
+  → retrieve from knowledge graph
+  → score with multiple signals (graph centrality, call distance, risk...)
   → pack minimum sufficient context
   → compress (terse / compact / efficient / none by risk tier)
-  → validate 15 quality gates
+  → validate 16 quality gates
   → deliver verified context to agent
-  → run quality checks (tests, lint, type-check, mutation analysis)
   → harvest learnings into memory
-  → update failure graph
 ```
 
 The agent receives a **ContextContract** — not "these files might be relevant":
 
+```bash
+$ opencontext contract build --query "fix crash in auth middleware"
+```
+
 ```yaml
 task: fix crash in auth middleware
 task_type: bugfix
-risk_tier: critical
-token_budget: 28000
+risk_tier: precise
+token_budget: 16000
 
-known:
-  - source: src/auth/middleware.py
-    confidence: 1.0
-    verified: true
-
-unknown:
-  - exact failing method
-  - affected downstream services
+required_symbols:
+  - '*crash*'
+  - '*auth*'
+  - '*middleware*'
 
 must_verify:
   - id: run-tests
   - id: lint
   - id: type-check
-  - id: security-scan
 ```
 
-```bash
-opencontext contract build --query "fix crash in auth middleware"
-```
+Risk tiers and budgets:
+
+| Risk tier | Token budget | Used when |
+|-----------|-------------|-----------|
+| `cheap` | 8,000 | Renames, docs, config, trivial fixes |
+| `precise` | 16,000 | Bugfixes, features, refactors |
+| `critical` | 28,000 | Security, migrations, architecture |
 
 ---
 
@@ -233,7 +225,7 @@ The loop orchestrates five specialized agents, each running in the right mode:
 |-------|------|-------------|
 | `context-planner` | Local | Builds ContextContract using the knowledge graph |
 | `tdd-enforcer` | Local | Runs test suite, reports red/green cycle status |
-| `mutation-analyst` | Local | Measures test quality via mutation analysis |
+| `mutation-analyst` | Local | Measures test quality via mutation analysis (requires mutation framework) |
 | `security-audit` | Local | Scans for secret leakage patterns in files |
 | `code-review` | Hybrid | Graph analysis locally + review prompt for host LLM |
 
@@ -294,12 +286,15 @@ opencontext loop --task "add feature X" --flow full
 
 ### Mutation Testing
 
-Measures test quality beyond line coverage — kills mutants to prove tests actually catch regressions:
+Measures test quality beyond line coverage — kills mutants to prove tests actually catch regressions. Requires a compatible mutation testing framework to be installed.
 
 ```bash
 opencontext mutation run --scope changed --threshold 80
-# → Mutation coverage: 87.3% (65 killed, 9 survived)
-# → ✓ Threshold met (80%)
+```
+
+Without a mutation framework:
+```
+Warning: Mutation analysis framework not found in this environment.
 ```
 
 Configure in `opencontext.yaml`:
@@ -314,17 +309,18 @@ testing:
 
 ### Quality Gates
 
-Every verify phase runs 15 gates automatically:
+Every verify phase runs 16 gates automatically:
 
 | Gate | Checks |
 |------|--------|
 | `project-index-exists` | Knowledge graph is indexed |
 | `context-pack-created` | Context was built and delivered |
 | `token-budget` | Pack within tier budget |
-| `run-tests` | Test suite passes |
-| `lint` | No lint errors |
-| `type-check` | Type errors zero |
+| `trace-id-created` | Trace ID recorded for audit |
 | `security-scan` | No secret patterns found |
+| `artifact-persisted` | Artifacts saved to run directory |
+| `confidence` | Evidence confidence meets threshold |
+| `privacy` | Privacy policy satisfied |
 | `no-secret-leakage` | Context pack is clean |
 | `included-sources-present` | Required symbols present in pack |
 | `omissions-recorded` | Omissions documented in trace |
@@ -332,7 +328,7 @@ Every verify phase runs 15 gates automatically:
 | `approval-required-for-writes` | Writes confirmed by user/policy |
 | `no-high-risk-exports` | No confidential data to external providers |
 | `review-artifact-created` | Review trail persisted |
-| `artifact-persisted` | Artifacts saved to run directory |
+| `failing-test-exists` | TDD: failing test written before apply (strict-tdd mode) |
 
 ---
 
@@ -360,14 +356,6 @@ opencontext routes scan . --framework fastapi
 ```bash
 opencontext bridges scan . --type GRPC --json
 ```
-
-### Stable Symbol IDs
-
-Every symbol gets a collision-free ID: `sha256(project:file:qualified_name:kind)[:16]`. Cross-file call edges resolve correctly even when multiple files define functions with the same name.
-
-### Unified Graph
-
-Code, memory, and execution traces share one graph. A symbol that caused a past failure carries a `BROKE_BEFORE` edge. Future retrieval sees that history and boosts it automatically.
 
 ---
 
@@ -413,11 +401,40 @@ Four strategies, applied automatically by risk tier — zero configuration neede
 `efficient` is the default for `opencontext loop` output. It chains:
 1. **compact** — reduce code to signatures and docstrings
 2. **terse** — compress prose to minimum form
-3. **extended dictionary** — `function→fn`, `implementation→impl`, `service→svc`, `connection→conn`, `transaction→tx`, and 30+ more
+3. **extended dictionary** — `function→fn`, `implementation→impl`, `service→svc`, `connection→conn`, `transaction→tx`, and more
 
 Protected spans (code blocks, file paths, commands, errors, diffs, stack traces) are **never** modified.
 
-Inter-agent handoffs also compress automatically — context dictionaries are compressed before passing between agents, reducing handoff token cost by 60–70%.
+Inter-agent handoffs also compress automatically — context dictionaries are compressed before passing between agents, reducing handoff token cost.
+
+### AICX — Context Bytecode
+
+Between agents and at the LLM boundary, OpenContext uses AICX (Agent Incremental Context Exchange): a compact, verifiable, lazy transport format. Evidence travels as references; content expands only when the LLM actually needs it.
+
+```bash
+$ opencontext bytecode compile --query "fix auth bug"
+
+AICX/1
+REQ id:f2db108a surface:cli risk:normal budget:16000 q:q001
+EVID id:file:exa src:s002 type:file conf:0.39 fresh:current tok:1214 mode:handle
+EVID id:file:exa src:s003 type:file conf:0.38 fresh:current tok:591 mode:handle
+...
+CHK 9af11ae07bac
+
+instructions     : 15
+evidence items   : 10
+dictionary keys  : 12
+original tokens  : 4073
+bytecode tokens  : 242
+token reduction  : 94.1%
+checksum         : ✓ valid
+```
+
+```bash
+opencontext bytecode compile --query "task"   # compile evidence plan to AICX
+opencontext bytecode inspect [path]           # show metrics, gates, checksum
+opencontext bytecode decode [path]            # reconstruct evidence plan (lazy)
+```
 
 ---
 
@@ -452,16 +469,18 @@ opencontext benchmark run
 python -m pytest tests/core/test_comparative_benchmark.py -v -s
 ```
 
+Results on OpenContext's own codebase:
+
 | Task | Naive tokens | OpenContext | Reduction |
 |------|------------:|------------:|----------:|
-| Add method to BridgeDetector | 38,381 | 2,482 | **93.5%** |
-| Add --json flag to CLI command | 38,188 | 2,145 | **94.4%** |
-| Wire tracing to WorkflowEngine | 24,636 | 6,509 | **73.6%** |
-| **Average** | | | **87.4%** |
+| Add method to BridgeDetector | 41,125 | 2,468 | **94.0%** |
+| Add --json flag to bridges scan | 53,407 | 2,296 | **95.7%** |
+| Wire tracing to WorkflowEngine | 27,041 | 6,529 | **75.9%** |
+| **Average** | | | **88.5%** |
 
 All 3 tasks: SDD ✓ · TDD ✓ · Secrets clean ✓ · Gates passed ✓
 
-*Naive baseline = all files in the relevant directory. Token estimate: `len(text)/4`. Reproducible via benchmark suite.*
+*Naive baseline = all files in the relevant directory. Token estimate: `len(text)/4`. Run `pytest tests/core/test_comparative_benchmark.py -v -s` to reproduce.*
 
 ---
 
@@ -539,12 +558,12 @@ opencontext preset apply air-gapped   # Fully offline
 | OpenCode / Kilo Code | MCP + agent profile |
 | Any agent | `opencontext agent-context` emits reusable context block |
 
-**MCP tools** (9 tools, pre-approved after `opencontext install`):
+**MCP tools** (8 tools, pre-approved after `opencontext install`):
 
 ```
 opencontext_search    opencontext_context   opencontext_callers
 opencontext_callees   opencontext_impact    opencontext_node
-opencontext_files     opencontext_status    opencontext_contract
+opencontext_files     opencontext_status
 ```
 
 ---
@@ -572,6 +591,11 @@ opencontext pack . --query "task" --copy
 opencontext pack . --query "task" --format json
 opencontext verified-context --query "task"
 opencontext contract build --query "task"        # Show ContextContract YAML
+
+# AICX Bytecode
+opencontext bytecode compile --query "task"      # Compile to AICX bytecode
+opencontext bytecode inspect [path]              # Show metrics and checksum
+opencontext bytecode decode [path]               # Reconstruct evidence plan
 
 # Knowledge Graph
 opencontext knowledge-graph search "symbol"
@@ -625,8 +649,8 @@ prepared = runtime.prepare_context("Review authentication", max_tokens=6000)
 
 # Build a ContextContract
 contract = runtime.build_contract("fix crash in auth middleware")
-print(contract.risk_tier)        # "critical"
-print(contract.token_budget)     # 28000
+print(contract.risk_tier)        # "precise"
+print(contract.token_budget)     # 16000
 print([g.id for g in contract.must_verify])
 
 # Run an agent programmatically
@@ -677,7 +701,7 @@ print(result["cycle_status"])    # "green" | "red"
 Requires **Python 3.12+**. No API key required for core functionality.
 
 ```bash
-pytest                          # 1110+ tests
+pytest                          # 1125+ tests
 ruff check .                    # Lint
 mypy packages/opencontext_core  # Types
 ```
