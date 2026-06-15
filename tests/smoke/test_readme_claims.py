@@ -380,6 +380,21 @@ class TestMCPTools:
         for name in self._EXPECTED_TOOLS:
             assert name in server.tools, f"MCP tool {name!r} missing"
 
+    def test_readme_mcp_tool_count_matches_server(self, tmp_path):
+        """README's stated MCP tool count must equal the live server's.
+
+        A code<->doc invariant: this is what caught (and now prevents) the drift
+        where the README advertised 9 tools while the server exposed 13.
+        """
+        from opencontext_core.mcp_stdio import MCPServer
+
+        n = len(MCPServer(db_path=tmp_path / "context_graph.db")._default_tool_names())
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        assert f"{n} tools" in readme, (
+            f"README must state '{n} tools' to match the live MCP server; "
+            "update the README when the tool set changes."
+        )
+
 
 # ── Quality gates ───────────────────────────────────────────────────────────────
 
