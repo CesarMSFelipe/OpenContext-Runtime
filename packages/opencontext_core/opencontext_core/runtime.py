@@ -537,6 +537,17 @@ class OpenContextRuntime:
             )
 
         risk_level = _classify_context_risk(request.query, evidence_count=len(plan.evidence))
+        # The pack was retrieved with a provisional risk (computed before any
+        # evidence existed). Recompute the trust decision with the evidence-aware
+        # risk so the policy gate is consistent with the risk we report — otherwise
+        # a normal-risk query could fail the policy gate citing "high-risk".
+        from opencontext_core.retrieval.planner import _trust_decision
+
+        plan.trust_decision = _trust_decision(
+            plan.request.model_copy(update={"risk_level": risk_level.value}),
+            list(plan.evidence),
+            list(plan.fallback_actions),
+        )
         memory = self._load_verified_memory(request) if request.include_memory else []
         gates = _verified_context_gates(
             [*plan.evidence, *memory],

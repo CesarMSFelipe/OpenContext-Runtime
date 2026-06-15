@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from conftest import create_sample_project, write_config
 
+from conftest import create_sample_project, write_config
 from opencontext_core.config import OpenContextConfig, default_config_data
 from opencontext_core.context.compression import CompressionEngine
 from opencontext_core.memory_usability.context_repository import ContextRepository
@@ -58,6 +58,37 @@ def test_runtime_verify_context_returns_complete_traceable_result(tmp_path: Path
     assert result.trust_decision.status in {"sufficient", "insufficient"}
     assert result.token_usage["final_context_pack"] <= 1200
     assert "vector_disabled" in result.omitted_sources
+
+
+def test_normal_risk_query_does_not_fail_policy_gate_as_high_risk(tmp_path: Path) -> None:
+    """The policy gate must be consistent with the reported risk.
+
+    Regression: the plan's trust was computed with a provisional risk (assuming 0
+    evidence), so a query reported as NORMAL could still fail the policy gate
+    citing "high-risk evidence requires explicit source fallback", and the CLI
+    would exit non-zero on a perfectly good result.
+    """
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    create_sample_project(project_root)
+    runtime = OpenContextRuntime(
+        config_path=write_config(tmp_path, project_root),
+        storage_path=tmp_path / ".storage/opencontext",
+    )
+
+    result = runtime.verify_context(
+        VerifiedContextRequest(
+            query="Where is authentication implemented?",
+            root=project_root,
+            refresh_index=True,
+        )
+    )
+
+    assert result.risk_level is RiskLevel.NORMAL
+    assert result.evidence  # evidence was retrieved
+    policy = next(g for g in result.gates if g.name == "policy")
+    assert policy.passed, f"policy gate failed on a normal-risk result: {policy.reason}"
+    assert "high-risk" not in policy.reason
 
 
 def test_runtime_verify_context_includes_local_memory_when_enabled(tmp_path: Path) -> None:
