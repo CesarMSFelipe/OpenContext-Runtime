@@ -35,19 +35,43 @@ def write_mcp_servers(path: Path, servers: dict[str, Any], *, shape: McpShape) -
     Returns ``True`` if the file changed, ``False`` if it was already current.
     """
 
+    _, content = plan_mcp_servers(path, servers, shape=shape)
+    if content is None:
+        return False
+    return write_text_atomic(Path(path), content)
+
+
+def plan_mcp_servers(
+    path: Path, servers: dict[str, Any], *, shape: McpShape
+) -> tuple[Path, str | None]:
+    """Compute the file and its merged content without writing.
+
+    Returns ``(path, content)`` where ``content`` is the exact text that would be
+    written, or ``None`` if the file is already current (a no-op write).
+    """
+
     path = Path(path)
     if shape is McpShape.JSON_MCP_SERVERS:
-        return _write_json(path, servers, root_key="mcpServers")
+        return path, _plan_json(path, servers, root_key="mcpServers")
     if shape is McpShape.JSON_SERVERS:
-        return _write_json(path, servers, root_key="servers")
+        return path, _plan_json(path, servers, root_key="servers")
     if shape is McpShape.TOML_MCP_SERVERS:
-        return _write_toml(path, servers)
+        return path, _plan_toml(path, servers)
     if shape is McpShape.YAML_MCP_SERVERS:
-        return _write_yaml(path, servers)
+        return path, _plan_yaml(path, servers)
     raise ValueError(f"unsupported MCP shape: {shape}")
 
 
-def _write_json(path: Path, servers: dict[str, Any], *, root_key: str) -> bool:
+def _unchanged(path: Path, content: str) -> bool:
+    if not path.exists():
+        return False
+    try:
+        return path.read_text(encoding="utf-8") == content
+    except OSError:
+        return False
+
+
+def _plan_json(path: Path, servers: dict[str, Any], *, root_key: str) -> str | None:
     existing: dict[str, Any] = {}
     if path.exists():
         try:
@@ -55,10 +79,11 @@ def _write_json(path: Path, servers: dict[str, Any], *, root_key: str) -> bool:
         except (json.JSONDecodeError, OSError):
             existing = {}
     merged = merge_mcp_servers(existing, servers, root_key=root_key)
-    return write_text_atomic(path, json.dumps(merged, indent=2) + "\n")
+    content = json.dumps(merged, indent=2) + "\n"
+    return None if _unchanged(path, content) else content
 
 
-def _write_yaml(path: Path, servers: dict[str, Any]) -> bool:
+def _plan_yaml(path: Path, servers: dict[str, Any]) -> str | None:
     import yaml
 
     existing: dict[str, Any] = {}
@@ -70,10 +95,11 @@ def _write_yaml(path: Path, servers: dict[str, Any]) -> bool:
         except (yaml.YAMLError, OSError):
             existing = {}
     merged = merge_mcp_servers(existing, servers, root_key="mcpServers")
-    return write_text_atomic(path, yaml.safe_dump(merged, sort_keys=False))
+    content: str = yaml.safe_dump(merged, sort_keys=False)
+    return None if _unchanged(path, content) else content
 
 
-def _write_toml(path: Path, servers: dict[str, Any]) -> bool:
+def _plan_toml(path: Path, servers: dict[str, Any]) -> str | None:
     """Upsert ``[mcp_servers.<name>]`` tables without a TOML writer dependency.
 
     Reads existing TOML with stdlib ``tomllib`` to detect which server tables are
@@ -101,12 +127,11 @@ def _write_toml(path: Path, servers: dict[str, Any]) -> bool:
         blocks.append(_toml_server_block(name, entry))
 
     if not blocks:
-        return False
+        return None
 
     base = text.rstrip("\n")
     addition = "\n\n".join(blocks)
-    new_text = f"{base}\n\n{addition}\n" if base else f"{addition}\n"
-    return write_text_atomic(path, new_text)
+    return f"{base}\n\n{addition}\n" if base else f"{addition}\n"
 
 
 def _toml_server_block(name: str, entry: dict[str, Any]) -> str:

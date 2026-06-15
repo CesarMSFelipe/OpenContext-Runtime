@@ -18,14 +18,19 @@ from typing import Any
 
 from opencontext_core.configurator import constants
 from opencontext_core.configurator.adapter import Adapter, get_adapter, iter_adapters
+from opencontext_core.configurator.backup import BackupStore, plan_actions
 from opencontext_core.configurator.filemerge import (
     inject_managed_section,
     merge_mcp_config_file,
     write_text_atomic,
 )
-from opencontext_core.configurator.mcp_strategy import write_mcp_servers
+from opencontext_core.configurator.mcp_strategy import plan_mcp_servers, write_mcp_servers
 
 InstructionsBuilder = Callable[[str], str]
+
+# A planned write: the target file and the exact content it would receive, or
+# ``None`` when the file is already current (the write would be a no-op).
+PlanEntry = tuple[Path, str | None]
 
 
 class Configurator:
@@ -45,62 +50,119 @@ class Configurator:
 
         return [a.agent_id for a in iter_adapters() if a.config_dir.exists()]
 
-    def configure(self, agents: list[str], scope: str = "local") -> dict[str, Any]:
-        """Configure ``agents`` and return a structured report."""
+    def configure(
+        self, agents: list[str], scope: str = "local", *, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Configure ``agents`` and return a structured report.
 
-        results = [self.configure_one(agent_id, scope) for agent_id in agents]
-        configured = sum(1 for r in results if r["status"] == "configured")
+        When ``dry_run`` is true, nothing is written: each agent's result
+        describes the planned changes (which files, created vs modified) instead.
+        """
+
+        results = [self.configure_one(agent_id, scope, dry_run=dry_run) for agent_id in agents]
+        status_key = "planned" if dry_run else "configured"
+        configured = sum(1 for r in results if r["status"] == status_key)
         return {
-            "status": "configured",
+            "status": "planned" if dry_run else "configured",
             "scope": scope,
             "project": str(self.project_root),
             "agents_configured": configured,
+            "dry_run": dry_run,
             "results": results,
         }
 
-    def configure_one(self, agent_id: str, scope: str = "local") -> dict[str, Any]:
+    def configure_one(
+        self, agent_id: str, scope: str = "local", *, dry_run: bool = False
+    ) -> dict[str, Any]:
         """Configure a single agent; returns its per-agent result entry."""
 
         adapter = get_adapter(agent_id)
-        files: list[str] = []
+        plan = self._plan(adapter)
+        targets = [path for path, content in plan if content is not None]
 
-        files.extend(self._write_mcp(adapter))
-        files.append(self._write_instructions(adapter))
-        files.extend(self._write_extras(adapter))
+        if dry_run:
+            return {
+                "agent": agent_id,
+                "status": "planned",
+                "plan": plan_actions(targets),
+            }
 
-        return {"agent": agent_id, "status": "configured", "files": files}
+        backup = BackupStore().create([agent_id], targets, source="configure")
+        try:
+            files = self._write_mcp(adapter)
+            files.append(self._write_instructions(adapter))
+            files.extend(self._write_extras(adapter))
+        except Exception:
+            if backup is not None:
+                BackupStore().restore(backup.id)
+            raise
+
+        return {
+            "agent": agent_id,
+            "status": "configured",
+            "files": files,
+            "backup_id": backup.id if backup is not None else None,
+        }
 
     # ------------------------------------------------------------------
 
+    def _plan(self, adapter: Adapter) -> list[PlanEntry]:
+        """Compute every file this agent would touch and its merged content.
+
+        The plan drives the dry-run report and the pre-change backup snapshot;
+        the matching ``_write_*`` methods perform the real writes during apply.
+        """
+
+        plan: list[PlanEntry] = []
+        plan.append(self._plan_mcp(adapter))
+        plan.append(self._plan_instructions(adapter))
+        plan.extend(self._plan_extras(adapter))
+        return plan
+
     def _write_mcp(self, adapter: Adapter) -> list[str]:
-        path = adapter.mcp_config_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        servers = {constants.MCP_LABEL: dict(constants.MCP_SERVER_ENTRY)}
-        write_mcp_servers(path, servers, shape=adapter.mcp_shape)
+        path, content = self._plan_mcp(adapter)
+        if content is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_atomic(path, content)
         return [str(path)]
 
     def _write_instructions(self, adapter: Adapter) -> str:
-        path = adapter.instructions_path(self.project_root)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        content = self._build_instructions(adapter.agent_id)
-        existing = path.read_text(encoding="utf-8") if path.exists() else ""
-        merged = inject_managed_section(existing, "instructions", content)
-        write_text_atomic(path, merged)
+        path, content = self._plan_instructions(adapter)
+        if content is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_atomic(path, content)
         return str(path)
 
     def _write_extras(self, adapter: Adapter) -> list[str]:
         files: list[str] = []
-        if adapter.agent_id in {"claude-code", "openclaw"}:
-            files.extend(self._write_claude_permissions(adapter))
-        if adapter.agent_id == "opencode":
-            files.extend(self._write_opencode_profile(adapter))
+        for path, content in self._plan_extras(adapter):
+            files.append(str(path))
+            if content is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_text_atomic(path, content)
         return files
 
-    def _write_claude_permissions(self, adapter: Adapter) -> list[str]:
-        if adapter.agent_id != "claude-code":
-            return []
+    def _plan_mcp(self, adapter: Adapter) -> PlanEntry:
+        servers = {constants.MCP_LABEL: dict(constants.MCP_SERVER_ENTRY)}
+        return plan_mcp_servers(adapter.mcp_config_path, servers, shape=adapter.mcp_shape)
+
+    def _plan_instructions(self, adapter: Adapter) -> PlanEntry:
+        path = adapter.instructions_path(self.project_root)
+        content = self._build_instructions(adapter.agent_id)
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        merged = inject_managed_section(existing, "instructions", content)
+        return path, _content_if_changed(path, merged)
+
+    def _plan_extras(self, adapter: Adapter) -> list[PlanEntry]:
+        entries: list[PlanEntry] = []
+        if adapter.agent_id == "claude-code":
+            entries.append(self._plan_claude_permissions(adapter))
+        if adapter.agent_id == "opencode":
+            entries.append(self._plan_opencode_profile(adapter))
+        return entries
+
+    def _plan_claude_permissions(self, adapter: Adapter) -> PlanEntry:
         path = adapter.config_dir / "settings.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
         existing: dict[str, Any] = {}
         if path.exists():
             try:
@@ -110,21 +172,19 @@ class Configurator:
         existing_allow = existing.get("permissions", {}).get("allow", [])
         allow = list(dict.fromkeys([*existing_allow, *constants.ALLOWED_TOOLS]))
         existing.setdefault("permissions", {})["allow"] = allow
-        write_text_atomic(path, json.dumps(existing, indent=2) + "\n")
-        return [str(path)]
+        content = json.dumps(existing, indent=2) + "\n"
+        return path, _content_if_changed(path, content)
 
-    def _write_opencode_profile(self, adapter: Adapter) -> list[str]:
-        profile_dir = adapter.config_dir / "agents"
-        profile_dir.mkdir(parents=True, exist_ok=True)
+    def _plan_opencode_profile(self, adapter: Adapter) -> PlanEntry:
         profile = {
             "name": "sdd-orchestrator",
             "description": "OpenContext SDD orchestrator with knowledge graph",
             "system_prompt": _orchestrator_prompt(),
             "tools": ["mcp__opencontext__*"],
         }
-        path = profile_dir / "sdd-orchestrator.json"
-        write_text_atomic(path, json.dumps(profile, indent=2) + "\n")
-        return [str(path)]
+        path = adapter.config_dir / "agents" / "sdd-orchestrator.json"
+        content = json.dumps(profile, indent=2) + "\n"
+        return path, _content_if_changed(path, content)
 
 
 def configure_mcp_only(agent_id: str, servers: dict[str, Any]) -> bool:
@@ -139,6 +199,18 @@ def merge_json_mcp(path: Path, servers: dict[str, Any], *, root_key: str = "mcpS
     """Backwards-compatible JSON MCP merge helper."""
 
     return merge_mcp_config_file(path, servers, root_key=root_key)
+
+
+def _content_if_changed(path: Path, content: str) -> str | None:
+    """Return ``content`` unless ``path`` already holds it (a no-op write)."""
+
+    if path.exists():
+        try:
+            if path.read_text(encoding="utf-8") == content:
+                return None
+        except OSError:
+            pass
+    return content
 
 
 # ----------------------------------------------------------------------
