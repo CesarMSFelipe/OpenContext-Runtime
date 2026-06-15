@@ -23,6 +23,28 @@ the single source of truth for scope. It supersedes any prior planning notes.
 - **One backend, many surfaces.** CLI, TUI, MCP, and HTTP share one core; they
   never drift.
 
+## Current status (v0.4.0b0)
+
+OpenContext Runtime v0.4.0b0 delivers a complete context engineering platform with:
+
+- **SDD Orchestrator**: Full 8-phase lifecycle (explore → propose → spec → design → tasks → apply → verify → archive) with DAG state tracking, artifact stores (engram/openspec/hybrid), and per-phase model assignment via `SDDProfile`
+- **Agent system**: Runtime agent orchestrator with pluggable skill-based agents and subagent spawning
+- **LLM provider adapters**: OpenRouter, Anthropic, OpenAI, Local (Ollama), and Mock providers with unified adapter interface
+- **Learning system**: Memory usability layer with context-aware retrieval and semantic reranking
+- **Quality gates**: 7 built-in CI checks (security, quality, docs, performance, accessibility, dependencies, type safety)
+- **Indexing pipeline**: Knowledge graph with SQLite+FTS5, call graph analysis, impact analysis, and framework route detection (19+ languages)
+- **Interactive TUI menu**: 10-option main menu when `opencontext` is run without subcommand — Install, Upgrade, Sync, Configure Models, Create Agent, Plugins, SDD Profiles, Backups, Uninstall
+- **Smart config discovery**: `opencontext.yaml` auto-discovered up to 10 parent directories; `opencontext config` without args launches wizard
+- **Unified upgrade**: Single `opencontext upgrade` upgrades all OpenContext packages with per-package status table
+- **Install script improvements**: pipx detection, PyPI-first path, source fallback, post-install verification
+- **Security layer**: Secret redaction, provider policy enforcement, context firewall, prompt injection boundaries, air-gapped mode
+- **Observability**: OTel-compatible tracing pipeline with metrics and logging
+- **Context quality evaluation**: 5-dimension benchmark suite with ContextBench
+- **Deep diagnostics**: `opencontext doctor deep` for runtime introspection
+- **Plugin ecosystem**: Remote registry, GitHub installs, version pinning, checksum verification
+- **Agent installer**: Support for 13+ AI coding agents with auto-detection and config generation
+- **Memory layer**: Context repository with progressive disclosure, pinned memory, temporal memory, context DAG, session harvesting
+
 ## Capability pillars
 
 ### 1. Universal agent configurator
@@ -161,6 +183,26 @@ real tokenizer + signature compression (3); checkpoints + typed event ledger
 Hybrid memory retrieval, write-time consolidation, bi-temporal supersession,
 background consolidation, episodic memory (4); per-role model routing; structural
 query; advisory-gate defaults and self-improvement reporting (8).
+
+## Next milestones
+
+1. **Unified graph-aware retrieval**: Use one evidence planner across runtime context packs, MCP, CLI, API, workflows, and agents
+2. **Parser-backed dependency graphs**: Deeper symbol extraction with cross-file type resolution and more accurate impact analysis
+3. **Progressive and reversible compression**: Content-aware routing, exact-source retrieval handles, and cache-aligned output
+4. **Production governed agent harness**: Replace mocked agent execution and prove parity or improvement against agentic workflow tool workflows
+5. **Optional semantic graph adapters**: SCIP first, then evaluated LSP, document/schema/IaC, and specialist security adapters
+6. **Public-key workflow-pack signing**: Signed workflow packs with transparency log integration for supply-chain integrity
+7. **Production provider SDK packages**: Published provider adapter packages (OpenAI, Anthropic, OpenRouter) outside core as documented extras
+8. **Context quality GA**: Production-ready quality gates with configurable thresholds and CI integration
+9. **Enterprise hardening**: Multi-user policy enforcement, hosted governance scaffolds, and org baseline distribution
+
+See [Graph and Agent Integration Strategy](research/graph-and-agent-integration-strategy.md)
+for the external-system review, integration boundaries, release phases, and
+stability gates.
+
+## Not yet enterprise ready
+
+The design is enterprise-oriented, but certification, multi-user policy enforcement, hosted governance, and provider-specific production adapters are not complete. The security layer provides local guardrails and scaffolds that do not make the project a fully certified enterprise platform.
 
 ## Definition of done
 
