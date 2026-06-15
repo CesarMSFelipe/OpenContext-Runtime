@@ -1,4 +1,4 @@
-"""TDD failing-test pre-gate tests (, tasks 3.3, 3.7, 3.8).
+"""TDD failing-test pre-gate tests.
 
 The failing-test check (``FailingTestExistsGate``) must run as an apply PRE-gate
 (red before green), driven by ``harness.tdd_mode`` (ask/strict/off) read from

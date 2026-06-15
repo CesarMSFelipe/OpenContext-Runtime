@@ -102,6 +102,10 @@ class HarnessConfig:
                 gates=[
                     "provider_policy_passed",
                     "approval_required_for_writes",
+                    # Red-before-green is an apply PRE-condition, not a verify check.
+                    # Declared here it surfaces as an advisory signal in "ask" mode
+                    # and blocks in "strict"; on verify it never ran at all.
+                    "failing_test_exists",
                 ],
             ),
             "verify": PhaseConfig(
@@ -111,7 +115,6 @@ class HarnessConfig:
                 gates=[
                     "security_scan_passed",
                     "no_high_risk_exports",
-                    "failing_test_exists",
                 ],
             ),
             "review": PhaseConfig(
