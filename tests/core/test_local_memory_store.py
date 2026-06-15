@@ -112,6 +112,32 @@ def test_decay_prunes_only_old_and_low_confidence(store: LocalMemoryStore) -> No
     assert survivors == {"stale-strong", "fresh-weak"}  # only stale+weak removed
 
 
+def test_decay_spares_recently_used_record(store: LocalMemoryStore) -> None:
+    """A stale, low-confidence record that is still being recalled is NOT pruned.
+
+    Reinforcement by use: decay tracks last access, so a frequently-relied-on
+    memory survives even when its creation date is old.
+    """
+    old = datetime.now(tz=UTC) - timedelta(days=120)
+    store.write(
+        make_record("used", key="k:u", content="frequently recalled auth pattern",
+                    confidence=0.2, created_at=old)
+    )
+    store.write(
+        make_record("unused", key="k:n", content="forgotten billing note",
+                    confidence=0.2, created_at=old)
+    )
+    # Recall the 'used' record — this bumps its last-accessed timestamp.
+    assert any(r.id == "used" for r in store.search("frequently recalled auth pattern"))
+
+    pruned = store.decay()
+
+    assert pruned == 1
+    survivors = {r.id for key in ("k:u", "k:n") for r in store._backend.get_by_key(key)}
+    assert "used" in survivors  # spared: recently recalled
+    assert "unused" not in survivors  # pruned: stale, weak, never touched
+
+
 def test_null_agent_memory_store_satisfies_protocol() -> None:
     null_store = NullAgentMemoryStore()
     assert isinstance(null_store, AgentMemoryStore)

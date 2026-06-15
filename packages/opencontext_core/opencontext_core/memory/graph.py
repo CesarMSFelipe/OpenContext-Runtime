@@ -304,21 +304,29 @@ class LocalMemoryStore:
             conn.execute(sql, (new_confidence, json.dumps(existing), now, memory_id))
 
     def decay(self) -> int:
-        """Deletes records where age_days > half_life_days and confidence < 0.3."""
+        """Delete stale, low-confidence records — but spare ones still in use.
+
+        A record is pruned only when it is low-confidence (<0.3), old (>90 days),
+        AND has not been recalled recently (no access in the last 90 days). This
+        keeps a frequently-relied-on memory alive even if its creation date is old.
+        """
         now = datetime.now(tz=UTC)
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, created_at, confidence FROM memory_records WHERE confidence < 0.3"
+                "SELECT id, created_at, confidence, last_accessed_at "
+                "FROM memory_records WHERE confidence < 0.3"
             ).fetchall()
             pruned = 0
             for row in rows:
                 try:
-                    created = datetime.fromisoformat(row["created_at"])
-                    age_days = (now - created).days
-                    # Default half_life = 90 days
-                    if age_days > 90:
-                        conn.execute("DELETE FROM memory_records WHERE id = ?", (row["id"],))
-                        pruned += 1
+                    age_days = (now - datetime.fromisoformat(row["created_at"])).days
+                    if age_days <= 90:
+                        continue  # too young
+                    last = row["last_accessed_at"]
+                    if last and (now - datetime.fromisoformat(last)).days <= 90:
+                        continue  # recently used — keep it
+                    conn.execute("DELETE FROM memory_records WHERE id = ?", (row["id"],))
+                    pruned += 1
                 except Exception:
                     pass
         return pruned

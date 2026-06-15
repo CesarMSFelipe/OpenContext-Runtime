@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS memory_records (
     updated_at TEXT NOT NULL,
     valid_from TEXT,
     invalid_at TEXT,
-    superseded_by TEXT
+    superseded_by TEXT,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    last_accessed_at TEXT
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts
     USING fts5(id UNINDEXED, layer, key, content, tags,
@@ -114,11 +116,15 @@ class SQLiteMemoryBackend:
 
     @staticmethod
     def _migrate(conn: sqlite3.Connection) -> None:
-        """Add bi-temporal columns to databases created before they existed."""
+        """Add columns to databases created before they existed."""
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(memory_records)")}
-        for column in ("valid_from", "invalid_at", "superseded_by"):
+        for column in ("valid_from", "invalid_at", "superseded_by", "last_accessed_at"):
             if column not in existing:
                 conn.execute(f"ALTER TABLE memory_records ADD COLUMN {column} TEXT")
+        if "access_count" not in existing:
+            conn.execute(
+                "ALTER TABLE memory_records ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0"
+            )
 
     def store(self, record: MemoryRecord) -> None:
         """Upsert a MemoryRecord."""
@@ -194,6 +200,15 @@ class SQLiteMemoryBackend:
                     LIMIT ?
                 """
                 rows = conn.execute(sql, (fts_query, limit)).fetchall()
+            # Reinforce by use: a recalled record is one the agent relies on, so
+            # bump its access count + recency. decay() spares recently-used rows.
+            if rows:
+                now = datetime.now(tz=UTC).isoformat()
+                conn.executemany(
+                    "UPDATE memory_records SET access_count = access_count + 1, "
+                    "last_accessed_at = ? WHERE id = ?",
+                    [(now, row["id"]) for row in rows],
+                )
         return [_row_to_record(row) for row in rows]
 
     def get_by_key(self, key: str, layer: MemoryLayer | None = None) -> list[MemoryRecord]:
