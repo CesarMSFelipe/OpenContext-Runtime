@@ -470,13 +470,24 @@ class TestAICXModels:
         decoded = AICXDecoder().decode(bc)
         assert decoded.request.query == "fix the unique_query_xyz"
 
-    def test_aicx_result_in_verify_context(self):
-        """VerifiedContextResult.aicx is populated when index exists."""
-        from opencontext_core.retrieval.contracts import VerifiedContextResult
+    def test_aicx_result_in_verify_context(self, tmp_path):
+        """VerifiedContextResult.aicx is POPULATED (not merely declared) post-index."""
+        from opencontext_core.retrieval.contracts import VerifiedContextRequest
+        from opencontext_core.runtime import OpenContextRuntime
 
-        # Field must exist on the model
-        fields = VerifiedContextResult.model_fields
-        assert "aicx" in fields, "aicx field missing from VerifiedContextResult"
+        (tmp_path / "auth.py").write_text(
+            "def login(user):\n    return bool(user)\n", encoding="utf-8"
+        )
+        runtime = OpenContextRuntime(storage_path=tmp_path / ".storage")
+        runtime.index_project(tmp_path)
+
+        result = runtime.verify_context(
+            VerifiedContextRequest(query="where is login implemented?", root=tmp_path)
+        )
+        # The AICX side-channel must actually carry compiled bytecode, not be None.
+        assert result.aicx is not None, "aicx side-channel not populated after indexing"
+        assert result.aicx.get("v") == "AICX/1"
+        assert result.aicx.get("chk"), "aicx checksum missing"
 
 
 # ── Compression strategies ─────────────────────────────────────────────────────
@@ -492,18 +503,15 @@ class TestCompressionStrategies:
             assert backend is not None, f"Strategy {strategy!r} not available"
 
     def test_terse_reduces_prose(self):
-        """terse strategy compresses verbose prose."""
+        """terse strategy compresses verbose prose (phrase + word level)."""
         from opencontext_core.backends.factory import BackendFactory
 
         backend = BackendFactory.create_compression_backend("terse")
         text = "In order to basically just say hello, perhaps we might consider doing this."
         compressed = backend.compress(text, [])
-        # Pre-existing bug surfaced once the suite became runnable (the fork-bomb meta-test
-        # previously prevented the suite from ever completing): TerseCompressionBackend is a
-        # no-op on prose. Out of scope for the agentic-control-plane change; tracked separately.
-        if len(compressed) >= len(text):
-            pytest.xfail("TerseCompressionBackend no-op on prose — pre-existing, out of plan scope")
         assert len(compressed) < len(text), "terse did not reduce length"
+        # The "in order to" -> "to" phrase compression actually fired.
+        assert "in order to" not in compressed.lower()
 
     def test_none_strategy_is_passthrough(self):
         """none strategy never modifies content."""

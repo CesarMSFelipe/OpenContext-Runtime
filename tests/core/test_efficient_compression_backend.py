@@ -25,11 +25,12 @@ def test_applies_extended_dict_substitutions():
     backend = EfficientCompressionBackend()
     text = "This function implements authentication functionality without configuration"
     compressed = backend.compress(text, [])
-    # A word-boundary substitution actually fired ("function" -> "fn") and the
-    # result is strictly shorter — not merely "<=", which a no-op would satisfy.
+    # Real substitutions fired (function->fn, authentication->auth,
+    # configuration->config) and the result is strictly shorter — not merely
+    # "<=", which a no-op would also satisfy.
     assert "This fn implements" in compressed
-    # The substitution respects word boundaries: "functionality" is untouched.
-    assert "functionality" in compressed
+    assert "auth" in compressed and "config" in compressed
+    assert "authentication" not in compressed
     assert len(compressed) < len(text)
 
 

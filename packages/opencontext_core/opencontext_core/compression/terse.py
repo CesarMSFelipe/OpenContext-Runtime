@@ -28,7 +28,19 @@ import re
 CODE_BLOCK_PATTERN = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 INLINE_CODE_PATTERN = re.compile(r"`[^`]+`")
 URL_PATTERN = re.compile(r"https?://[^\s]+")
-FILE_PATH_PATTERN = re.compile(r"(?:\./)?[\w-]+(?:/[\w.-]+)*(?:\.[\w]+)?")
+# A path must carry a real path signal — a leading ./ ../ or /, an internal
+# slash, or a recognized file extension. The previous pattern made every path
+# component optional, so a bare prose word ("hello") matched and got "protected",
+# which made the compressor a no-op on plain prose.
+FILE_PATH_PATTERN = re.compile(
+    r"(?:"
+    r"(?:\.{1,2}/|/)[\w.-]+(?:/[\w.-]+)*"  # ./x  ../x/y  /usr/bin
+    r"|[\w.-]+/[\w./-]+"  # relative path with an internal slash: src/foo.py
+    r"|[\w-]+\.(?:py|js|ts|tsx|jsx|mjs|cjs|yaml|yml|json|toml|md|rst|txt|cfg|ini|"
+    r"sh|bash|zsh|go|rs|java|kt|c|cc|cpp|h|hpp|cs|rb|php|sql|proto|html|css|scss|"
+    r"less|xml|lock|env|csv|tsv|log)\b"  # filename.ext
+    r")"
+)
 COMMAND_PATTERN = re.compile(
     r"\b(?:npm|git|docker|python|pip|poetry|yarn|pnpm|cargo|go|make|bash|sh)\s+[\w-]+(?:\s+[\w-]+)*"
 )
