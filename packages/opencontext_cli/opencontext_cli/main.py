@@ -14,6 +14,7 @@ import yaml
 
 from opencontext_cli.commands.benchmark_cmd import add_benchmark_parser, handle_benchmark
 from opencontext_cli.commands.bridges_cmd import add_bridges_parser, handle_bridges
+from opencontext_cli.commands.bytecode_cmd import add_bytecode_commands, handle_bytecode
 from opencontext_cli.commands.ci_check_cmd import add_ci_check_parser, handle_ci_check
 from opencontext_cli.commands.config_cmd import add_config_parser, handle_config
 from opencontext_cli.commands.contract_cmd import add_contract_commands, handle_contract
@@ -912,6 +913,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_contract_commands(subparsers)
     add_mutation_commands(subparsers)
     add_loop_commands(subparsers)
+    add_bytecode_commands(subparsers)
 
     return parser
 
@@ -1139,6 +1141,8 @@ def _dispatch(args: argparse.Namespace) -> None:
         sys.exit(handle_mutation(args))
     if command == "loop":
         return sys.exit(handle_loop(args, config=None))
+    if command == "bytecode":
+        return sys.exit(handle_bytecode(args))
     runtime = _runtime(args.config)
     if command == "index":
         _index(runtime, args.root, args.incremental)

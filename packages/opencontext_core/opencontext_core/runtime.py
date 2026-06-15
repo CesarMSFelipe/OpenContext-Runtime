@@ -519,6 +519,13 @@ class OpenContextRuntime:
         trust_decision = plan.trust_decision
         if any(not gate.passed for gate in gates):
             trust_decision = TrustDecision(status="insufficient", reason="verification gate failed")
+        _aicx_compact = None
+        try:
+            from opencontext_core.context.bytecode import AICXCompiler, AICXRenderer
+            _aicx_compact = AICXRenderer().render_compact(AICXCompiler().compile(plan))
+        except Exception:
+            pass
+
         return VerifiedContextResult(
             trace_id=trace.run_id,
             context=self._render_adapter_context(pack),
@@ -529,6 +536,7 @@ class OpenContextRuntime:
             trust_decision=trust_decision,
             token_usage=trace.token_estimates,
             omitted_sources=[*omitted_sources, *plan.omissions],
+            aicx=_aicx_compact,
         )
 
     def _load_verified_memory(self, request: VerifiedContextRequest) -> list[EvidenceItem]:
