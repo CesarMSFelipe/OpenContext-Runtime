@@ -217,33 +217,13 @@ def _content_if_changed(path: Path, content: str) -> str | None:
 # Default content
 # ----------------------------------------------------------------------
 
-_CLI_REFERENCE = """### OpenContext CLI Reference
+# Kept deliberately short: the agent can run `opencontext --help` for the full
+# command set, so injecting a full CLI table into every session is wasted tokens.
+_CLI_REFERENCE = """### OpenContext CLI
 
-| Category | Command | Purpose |
-|----------|---------|---------|
-| **Health** | `opencontext verify` | Run all health checks |
-| | `opencontext verify --json` | CI-friendly JSON output |
-| | `opencontext doctor` | Deep runtime diagnostics |
-| **Updates** | `opencontext update` | Check for newer version (24h cache) |
-| | `opencontext update --force` | Skip cache |
-| | `opencontext upgrade` | Install latest version |
-| **Plugins** | `opencontext plugin search` | Browse available plugins |
-| | `opencontext plugin install <name>` | Install from registry |
-| | `opencontext plugin install <name> --github owner/repo` | Install from GitHub |
-| | `opencontext plugin install <name> --url <url>` | Install from URL |
-| | `opencontext plugin update` | Check for plugin updates |
-| | `opencontext plugin info <name>` | Show plugin details |
-| | `opencontext plugin list --json` | Machine-readable list |
-| **Config** | `opencontext config wizard` | Interactive setup |
-| | `opencontext config reconfigure plugins` | Browse & install plugins |
-| | `opencontext config backup` | Manual backup |
-| | `opencontext config restore <id>` | Rollback config |
-| | `opencontext config show` | View current config |
-| **KG** | `opencontext pack . --query "<task>"` | Generate context pack |
-| | `opencontext index .` | Index project |
-| **Setup** | `opencontext init` | Create project config |
-| | `opencontext install` | Full project setup |
-|"""
+Run `opencontext --help` or `opencontext <command> --help` for the full command set.
+Most-used: `index .` and `pack . --query "<task>"` (context), `verify` (health),
+`install` (setup)."""
 
 _KG_SECTION = """## Knowledge Graph (MCP Tools)
 
