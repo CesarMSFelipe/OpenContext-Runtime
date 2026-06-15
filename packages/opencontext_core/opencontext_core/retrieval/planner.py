@@ -229,6 +229,7 @@ class RetrievalPlanner:
         memory_boost_map: dict[str, float] | None = None,
         graph_distance_map: dict[str, int] | None = None,
         query: str | None = None,
+        focus_files: frozenset[str] | None = None,
     ) -> list[ContextItem]:
         """Order candidates by the hybrid score (semantic + provenance + graph +
         memory failure-boost + test-affinity + personalization, minus
@@ -248,7 +249,11 @@ class RetrievalPlanner:
         mb = memory_boost_map or {}
         gd = graph_distance_map or {}
         weights = RetrievalWeights()
-        personalization = _personalization_map(items, query) if query else None
+        personalization = (
+            _personalization_map(items, query or "", focus_files)
+            if (query or focus_files)
+            else None
+        )
 
         def _score(item: ContextItem) -> float:
             modified = item.metadata.get("modified_at")
@@ -303,6 +308,7 @@ class RetrievalPlanner:
             all_items,
             graph_distance_map=graph_distance_map or None,
             query=request.query,
+            focus_files=_git_focus_files(request.root),
         )
         # Diversity-aware selection: maximize information per token by demoting
         # near-duplicates of already-chosen evidence before truncating to top_k.
@@ -442,12 +448,41 @@ def _candidate_relationships(item: ContextItem) -> list[str]:
     return out
 
 
-def _personalization_map(items: list[ContextItem], query: str) -> dict[str, float]:
+def _candidate_file(item: ContextItem) -> str:
+    """The repo-relative file path a candidate came from (drops any :line:name)."""
+    return item.source.split(":", 1)[0]
+
+
+def _git_focus_files(root: Path | None) -> frozenset[str]:
+    """Repo-relative files recently changed in git — the developer's working set.
+
+    Best-effort: returns an empty set when git is unavailable or the path is not a
+    repo, so retrieval is unaffected outside a git working tree.
+    """
+    if root is None:
+        return frozenset()
+    try:
+        from opencontext_core.indexing.git_context import GitContextProvider
+
+        files: set[str] = set()
+        for diff in GitContextProvider(root).get_recent_changes(days=7):
+            files.update(diff.files_changed)
+        return frozenset(files)
+    except Exception:
+        return frozenset()
+
+
+def _personalization_map(
+    items: list[ContextItem], query: str, focus_files: frozenset[str] | None = None
+) -> dict[str, float]:
     """Build a per-candidate personalization signal in ``[0, 1]``.
 
     Combines a query-seeded personalized PageRank over the candidates' call graph
     with per-identifier quality heuristics, so candidates that are both
-    well-named/query-mentioned and graph-central rise. Pure and deterministic.
+    well-named/query-mentioned and graph-central rise. When ``focus_files`` is
+    given (e.g. the git working set), candidates from those files also seed the
+    PageRank, so the map adapts to what the developer is actually changing right
+    now. Pure and deterministic for a fixed input.
     """
     terms = _query_terms(query)
     if not items:
@@ -478,6 +513,8 @@ def _personalization_map(items: list[ContextItem], query: str) -> dict[str, floa
     }
 
     seeds = {item_id for item_id, name in names.items() if _query_terms(name) & terms}
+    if focus_files:
+        seeds.update(item.id for item in items if _candidate_file(item) in focus_files)
     pagerank = personalized_pagerank(adjacency, seeds)
     max_pr = max(pagerank.values(), default=0.0)
 
