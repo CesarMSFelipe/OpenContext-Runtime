@@ -80,6 +80,13 @@ opencontext pack . --query "How does authentication work?" --copy
 opencontext loop --task "fix crash in auth middleware" --flow full
 ```
 
+Every pack tells you what it saved:
+
+```text
+  ✓ Copied to clipboard.
+  ↓ 99.9% fewer tokens than reading the whole project (1,312,123 → 217)
+```
+
 `opencontext install` does five things automatically:
 
 1. **Detects your stack** — Python, Node, Go, Rust, Terraform, and more
