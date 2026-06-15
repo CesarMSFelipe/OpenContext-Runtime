@@ -101,6 +101,20 @@ def test_mcp_impact_risk_rises_with_callers(tmp_path: Path) -> None:
     assert out["risk_level"] != "low"  # has real callers -> graduated above the floor
 
 
+def test_mcp_node_carries_structured_symbol(tmp_path: Path) -> None:
+    """opencontext_node returns a decodable structured symbol identity."""
+    from opencontext_core.indexing.scip_symbol import parse_symbol
+
+    runtime, _ = _runtime(tmp_path)
+    server = MCPServer(db_path=runtime.storage_path / "context_graph.db", runtime=runtime)
+
+    out = server._handle_node({"symbol": "audit_login"})
+    assert "symbol" in out, "node output is missing the structured symbol"
+    parsed = parse_symbol(out["symbol"])  # must round-trip, not be an opaque hash
+    assert parsed.manager == "python"
+    assert parsed.leaf == "audit_login"
+
+
 def test_mcp_server_without_runtime_is_backward_compatible(tmp_path: Path) -> None:
     runtime, _ = _runtime(tmp_path)
     server = MCPServer(db_path=runtime.storage_path / "context_graph.db")  # no runtime

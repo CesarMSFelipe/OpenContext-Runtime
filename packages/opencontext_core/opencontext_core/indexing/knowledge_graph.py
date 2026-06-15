@@ -481,6 +481,31 @@ class KnowledgeGraph:
 
         return self.db.search_fts(query, limit)
 
+    def resolve_symbol_path(self, path: str) -> str | None:
+        """Resolve a dotted reference (e.g. ``AuthService.login``) to a node id.
+
+        Partial-path resolution: the last segment is the symbol, the preceding
+        segments are scope hints used to disambiguate same-name definitions.
+        Returns ``None`` when there is no match or the path stays ambiguous.
+        """
+        from opencontext_core.indexing.name_resolution import SymbolRef, resolve_partial_path
+
+        segments = [s for s in path.split(".") if s]
+        if not segments:
+            return None
+        conn = self.db._connect()
+        rows = conn.execute(
+            "SELECT id, name, container, file_path FROM nodes WHERE name = ?",
+            (segments[-1],),
+        ).fetchall()
+        refs = [
+            SymbolRef(
+                id=r["id"], name=r["name"], container=r["container"], file_path=r["file_path"]
+            )
+            for r in rows
+        ]
+        return resolve_partial_path(path, refs)
+
     def get_stats(self) -> dict[str, int]:
         """Get database statistics."""
 

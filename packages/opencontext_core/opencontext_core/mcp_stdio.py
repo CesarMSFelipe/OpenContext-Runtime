@@ -514,9 +514,19 @@ class MCPServer:
         if node is None:
             return {"error": f"Node not found: {node_id}"}
 
+        from opencontext_core.indexing.scip_symbol import format_symbol
+
         return {
             "name": node.name,
             "kind": node.kind,
+            # Structured, decodable identity (language/package/file/type/role).
+            "symbol": format_symbol(
+                language=node.language,
+                file_path=node.file_path,
+                name=node.name,
+                kind=node.kind,
+                container=node.container,
+            ),
             "file": node.file_path,
             "line": node.line,
             "column": node.column,
