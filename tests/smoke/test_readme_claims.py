@@ -386,6 +386,10 @@ class TestMCPTools:
             "opencontext_files",
             "opencontext_status",
             "opencontext_trace",
+            "opencontext_replace_symbol_body",
+            "opencontext_insert_before_symbol",
+            "opencontext_insert_after_symbol",
+            "opencontext_rename_symbol",
         }
     )
 
