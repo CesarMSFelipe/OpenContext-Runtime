@@ -940,7 +940,7 @@ _None — initial implementation._
 
 _None._
 
-## Criterios de Éxito
+## Success Criteria
 
 - SpecPhase writes valid markdown spec with RFC 2119 requirements and GIVEN/WHEN/THEN scenarios
 - Spec artifact is persisted to `.opencontext/runs/{{run_id}}/spec.md`

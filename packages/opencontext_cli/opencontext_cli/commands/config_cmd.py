@@ -122,7 +122,7 @@ def handle_config(args: Any) -> None:
 # Schema of configurable paths: "path" -> (type, description)
 CONFIG_PATHS: dict[str, tuple[type, str]] = {
     # Flat keys
-    "security_mode": (str, "Security mode: private_project, enterprise, or air-gapped"),
+    "security_mode": (str, "Security mode: developer, private_project, enterprise, or air_gapped"),
     "default_token_budget": (int, "Default token budget per operation"),
     "max_input_tokens": (int, "Maximum input tokens"),
     "reserve_output_tokens": (int, "Reserved output tokens"),
