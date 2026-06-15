@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -219,7 +220,7 @@ class RetrievalPlanner:
                 continue
 
         deduped = _deduplicate(candidates)
-        return self.rank(deduped, query=query)[:top_k]
+        return select_diverse(self.rank(deduped, query=query), top_k)
 
     def rank(
         self,
@@ -298,11 +299,14 @@ class RetrievalPlanner:
 
         expanded_items, graph_distance_map = self._expand_with_graph(request, base_items)
         all_items = _deduplicate([*base_items, *expanded_items])
-        context_items = self.rank(
+        ranked = self.rank(
             all_items,
             graph_distance_map=graph_distance_map or None,
             query=request.query,
-        )[:top_k]
+        )
+        # Diversity-aware selection: maximize information per token by demoting
+        # near-duplicates of already-chosen evidence before truncating to top_k.
+        context_items = select_diverse(ranked, top_k)
 
         evidence = [_context_item_to_evidence(item, request.surface) for item in context_items]
         fallback_actions = _fallback_actions_for(request, evidence)
@@ -616,6 +620,66 @@ def _deduplicate(items: list[ContextItem]) -> list[ContextItem]:
         if current is None or item.score > current.score:
             by_id[item.id] = item
     return list(by_id.values())
+
+
+# Relevance weight in MMR selection: high so the most relevant item still leads,
+# but redundant near-duplicates of it are demoted in favor of new information.
+_MMR_LAMBDA = 0.7
+_WORD_RE = re.compile(r"[a-z0-9_]+")
+
+
+def _content_tokens(text: str) -> frozenset[str]:
+    return frozenset(_WORD_RE.findall((text or "").lower()))
+
+
+def _token_jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    if not a and not b:
+        return 0.0
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def select_diverse(
+    items: list[ContextItem], k: int, *, lam: float = _MMR_LAMBDA
+) -> list[ContextItem]:
+    """Pick ``k`` items maximizing relevance minus redundancy (greedy MMR).
+
+    ``items`` must already be relevance-ranked. The first (most relevant) item is
+    always kept; each subsequent pick maximizes ``lam*relevance - (1-lam)*maxSim``
+    where similarity is token-set Jaccard against the already-selected items, so
+    the pack covers distinct facets instead of N near-duplicates of one hot symbol.
+    Deterministic: ties resolve to the earlier (higher-ranked) candidate.
+    """
+    if k <= 0 or len(items) <= 1:
+        return items[: max(k, 0)]
+    if len(items) <= k:
+        return items  # nothing to trade off; keep all
+
+    # Normalize relevance by the max score (proportional, scale-independent) rather
+    # than min-max — min-max amplifies tiny score gaps into the full [0,1] range and
+    # would let a near-duplicate beat a distinct item of nearly equal relevance.
+    hi = max(it.score for it in items)
+    norm = hi if hi > 0 else 1.0
+    tokens = {id(it): _content_tokens(it.content) for it in items}
+
+    remaining = list(items)
+    selected = [remaining.pop(0)]
+    while remaining and len(selected) < k:
+        best = None
+        best_val = None
+        for cand in remaining:
+            rel = max(cand.score, 0.0) / norm
+            sim = max(
+                (_token_jaccard(tokens[id(cand)], tokens[id(s)]) for s in selected),
+                default=0.0,
+            )
+            val = lam * rel - (1.0 - lam) * sim
+            if best_val is None or val > best_val:
+                best, best_val = cand, val
+        selected.append(best)  # type: ignore[arg-type]
+        remaining.remove(best)  # type: ignore[arg-type]
+    return selected
 
 
 # ---- progressive graph expansion helpers ------------------------------------
