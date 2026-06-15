@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from opencontext_core.config import KnowledgeGraphConfig
 from opencontext_core.indexing.knowledge_graph import KnowledgeGraph
 from opencontext_core.indexing.name_resolution import SymbolRef, resolve_partial_path
