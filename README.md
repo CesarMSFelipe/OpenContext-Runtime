@@ -69,11 +69,14 @@ Dry run — phases that would execute:
 # 1. Install (no API key, nothing leaves your machine)
 pip install opencontext-cli
 
-# 2. Set up your project — auto-detects stack, builds the graph, wires your agent
+# 2. See the difference on YOUR repo in 30 seconds (no setup, no API key)
 cd your-project
+opencontext demo
+
+# 3. Set up your project — auto-detects stack, builds the graph, wires your agent
 opencontext install
 
-# 3. Get your first verified, minimal context pack (copied to clipboard)
+# 4. Get your first verified, minimal context pack (copied to clipboard)
 opencontext pack . --query "How does authentication work?" --copy
 
 # Or hand the whole task to the agentic loop

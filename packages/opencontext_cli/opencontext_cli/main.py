@@ -18,6 +18,7 @@ from opencontext_cli.commands.bytecode_cmd import add_bytecode_commands, handle_
 from opencontext_cli.commands.ci_check_cmd import add_ci_check_parser, handle_ci_check
 from opencontext_cli.commands.config_cmd import add_config_parser, handle_config
 from opencontext_cli.commands.contract_cmd import add_contract_commands, handle_contract
+from opencontext_cli.commands.demo_cmd import add_demo_parser, handle_demo
 from opencontext_cli.commands.explain_cmd import add_explain_parser, handle_explain
 from opencontext_cli.commands.extension_cmd import add_extension_parser, handle_extension
 from opencontext_cli.commands.git_cmd import add_git_parser, handle_git
@@ -650,6 +651,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_persona_parser(subparsers)
     add_stack_parser(subparsers)
     add_explain_parser(subparsers)
+    add_demo_parser(subparsers)
     add_privacy_parser(subparsers)
     add_sync_parser(subparsers)
     add_verify_parser(subparsers)
@@ -1294,6 +1296,8 @@ def _dispatch(args: argparse.Namespace) -> None:
         _verified_context(runtime, args)
     elif command == "explain":
         sys.exit(handle_explain(runtime, args))
+    elif command == "demo":
+        sys.exit(handle_demo(runtime, args))
     elif command == "workflows":
         _workflows(args.workflows_command, getattr(args, "name", None))
     elif command == "trace":
@@ -3179,49 +3183,17 @@ def _pack(
     try:
         import time
 
-        from opencontext_core.evaluation.telemetry import TelemetryEvent, record_event
+        from opencontext_core.evaluation.telemetry import (
+            TelemetryEvent,
+            estimate_naive_tokens,
+            record_event,
+        )
 
         # Estimate the naive baseline from the project being packed, not the cwd
         # (otherwise --root would measure the wrong tree and overstate the win).
         naive_root = Path(root)
         naive_root = naive_root if naive_root.exists() else Path.cwd()
-        naive_chars = 0
-        text_exts = {
-            ".py",
-            ".ts",
-            ".js",
-            ".md",
-            ".yaml",
-            ".yml",
-            ".toml",
-            ".json",
-            ".txt",
-            ".go",
-            ".rs",
-            ".rb",
-        }
-        _skip = {
-            ".git",
-            "__pycache__",
-            "build",
-            ".storage",
-            ".venv",
-            "venv",
-            "node_modules",
-            "dist",
-            "tmp",
-            ".opencontext",
-        }
-        for p in naive_root.rglob("*"):
-            if not p.is_file() or p.suffix not in text_exts:
-                continue
-            if any(part in _skip or part.endswith(".egg-info") for part in p.parts):
-                continue
-            try:
-                naive_chars += p.stat().st_size
-            except OSError:
-                pass
-        naive_tokens = max(naive_chars // 4, 1)
+        naive_tokens = estimate_naive_tokens(naive_root)
         optimized_tokens = pack.used_tokens or 1
         reduction_pct = round(max(0.0, 1.0 - optimized_tokens / naive_tokens) * 100, 1)
         # Show the win on every pack. stderr keeps stdout clean for --copy / JSON / pipes.
