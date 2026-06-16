@@ -40,7 +40,15 @@ class MemoryMaintenanceReport:
     keys_scanned: int
     keys_consolidated: int
     records_pruned: int
+    reviews_due: int = 0
 
+
+# High-stakes memory kinds whose beliefs drift silently and so earn a periodic
+# re-confirmation (see kind_classifier). Low-stakes kinds (fact/summary) self-
+# correct and are intentionally excluded — reviewing them would be noise.
+REVIEW_KINDS = {"decision", "constraint"}
+# A high-stakes memory not re-confirmed within this window is "due for review".
+REVIEW_INTERVAL_DAYS = 30
 
 # Records below this confidence are eligible for background distillation.
 _CONSOLIDATION_CONFIDENCE_CEILING = 0.6
@@ -410,7 +418,20 @@ class LocalMemoryStore:
             keys_scanned=len(keys),
             keys_consolidated=consolidated,
             records_pruned=pruned,
+            reviews_due=len(self.review_due()),
         )
+
+    def review_due(self) -> list[MemoryRecord]:
+        """High-stakes memories overdue for re-confirmation (proactive trust)."""
+        return self._backend.review_due(REVIEW_KINDS, REVIEW_INTERVAL_DAYS)
+
+    def mark_reviewed(self, record_id: str) -> bool:
+        """Confirm a memory is still valid: reset its review clock + reinforce."""
+        return self._backend.mark_reviewed(record_id)
+
+    def get(self, record_id: str) -> MemoryRecord | None:
+        """Fetch a single record by id, or None."""
+        return self._backend.get(record_id)
 
     def record_episode(
         self,

@@ -918,6 +918,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "maintain",
         help="Sweep all keys: consolidate noisy clusters, then decay stale records.",
     )
+    memory_review = memory_sub.add_parser(
+        "review",
+        help="List high-stakes memories due for re-confirmation; confirm or correct them.",
+    )
+    memory_review.add_argument(
+        "--confirm", metavar="ID", help="Mark a memory as still valid (resets its review clock)."
+    )
+    memory_review.add_argument(
+        "--supersede", metavar="ID", help="Replace a stale memory with a correction."
+    )
+    memory_review.add_argument(
+        "--content", help="The corrected memory content (required with --supersede)."
+    )
     memory_sub.add_parser("facts")
     memory_timeline = memory_sub.add_parser("timeline")
     memory_timeline.add_argument("query")
@@ -3530,6 +3543,60 @@ def _memory(args: argparse.Namespace) -> None:
             f"Memory maintenance: scanned {m.keys_scanned} keys, "
             f"consolidated {m.keys_consolidated}, pruned {m.records_pruned} stale records."
         )
+        if m.reviews_due:
+            print(
+                f"  {m.reviews_due} high-stakes memories due for review "
+                f"— run 'opencontext memory review'."
+            )
+        return
+    if command == "review":
+        import uuid
+        from datetime import UTC, datetime
+
+        from opencontext_core.memory.graph import LocalMemoryStore
+
+        db_path = Path(".storage/opencontext/memory.db")
+        if not db_path.exists():
+            print(f"No memory store at {db_path} yet — nothing to review.")
+            return
+        store = LocalMemoryStore(db_path)
+        if args.confirm:
+            ok = store.mark_reviewed(args.confirm)
+            print(f"Confirmed: {args.confirm}" if ok else f"Not found: {args.confirm}")
+            return
+        if args.supersede:
+            if not args.content:
+                print("--supersede requires --content with the corrected memory.")
+                return
+            old = store.get(args.supersede)
+            if old is None:
+                print(f"Not found: {args.supersede}")
+                return
+            now = datetime.now(UTC)
+            replacement = old.model_copy(
+                update={
+                    "id": f"review-{uuid.uuid4().hex[:12]}",
+                    "content": args.content,
+                    "confidence": 1.0,
+                    "created_at": now,
+                    "updated_at": now,
+                    "valid_from": now,
+                    "invalid_at": None,
+                    "superseded_by": None,
+                }
+            )
+            new_id = store.supersede(args.supersede, replacement)
+            print(f"Superseded {args.supersede} -> {new_id}")
+            return
+        due = store.review_due()
+        if not due:
+            print("No memories due for review.")
+            return
+        print(f"{len(due)} memories due for review:")
+        for rec in due:
+            kind = next((t.split(":", 1)[1] for t in rec.tags if t.startswith("kind:")), "?")
+            print(f"  {rec.id} [{kind}] {rec.content[:80]}")
+        print("Confirm with 'memory review --confirm <id>' or correct with --supersede <id>.")
         return
     if command == "facts":
         print(

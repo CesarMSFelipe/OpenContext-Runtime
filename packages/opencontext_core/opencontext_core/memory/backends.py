@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from opencontext_core.models.agent_memory import DecayPolicy, MemoryLayer, MemoryRecord
@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS memory_records (
     invalid_at TEXT,
     superseded_by TEXT,
     access_count INTEGER NOT NULL DEFAULT 0,
-    last_accessed_at TEXT
+    last_accessed_at TEXT,
+    last_reviewed_at TEXT
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts
     USING fts5(id UNINDEXED, layer, key, content, tags,
@@ -118,7 +119,13 @@ class SQLiteMemoryBackend:
     def _migrate(conn: sqlite3.Connection) -> None:
         """Add columns to databases created before they existed."""
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(memory_records)")}
-        for column in ("valid_from", "invalid_at", "superseded_by", "last_accessed_at"):
+        for column in (
+            "valid_from",
+            "invalid_at",
+            "superseded_by",
+            "last_accessed_at",
+            "last_reviewed_at",
+        ):
             if column not in existing:
                 conn.execute(f"ALTER TABLE memory_records ADD COLUMN {column} TEXT")
         if "access_count" not in existing:
@@ -223,6 +230,50 @@ class SQLiteMemoryBackend:
                 "WHERE invalid_at IS NULL ORDER BY key"
             ).fetchall()
         return [row["key"] for row in rows]
+
+    def get(self, record_id: str) -> MemoryRecord | None:
+        """Fetch a single record by id, or None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM memory_records WHERE id = ?", (record_id,)
+            ).fetchone()
+        return _row_to_record(row) if row is not None else None
+
+    def mark_reviewed(self, record_id: str) -> bool:
+        """Record that a memory was re-confirmed: reset the review clock and bump
+        confidence (a review is positive evidence). Returns False if not found.
+        """
+        now = datetime.now(tz=UTC)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT confidence FROM memory_records WHERE id = ?", (record_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            conn.execute(
+                "UPDATE memory_records SET last_reviewed_at = ?, confidence = ?, "
+                "updated_at = ? WHERE id = ?",
+                (now.isoformat(), min(1.0, row["confidence"] + 0.1), now.isoformat(), record_id),
+            )
+        return True
+
+    def review_due(self, kinds: set[str], older_than_days: int) -> list[MemoryRecord]:
+        """Active records of the given kinds not confirmed within the window.
+
+        "Due" = still valid, of a high-stakes kind (a ``kind:<x>`` tag), and last
+        reviewed (or, if never, created) more than ``older_than_days`` ago. The age
+        cut runs in SQL; the kind filter runs in Python because tags are JSON.
+        """
+        cutoff = (datetime.now(tz=UTC) - timedelta(days=older_than_days)).isoformat()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memory_records WHERE invalid_at IS NULL "
+                "AND COALESCE(last_reviewed_at, created_at) < ? "
+                "ORDER BY COALESCE(last_reviewed_at, created_at)",
+                (cutoff,),
+            ).fetchall()
+        wanted = {f"kind:{k}" for k in kinds}
+        return [rec for rec in (_row_to_record(r) for r in rows) if wanted & set(rec.tags)]
 
     def get_by_key(self, key: str, layer: MemoryLayer | None = None) -> list[MemoryRecord]:
         """Fetch records by exact key."""
