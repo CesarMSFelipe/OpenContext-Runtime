@@ -14,6 +14,7 @@ import asyncio
 import json
 import sqlite3
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -31,6 +32,15 @@ from opencontext_core.models.evidence import EvidenceRef
 
 if TYPE_CHECKING:
     from opencontext_core.embeddings.protocols import EmbeddingGenerator, VectorStore
+
+@dataclass(frozen=True)
+class MemoryMaintenanceReport:
+    """Outcome of a maintenance sweep (consolidate every key, then decay)."""
+
+    keys_scanned: int
+    keys_consolidated: int
+    records_pruned: int
+
 
 # Records below this confidence are eligible for background distillation.
 _CONSOLIDATION_CONFIDENCE_CEILING = 0.6
@@ -383,6 +393,24 @@ class LocalMemoryStore:
         for rec in noisy:
             self._backend.mark_superseded(rec.id, superseded_by=summary.id, invalid_at=now)
         return summary.id
+
+    def maintain(self) -> MemoryMaintenanceReport:
+        """Off-hot-path sweep: consolidate every key's noisy cluster, then decay.
+
+        The write path stores records cheaply and never blocks on distillation,
+        so without a periodic sweep the consolidation machinery never runs and
+        near-duplicate low-confidence records accrete. Run this from
+        `opencontext memory maintain` (or a scheduled task). Deterministic and
+        idempotent: a second run with no new records consolidates nothing.
+        """
+        keys = self._backend.distinct_keys()
+        consolidated = sum(1 for key in keys if self.consolidate(key=key) is not None)
+        pruned = self.decay()
+        return MemoryMaintenanceReport(
+            keys_scanned=len(keys),
+            keys_consolidated=consolidated,
+            records_pruned=pruned,
+        )
 
     def record_episode(
         self,

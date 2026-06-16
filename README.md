@@ -648,6 +648,7 @@ opencontext security scan .
 # Memory
 opencontext memory search --query "auth failures"
 opencontext memory harvest
+opencontext memory maintain                      # Consolidate noisy clusters + decay stale records (sweep all keys)
 opencontext memory gc --dry-run
 
 # Config

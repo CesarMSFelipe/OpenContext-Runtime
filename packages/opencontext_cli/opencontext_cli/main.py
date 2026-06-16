@@ -25,7 +25,6 @@ from opencontext_cli.commands.kg_cmd import add_kg_parser, handle_kg
 from opencontext_cli.commands.loop_cmd import add_loop_commands, handle_loop
 from opencontext_cli.commands.mutation_cmd import add_mutation_commands, handle_mutation
 from opencontext_cli.commands.persona_cmd import add_persona_parser, handle_persona
-from opencontext_cli.commands.stack_cmd import add_stack_parser, handle_stack
 from opencontext_cli.commands.plugin_cmd import add_plugin_parser, handle_plugin
 from opencontext_cli.commands.privacy_cmd import add_privacy_parser, handle_privacy
 from opencontext_cli.commands.profile_cmd import add_profile_parser, handle_profile
@@ -33,6 +32,7 @@ from opencontext_cli.commands.review_cmd import add_review_parser, handle_review
 from opencontext_cli.commands.routes_cmd import add_routes_parser, handle_routes
 from opencontext_cli.commands.setup_cmd import add_setup_parser, handle_setup
 from opencontext_cli.commands.skill_cmd import add_skill_parser, handle_skill
+from opencontext_cli.commands.stack_cmd import add_stack_parser, handle_stack
 from opencontext_cli.commands.sync_cmd import add_sync_parser, handle_sync
 from opencontext_cli.commands.telemetry_cmd import add_telemetry_parser, handle_telemetry
 from opencontext_cli.commands.uninstall_cmd import add_uninstall_parser, handle_uninstall
@@ -914,6 +914,10 @@ def _build_parser() -> argparse.ArgumentParser:
     memory_demote.add_argument("--to", default="archive")
     memory_sub.add_parser("prune")
     memory_sub.add_parser("gc")
+    memory_sub.add_parser(
+        "maintain",
+        help="Sweep all keys: consolidate noisy clusters, then decay stale records.",
+    )
     memory_sub.add_parser("facts")
     memory_timeline = memory_sub.add_parser("timeline")
     memory_timeline.add_argument("query")
@@ -3510,6 +3514,20 @@ def _memory(args: argparse.Namespace) -> None:
         gc = MemoryGarbageCollector(repo)
         report = gc.run()
         print(f"Garbage collected {len(report.pruned_ids)} items.")
+        return
+    if command == "maintain":
+        from opencontext_core.memory.graph import LocalMemoryStore
+
+        db_path = Path(".storage/opencontext/memory.db")
+        if not db_path.exists():
+            print(f"No memory store at {db_path} yet — nothing to maintain.")
+            return
+        store = LocalMemoryStore(db_path)
+        m = store.maintain()
+        print(
+            f"Memory maintenance: scanned {m.keys_scanned} keys, "
+            f"consolidated {m.keys_consolidated}, pruned {m.records_pruned} stale records."
+        )
         return
     if command == "facts":
         print(

@@ -211,6 +211,19 @@ class SQLiteMemoryBackend:
                 )
         return [_row_to_record(row) for row in rows]
 
+    def distinct_keys(self) -> list[str]:
+        """Distinct keys with at least one active (not-yet-superseded) record.
+
+        Used by the maintenance sweep to consolidate each key's noisy cluster
+        without loading every record. Sorted for deterministic iteration.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT key FROM memory_records "
+                "WHERE invalid_at IS NULL ORDER BY key"
+            ).fetchall()
+        return [row["key"] for row in rows]
+
     def get_by_key(self, key: str, layer: MemoryLayer | None = None) -> list[MemoryRecord]:
         """Fetch records by exact key."""
         with self._connect() as conn:
