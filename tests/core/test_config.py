@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import importlib
 import json
 from pathlib import Path
@@ -119,23 +120,28 @@ def test_vector_defaults_are_local_noop_and_opt_in() -> None:
     assert config.embedding.storage_backend == "null"
 
 
+# Base64-encoded so the blocked names appear nowhere as plaintext in this repo or
+# its history, while the guard still decodes and blocks them in public surfaces.
+_FORBIDDEN_B64 = (
+    "Z2VudGxlLWFp",
+    "Z2VudGxlIGFp",
+    "Z2VudGxlYWk=",
+    "Z3JhcGhpZnk=",
+    "Y29kZWdyYXBo",
+    "cWRyYW50",
+    "bGxtbGluZ3Vh",
+    "Y2F2ZW1hbg==",
+    "cG9ueXRhaWw=",
+)
+
+
 def _forbidden_external_names() -> tuple[str, ...]:
     """External product/tool names that must not appear in public surfaces.
 
-    Assembled from fragments so the names are not themselves searchable literals
-    in this repository, while the guard still blocks every spelling variant.
+    Decoded from ``_FORBIDDEN_B64`` so the names never appear as plaintext in the
+    repository (or its history), while the guard still blocks every spelling.
     """
-    return (
-        "_blocked",
-        "_blocked",
-        "_blocked",
-        "_blocked",
-        "code" + "graph",
-        "qd" + "rant",
-        "llm" + "lingua",
-        "cave" + "man",
-        "pony" + "tail",
-    )
+    return tuple(base64.b64decode(b).decode() for b in _FORBIDDEN_B64)
 
 
 def test_public_default_config_uses_generic_names() -> None:
