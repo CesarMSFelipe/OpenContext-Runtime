@@ -40,7 +40,55 @@ class ComponentDoctor:
         checks.extend(self.check_skill_registry())
         checks.extend(self.check_memory_system())
         checks.extend(self.check_provider_adapters())
+        checks.extend(self.check_binary_path())
         return checks
+
+    def check_binary_path(self) -> list[ComponentCheck]:
+        """Detect a shadowed ``opencontext`` binary (multiple copies on PATH).
+
+        When two installs (e.g. pip and pipx) both put ``opencontext`` on PATH,
+        the first one wins and commands silently run an unexpected version. Report
+        which copy resolves first and the others it shadows.
+        """
+        import os
+
+        found: list[str] = []
+        seen: set[str] = set()
+        for directory in os.environ.get("PATH", "").split(os.pathsep):
+            if not directory:
+                continue
+            candidate = Path(directory) / "opencontext"
+            try:
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    resolved = str(candidate.resolve())
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        found.append(str(candidate))
+            except OSError:
+                continue
+
+        if len(found) <= 1:
+            details = (
+                f"opencontext resolves to {found[0]}"
+                if found
+                else "opencontext is not on PATH (running as a module)"
+            )
+            return [
+                ComponentCheck(name="binary_path", ok=True, status="healthy", details=details)
+            ]
+        return [
+            ComponentCheck(
+                name="binary_path",
+                ok=False,
+                status="warning",
+                details=(
+                    f"{len(found)} opencontext binaries on PATH; '{found[0]}' shadows the rest: "
+                    + ", ".join(found[1:])
+                ),
+                recommendation="Remove the older copies so one version resolves "
+                "(e.g. 'pipx reinstall opencontext-cli').",
+            )
+        ]
 
     def check_knowledge_graph(self) -> list[ComponentCheck]:
         """Check knowledge graph health."""
