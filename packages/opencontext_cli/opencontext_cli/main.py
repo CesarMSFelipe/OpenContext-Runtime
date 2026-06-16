@@ -25,6 +25,7 @@ from opencontext_cli.commands.kg_cmd import add_kg_parser, handle_kg
 from opencontext_cli.commands.loop_cmd import add_loop_commands, handle_loop
 from opencontext_cli.commands.mutation_cmd import add_mutation_commands, handle_mutation
 from opencontext_cli.commands.persona_cmd import add_persona_parser, handle_persona
+from opencontext_cli.commands.stack_cmd import add_stack_parser, handle_stack
 from opencontext_cli.commands.plugin_cmd import add_plugin_parser, handle_plugin
 from opencontext_cli.commands.privacy_cmd import add_privacy_parser, handle_privacy
 from opencontext_cli.commands.profile_cmd import add_profile_parser, handle_profile
@@ -646,6 +647,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_uninstall_parser(subparsers)
     add_profile_parser(subparsers)
     add_persona_parser(subparsers)
+    add_stack_parser(subparsers)
     add_privacy_parser(subparsers)
     add_sync_parser(subparsers)
     add_verify_parser(subparsers)
@@ -1206,6 +1208,8 @@ def _dispatch(args: argparse.Namespace) -> None:
         sys.exit(handle_profile(args))
     if command == "persona":
         sys.exit(handle_persona(args))
+    if command == "stack":
+        sys.exit(handle_stack(args))
     if command == "privacy":
         handle_privacy(args)
         return

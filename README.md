@@ -604,6 +604,10 @@ opencontext uninstall --all                      # Cleanly remove OpenContext fr
 opencontext doctor                               # Health check
 opencontext update && opencontext upgrade
 
+# Stack standards (prepare every agent for the detected stack)
+opencontext stack                                # Print formatter/linters/tests/standards for the detected stack
+opencontext stack --write                        # Inject them into AGENTS.md as a managed block (idempotent)
+
 # Agentic Loop
 opencontext loop --task "..." --flow full        # Interactive 8-phase SDD workflow
 opencontext loop --task "..." --flow quick       # explore → apply → verify
