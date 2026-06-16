@@ -313,7 +313,32 @@ def _run_configurator(args: Any) -> None:
     if unknown:
         report["skipped"] = unknown
     _maybe_write_stack_standards(root, scope, report)
+    _maybe_write_gitignore(root, scope)
     _report_configured(report, unknown, json_output)
+
+
+def _maybe_write_gitignore(root: Any, scope: str) -> None:
+    """Keep the local index/memory out of git so teammates don't clone a stale
+    binary graph — while the shareable config (opencontext.yaml, AGENTS.md) stays
+    committed. Managed block, project scope only, best-effort.
+    """
+    if scope != "local":
+        return
+    try:
+        from pathlib import Path
+
+        from opencontext_core.configurator.filemerge import (
+            inject_managed_lines,
+            write_text_atomic,
+        )
+
+        path = Path(root) / ".gitignore"
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        merged = inject_managed_lines(existing, "storage", [".storage/", ".opencontext/"])
+        if write_text_atomic(path, merged):
+            console.print("[green]Updated[/] .gitignore (keeps the local index out of git).")
+    except Exception:
+        return
 
 
 def _maybe_write_stack_standards(root: Any, scope: str, report: dict[str, Any]) -> None:

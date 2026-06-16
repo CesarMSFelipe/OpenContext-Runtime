@@ -18,6 +18,38 @@ from rich.prompt import Confirm
 
 from opencontext_core.configurator import KNOWN_AGENTS, Configurator
 
+
+def _strip_project_managed_blocks(root: object, scope: str) -> None:
+    """Remove project-level managed blocks that setup added outside any single
+    agent: the stack-standards block in AGENTS.md and the storage block in
+    .gitignore. Preserves all user content. Best-effort, local scope only.
+    """
+    if scope != "local":
+        return
+    from pathlib import Path
+
+    from opencontext_core.configurator.filemerge import (
+        inject_managed_lines,
+        inject_managed_section,
+        write_text_atomic,
+    )
+
+    base = Path(str(root))
+    agents = base / "AGENTS.md"
+    if agents.exists():
+        try:
+            text = agents.read_text(encoding="utf-8")
+            write_text_atomic(agents, inject_managed_section(text, "stack", ""))
+        except Exception:
+            pass
+    gitignore = base / ".gitignore"
+    if gitignore.exists():
+        try:
+            text = gitignore.read_text(encoding="utf-8")
+            write_text_atomic(gitignore, inject_managed_lines(text, "storage", []))
+        except Exception:
+            pass
+
 console = Console()
 
 
@@ -106,6 +138,7 @@ def handle_uninstall(args: Any) -> None:
     report = configurator.deconfigure(valid, scope=scope)
     if unknown:
         report["skipped"] = unknown
+    _strip_project_managed_blocks(getattr(args, "root", "."), scope)
     if json_output:
         print(json.dumps(report, indent=2))
         return
