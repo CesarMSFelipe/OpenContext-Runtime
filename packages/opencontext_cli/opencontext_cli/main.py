@@ -904,6 +904,16 @@ def _build_parser() -> argparse.ArgumentParser:
     memory_supersede = memory_sub.add_parser("supersede")
     memory_supersede.add_argument("fact_id")
     memory_supersede.add_argument("--by", required=True)
+    memory_export = memory_sub.add_parser(
+        "export", help="Export memory to a shareable JSON file (commit it for the team)."
+    )
+    memory_export.add_argument(
+        "--output", default=".opencontext/memory-export.json", help="Output path."
+    )
+    memory_import = memory_sub.add_parser(
+        "import", help="Import memory from an exported JSON file (skips existing ids)."
+    )
+    memory_import.add_argument("path", help="Path to an exported memory JSON file.")
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Show project status.")
@@ -3448,7 +3458,59 @@ def _memory(args: argparse.Namespace) -> None:
     if command == "supersede":
         print(f"Superseded fact {args.fact_id} by {args.by}: scaffolded")
         return
+    if command == "export":
+        _memory_export(repo, args.output)
+        return
+    if command == "import":
+        _memory_import(repo, args.path)
+        return
     _unreachable(command)
+
+
+def _memory_export(repo: Any, output: str) -> None:
+    """Write all memory items to a shareable JSON file (commit it for the team)."""
+    items = repo.list_items(include_archive=True)
+    payload = {
+        "version": 1,
+        "count": len(items),
+        "items": [item.model_dump(mode="json") for item in items],
+    }
+    out = Path(output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"Exported {len(items)} memory item(s) to {out}")
+
+
+def _memory_import(repo: Any, path: str) -> None:
+    """Import memory items from an exported file, skipping ids already present."""
+    from datetime import datetime
+
+    source = Path(path)
+    if not source.exists():
+        print(f"Error: file not found: {source}")
+        raise SystemExit(1)
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    existing = {item.id for item in repo.list_items(include_archive=True)}
+    imported = 0
+    skipped = 0
+    for entry in items:
+        mem_id = entry.get("id")
+        if not mem_id or mem_id in existing:
+            skipped += 1
+            continue
+        valid_until = entry.get("valid_until")
+        repo.store(
+            content=entry.get("content", ""),
+            kind=entry.get("kind", "fact"),
+            source=entry.get("source", "import"),
+            pin=bool(entry.get("pin", False)),
+            memory_id=mem_id,
+            valid_until=datetime.fromisoformat(valid_until) if valid_until else None,
+            metadata=entry.get("metadata") or {},
+        )
+        imported += 1
+    print(f"Imported {imported} item(s), skipped {skipped} (already present or invalid).")
 
 
 def _render_data(data: Any, output_format: str = "json") -> str:
