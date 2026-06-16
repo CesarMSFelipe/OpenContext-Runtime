@@ -181,6 +181,16 @@ class LocalMemoryStore:
         3. For a supersession, mark the prior record invalid-as-of now and link
            the records bi-temporally so history is preserved, not deleted.
         """
+        # Advisory intent tag (decision/error/constraint/...), derived from the
+        # content so memory is filterable by meaning. Never overrides a caller's
+        # own kind tag, and never affects layer/consolidation.
+        if not any(t.startswith("kind:") for t in memory.tags):
+            from opencontext_core.memory.kind_classifier import classify_kind
+
+            memory = memory.model_copy(
+                update={"tags": [*memory.tags, f"kind:{classify_kind(memory.content).value}"]}
+            )
+
         existing = self._backend.get_by_key(memory.key)
 
         contradicted_ids = self._detector.detect(memory, existing)
