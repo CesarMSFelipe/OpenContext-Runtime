@@ -312,7 +312,29 @@ def _run_configurator(args: Any) -> None:
     report = configurator.configure(valid, scope=scope)
     if unknown:
         report["skipped"] = unknown
+    _maybe_write_stack_standards(root, scope, report)
     _report_configured(report, unknown, json_output)
+
+
+def _maybe_write_stack_standards(root: Any, scope: str, report: dict[str, Any]) -> None:
+    """Prepare configured agents for the detected stack by writing AGENTS.md.
+
+    Best-effort and project-scoped: stack standards are project-specific, so only
+    write them for a local (in-project) configuration. Never fail setup over it.
+    """
+    if scope != "local":
+        return
+    try:
+        from pathlib import Path
+
+        from opencontext_cli.commands.stack_cmd import write_stack_standards
+
+        changed, chosen = write_stack_standards(Path(root))
+    except Exception:
+        return
+    if changed and chosen:
+        report["stack_standards"] = chosen
+        console.print(f"[green]Prepared AGENTS.md[/] with standards for: {', '.join(chosen)}")
 
 
 def _confirm_configure(agents: list[str], scope: str, *, yes: bool, json_output: bool) -> bool:

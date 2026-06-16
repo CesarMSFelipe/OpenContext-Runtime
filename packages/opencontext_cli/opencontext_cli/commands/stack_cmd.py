@@ -121,6 +121,24 @@ def _select_stacks(
     return chosen, dropped
 
 
+def write_stack_standards(root: Path) -> tuple[bool, list[str]]:
+    """Inject detected stack standards into ``root/AGENTS.md`` (managed block).
+
+    Returns ``(changed, chosen_profiles)``. Reusable by both ``stack --write``
+    and the setup flow. Raises ``ValueError`` if AGENTS.md is a symlink (the
+    atomic writer refuses to follow it).
+    """
+    from opencontext_profiles.standards import KNOWN_PROFILES, render_stack_standards
+
+    chosen, _ = _select_stacks(_detect_profiles(root), KNOWN_PROFILES)
+    standards = render_stack_standards(chosen)
+    agents_file = root / "AGENTS.md"
+    existing = agents_file.read_text(encoding="utf-8") if agents_file.exists() else ""
+    merged = inject_managed_section(existing, _SECTION_ID, standards)
+    changed = write_text_atomic(agents_file, merged)
+    return changed, chosen
+
+
 def handle_stack(args: Any) -> int:
     """Dispatch the ``stack`` command. Returns a process exit code."""
     root = Path(args.path).resolve()
@@ -137,10 +155,8 @@ def handle_stack(args: Any) -> int:
         console.print("[red]Stack standards require the opencontext-profiles package.[/]")
         return 1
 
-    chosen, dropped = _select_stacks(_detect_profiles(root), KNOWN_PROFILES)
-    standards = render_stack_standards(chosen)
-
     if not args.write:
+        chosen, dropped = _select_stacks(_detect_profiles(root), KNOWN_PROFILES)
         if chosen:
             console.print(f"[dim]Detected stack:[/] {', '.join(chosen)}")
         else:
@@ -148,20 +164,18 @@ def handle_stack(args: Any) -> int:
         if dropped:
             console.print(f"[dim]Lower-confidence, not included:[/] {', '.join(dropped)}")
         console.print()
-        console.print(standards)
+        console.print(render_stack_standards(chosen))
         console.print("[dim]Run `opencontext stack --write` to add these to AGENTS.md.[/]")
         return 0
 
-    agents_file = root / "AGENTS.md"
-    existing = agents_file.read_text(encoding="utf-8") if agents_file.exists() else ""
-    merged = inject_managed_section(existing, _SECTION_ID, standards)
     try:
-        changed = write_text_atomic(agents_file, merged)
+        changed, chosen = write_stack_standards(root)
     except ValueError as exc:
         console.print(f"[red]Refusing to write:[/] {exc}")
         return 1
 
     detected = ", ".join(chosen) if chosen else "generic"
+    agents_file = root / "AGENTS.md"
     if changed:
         console.print(f"[green]Updated[/] {agents_file} with stack standards ({detected}).")
     else:
