@@ -95,8 +95,15 @@ class ComponentDoctor:
 
         checks = []
 
-        # Check database
+        # Check database. Mirror GraphDatabase's legacy-name shim: when the
+        # canonical context_graph.db is absent, the runtime transparently uses an
+        # older codegraph.db, so the doctor must too — otherwise it reports a
+        # healthy legacy-named graph as "missing".
         db_path = Path(".storage/opencontext/context_graph.db")
+        if not db_path.exists():
+            legacy_path = db_path.with_name("codegraph.db")
+            if legacy_path.exists():
+                db_path = legacy_path
         if db_path.exists():
             from opencontext_core.indexing.graph_db import GraphDatabase
 
