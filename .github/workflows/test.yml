@@ -13,12 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Linux only: it mirrors the dev environment, so `make ci` reproduces this
-        # job byte-for-byte locally. A Windows runner can't be reproduced on a
-        # Linux dev box (the "same conditions" goal), so it's intentionally out of
-        # the gating matrix — re-add it only with a way to debug it locally.
-        os: [ubuntu-latest]
+        # Linux mirrors the dev environment, so `make ci` reproduces it locally.
+        # Windows is kept as a real cross-platform signal for Windows users; it is
+        # continue-on-error for now (can't be reproduced on a Linux dev box) — flip
+        # that off to make it a hard gate once it is confirmed green.
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.12"]
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

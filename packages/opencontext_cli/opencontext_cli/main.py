@@ -164,8 +164,26 @@ def _get_version() -> str:
 __version__ = _get_version()
 
 
+def _force_utf8_output() -> None:
+    """Make stdout/stderr UTF-8 so the CLI's box-drawing/arrow glyphs don't crash.
+
+    On Windows a piped stdout (e.g. CI, or a shell redirect) defaults to the
+    legacy code page (cp1252), so printing characters like ↓ · — ✓ raises
+    UnicodeEncodeError. Reconfiguring to UTF-8 fixes the whole class in one place;
+    it's a no-op where stdout is already UTF-8 or isn't reconfigurable.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8")
+            except (ValueError, OSError):
+                pass
+
+
 def main() -> None:
     """CLI entry point."""
+    _force_utf8_output()
     parser = _build_parser()
     _enable_shell_completion(parser)
     args = parser.parse_args()
