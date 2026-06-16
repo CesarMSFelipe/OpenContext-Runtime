@@ -135,6 +135,37 @@ def ignore_filename(agent_id: str) -> str | None:
     return _IGNORE_FILENAME.get(agent_id)
 
 
+# Reusable slash-commands written as native command files so OpenContext's core
+# actions are one keystroke in the agent. (name, description, prompt body);
+# ``$ARGUMENTS`` is the agent's task-text placeholder. These are whole files we
+# own (prefixed ``oc-``), so uninstall simply deletes them.
+OPENCONTEXT_COMMANDS: tuple[tuple[str, str, str], ...] = (
+    (
+        "oc-context",
+        "Build verified, minimal context for a task",
+        "Use the `opencontext_context` MCP tool to build verified, minimal context, "
+        "then answer using only it.\n\nTask: $ARGUMENTS",
+    ),
+    (
+        "oc-impact",
+        "Assess blast radius before changing a symbol",
+        "Use the `opencontext_impact` MCP tool to report what changing this symbol "
+        "affects (callers, files, tests, risk) before editing.\n\nSymbol: $ARGUMENTS",
+    ),
+)
+
+# Agents with a project-scoped Markdown command directory (relative to project root).
+_COMMAND_DIR: dict[str, str] = {
+    "claude-code": ".claude/commands",
+}
+
+
+def command_dir(agent_id: str) -> str | None:
+    """Project-relative slash-command directory for an agent, or None."""
+
+    return _COMMAND_DIR.get(agent_id)
+
+
 # Agents whose instructions root is the project tree rather than the agent's
 # home directory (e.g. AGENTS.md / CLAUDE.md live next to the code).
 PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(

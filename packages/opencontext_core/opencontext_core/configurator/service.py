@@ -216,6 +216,14 @@ class Configurator:
                     else:
                         path.unlink()  # file held only our block
                     changed.append(str(path))
+        cmd_rel = constants.command_dir(adapter.agent_id)
+        if cmd_rel:
+            cmd_dir = self.project_root / cmd_rel
+            for name, _desc, _body in constants.OPENCONTEXT_COMMANDS:
+                path = cmd_dir / f"{name}.md"
+                if path.exists():
+                    path.unlink()  # whole file we created
+                    changed.append(str(path))
         return changed
 
     def _plan(self, adapter: Adapter) -> list[PlanEntry]:
@@ -273,6 +281,18 @@ class Configurator:
             entries.append(self._plan_opencode_profile(adapter))
         if constants.ignore_filename(adapter.agent_id):
             entries.append(self._plan_ignore(adapter))
+        if constants.command_dir(adapter.agent_id):
+            entries.extend(self._plan_commands(adapter))
+        return entries
+
+    def _plan_commands(self, adapter: Adapter) -> list[PlanEntry]:
+        """Plan the agent's native slash-command files (whole files we own)."""
+        cmd_dir = self.project_root / str(constants.command_dir(adapter.agent_id))
+        entries: list[PlanEntry] = []
+        for name, description, body in constants.OPENCONTEXT_COMMANDS:
+            path = cmd_dir / f"{name}.md"
+            content = f"---\ndescription: {description}\n---\n\n{body}\n"
+            entries.append((path, _content_if_changed(path, content)))
         return entries
 
     def _plan_ignore(self, adapter: Adapter) -> PlanEntry:
