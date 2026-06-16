@@ -332,9 +332,16 @@ def run_wizard(non_interactive: bool = False, defaults_only: bool = False) -> Us
 
     mark_setup_complete(prefs)
     store.save(prefs)
+    # Mirror runtime-affecting choices into the project config so the wizard
+    # actually changes runtime behavior, not just user-prefs.
+    from opencontext_core.config_sync import sync_runtime_prefs_to_yaml
+
+    applied = sync_runtime_prefs_to_yaml(prefs)
 
     console.print("\nConfiguration saved!")
     console.print(f"Location: {store.CONFIG_FILE}")
+    if applied:
+        console.print(f"Applied to opencontext.yaml: {', '.join(applied)}")
     console.print("\nNext steps:")
     console.print("  1. cd your-project")
     console.print("  2. opencontext install")

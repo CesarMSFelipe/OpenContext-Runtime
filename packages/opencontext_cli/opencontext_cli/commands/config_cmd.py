@@ -189,54 +189,19 @@ def _coerce_value(value: str, target_type: type) -> object:
         return value
 
 
-# Prefs keys that have a runtime effect map to a path in the project's
-# opencontext.yaml (which the runtime actually reads). Setting one of these via
-# `config set` should reach the runtime, not just the user-prefs file.
-_PREFS_TO_YAML: dict[str, str] = {
-    "security_mode": "security.mode",
-    "features.embeddings": "embedding.enabled",
-    "default_provider": "models.default.provider",
-    "default_model": "models.default.model",
-}
-
-
 def _bridge_to_project_yaml(key: str, value: object) -> None:
     """Mirror a runtime-affecting pref into the project's opencontext.yaml.
 
     The runtime reads opencontext.yaml, not user-prefs, so without this a
-    `config set` of e.g. embeddings would never take effect. Patches the mapped
-    path, then validates the result loads — reverting on failure so a bad value
-    can never corrupt the project config.
+    `config set` of e.g. embeddings would never take effect. Validated +
+    revert-on-failure logic lives in core ``config_sync``.
     """
-    yaml_path = _PREFS_TO_YAML.get(key)
-    if yaml_path is None:
+    from opencontext_core.config_sync import RUNTIME_PREF_TO_YAML, sync_pref_to_yaml
+
+    if key not in RUNTIME_PREF_TO_YAML:
         return
-    from opencontext_core.config import find_config, load_config
-
-    config_file = find_config()
-    if config_file is None or not config_file.exists():
-        return
-
-    import yaml
-
-    original = config_file.read_text(encoding="utf-8")
-    try:
-        data = yaml.safe_load(original) or {}
-        cursor = data
-        parts = yaml_path.split(".")
-        for part in parts[:-1]:
-            nxt = cursor.get(part)
-            if not isinstance(nxt, dict):
-                nxt = {}
-                cursor[part] = nxt
-            cursor = nxt
-        cursor[parts[-1]] = value
-        config_file.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-        load_config(config_file)  # validate; raises if the value is invalid
-        print(f"  → applied to {config_file} ({yaml_path})")
-    except Exception as exc:
-        config_file.write_text(original, encoding="utf-8")  # revert, never corrupt
-        print(f"  (not applied to opencontext.yaml: {exc})")
+    if sync_pref_to_yaml(key, value):
+        print(f"  → applied to opencontext.yaml ({RUNTIME_PREF_TO_YAML[key]})")
 
 
 def _config_set(key: str, value: str) -> None:
