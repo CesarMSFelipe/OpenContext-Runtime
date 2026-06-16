@@ -45,6 +45,32 @@ def inject_managed_section(existing: str, section_id: str, content: str) -> str:
     return f"{base}\n\n{block}" if base else block
 
 
+def inject_managed_lines(existing: str, section_id: str, lines: list[str]) -> str:
+    """Insert/replace a ``#``-comment managed block in a line-based file.
+
+    For ignore files (.cursorignore, etc.) which are not Markdown: owns only the
+    block between ``# opencontext:<id>:start/end`` markers, leaving the user's own
+    patterns intact. Empty ``lines`` removes the block (clean uninstall).
+    """
+
+    start = f"# opencontext:{section_id}:start"
+    end = f"# opencontext:{section_id}:end"
+    block = "" if not lines else "\n".join([start, *lines, end]) + "\n"
+
+    s = existing.find(start)
+    e = existing.find(end)
+    if s != -1 and e != -1 and e > s:
+        before = existing[:s].rstrip("\n")
+        after = existing[e + len(end) :].lstrip("\n")
+        parts = [p for p in (before, block.rstrip("\n"), after) if p]
+        return ("\n\n".join(parts) + "\n") if parts else ""
+
+    if not block:
+        return existing
+    base = existing.rstrip("\n")
+    return f"{base}\n\n{block}" if base else block
+
+
 def merge_mcp_servers(
     existing: dict[str, Any], servers: dict[str, Any], *, root_key: str = "mcpServers"
 ) -> dict[str, Any]:

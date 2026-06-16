@@ -20,6 +20,7 @@ from opencontext_core.configurator import constants
 from opencontext_core.configurator.adapter import Adapter, get_adapter, iter_adapters
 from opencontext_core.configurator.backup import BackupStore, plan_actions
 from opencontext_core.configurator.filemerge import (
+    inject_managed_lines,
     inject_managed_section,
     write_text_atomic,
 )
@@ -137,7 +138,11 @@ class Configurator:
 
         adapter = get_adapter(agent_id)
         instructions_path = adapter.instructions_path(self.project_root)
-        touched = [p for p in (adapter.mcp_config_path, instructions_path) if p.exists()]
+        candidates = [adapter.mcp_config_path, instructions_path]
+        ignore_name = constants.ignore_filename(adapter.agent_id)
+        if ignore_name:
+            candidates.append(self.project_root / ignore_name)
+        touched = [p for p in candidates if p.exists()]
 
         if dry_run:
             return {"agent": agent_id, "status": "planned", "plan": plan_actions(touched)}
@@ -199,6 +204,18 @@ class Configurator:
             if path.exists():
                 path.unlink()  # we created this file
                 changed.append(str(path))
+        ignore_name = constants.ignore_filename(adapter.agent_id)
+        if ignore_name:
+            path = self.project_root / ignore_name
+            if path.exists():
+                existing = path.read_text(encoding="utf-8")
+                stripped = inject_managed_lines(existing, "ignore", [])
+                if stripped != existing:
+                    if stripped.strip():
+                        write_text_atomic(path, stripped)
+                    else:
+                        path.unlink()  # file held only our block
+                    changed.append(str(path))
         return changed
 
     def _plan(self, adapter: Adapter) -> list[PlanEntry]:
@@ -254,7 +271,18 @@ class Configurator:
             entries.append(self._plan_claude_permissions(adapter))
         if adapter.agent_id == "opencode":
             entries.append(self._plan_opencode_profile(adapter))
+        if constants.ignore_filename(adapter.agent_id):
+            entries.append(self._plan_ignore(adapter))
         return entries
+
+    def _plan_ignore(self, adapter: Adapter) -> PlanEntry:
+        """Plan the agent's native ignore file: a managed block of secret/build
+        patterns the agent should never read, merged with the user's own."""
+        name = constants.ignore_filename(adapter.agent_id)
+        path = self.project_root / str(name)
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        merged = inject_managed_lines(existing, "ignore", list(constants.DEFAULT_IGNORE_PATTERNS))
+        return path, _content_if_changed(path, merged)
 
     def _plan_claude_permissions(self, adapter: Adapter) -> PlanEntry:
         path = adapter.config_dir / "settings.json"

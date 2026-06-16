@@ -96,6 +96,45 @@ def instructions_filename(agent_id: str) -> str:
     return _INSTRUCTIONS_FILENAME.get(agent_id, "AGENTS.md")
 
 
+# Paths kept out of agent context by default — secrets, build output, vendored
+# deps. One list fans out to each agent's native ignore file so the agent never
+# reads them, reinforcing OpenContext's secret-redaction goal at the source.
+DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "secrets/",
+    "*.secret",
+    "node_modules/",
+    "dist/",
+    "build/",
+    ".venv/",
+    "venv/",
+    "__pycache__/",
+    ".git/",
+    ".storage/",
+    "*.sqlite",
+    "*.db",
+)
+
+# Agents with a native project-root "don't read these paths" file.
+_IGNORE_FILENAME: dict[str, str] = {
+    "cursor": ".cursorignore",
+    "gemini-cli": ".geminiignore",
+    "aider": ".aiderignore",
+    "cline": ".clineignore",
+    "roo": ".rooignore",
+    "windsurf": ".codeiumignore",
+}
+
+
+def ignore_filename(agent_id: str) -> str | None:
+    """Native ignore-file name for an agent, or None if it has none."""
+
+    return _IGNORE_FILENAME.get(agent_id)
+
+
 # Agents whose instructions root is the project tree rather than the agent's
 # home directory (e.g. AGENTS.md / CLAUDE.md live next to the code).
 PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
