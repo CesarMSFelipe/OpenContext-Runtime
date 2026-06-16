@@ -623,6 +623,7 @@ opencontext index .
 opencontext pack . --query "task" --copy
 opencontext pack . --query "task" --format json
 opencontext verified-context --query "task"
+opencontext explain "task"                       # Why each file is (or isn't) in the context — the audit trail
 opencontext contract build --query "task"        # Show ContextContract YAML
 
 # AICX Bytecode

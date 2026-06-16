@@ -18,6 +18,7 @@ from opencontext_cli.commands.bytecode_cmd import add_bytecode_commands, handle_
 from opencontext_cli.commands.ci_check_cmd import add_ci_check_parser, handle_ci_check
 from opencontext_cli.commands.config_cmd import add_config_parser, handle_config
 from opencontext_cli.commands.contract_cmd import add_contract_commands, handle_contract
+from opencontext_cli.commands.explain_cmd import add_explain_parser, handle_explain
 from opencontext_cli.commands.extension_cmd import add_extension_parser, handle_extension
 from opencontext_cli.commands.git_cmd import add_git_parser, handle_git
 from opencontext_cli.commands.hints_cmd import add_hints_parser, handle_hints
@@ -648,6 +649,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_profile_parser(subparsers)
     add_persona_parser(subparsers)
     add_stack_parser(subparsers)
+    add_explain_parser(subparsers)
     add_privacy_parser(subparsers)
     add_sync_parser(subparsers)
     add_verify_parser(subparsers)
@@ -1290,6 +1292,8 @@ def _dispatch(args: argparse.Namespace) -> None:
         )
     elif command == "verified-context":
         _verified_context(runtime, args)
+    elif command == "explain":
+        sys.exit(handle_explain(runtime, args))
     elif command == "workflows":
         _workflows(args.workflows_command, getattr(args, "name", None))
     elif command == "trace":
