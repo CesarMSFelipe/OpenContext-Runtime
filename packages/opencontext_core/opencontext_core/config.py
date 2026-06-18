@@ -36,6 +36,8 @@ DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     "*.log",
     "*.min.js",
     "*.min.css",
+    ".claude/worktrees",
+    ".claude/plugins/cache",
 )
 
 

@@ -2949,6 +2949,27 @@ def _harness(
                 "phases": ["apply", "verify", "archive"],
                 "description": "Apply changes then verify and archive",
             },
+            "full+judgment": {
+                "phases": [
+                    "explore", "propose", "spec", "design", "tasks",
+                    "apply", "verify", "review", "archive", "judgment",
+                ],
+                "description": "Full SDD + adversarial judgment review (BLOCKER/SHOULD_FIX/APPROVED)",
+            },
+            "full+gga": {
+                "phases": [
+                    "explore", "propose", "spec", "design", "tasks",
+                    "apply", "verify", "review", "archive", "gga",
+                ],
+                "description": "Full SDD + Guardian Angel coding standards enforcement",
+            },
+            "full+quality": {
+                "phases": [
+                    "explore", "propose", "spec", "design", "tasks",
+                    "apply", "verify", "review", "archive", "gga", "judgment",
+                ],
+                "description": "Full SDD + GGA rules + adversarial judgment (maximum quality gates)",
+            },
         }
         if json_output:
             print(json.dumps(workflows, indent=2))

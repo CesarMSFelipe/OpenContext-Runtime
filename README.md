@@ -11,9 +11,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/up_to_96%25_token_reduction-benchmarked-00C9A7?style=flat-square" alt="Up to 96% token reduction">
-  <img src="https://img.shields.io/badge/offline--first-no_API_key-00A8E8?style=flat-square&logo=python&logoColor=white" alt="Works offline">
-  <img src="https://img.shields.io/badge/1500%2B_tests-passing-00C9A7?style=flat-square" alt="1500+ tests passing">
-  <img src="https://img.shields.io/badge/13_MCP_tools-Claude_%7C_Cursor_%7C_Copilot-845EC2?style=flat-square" alt="13 MCP tools">
+  <img src="https://img.shields.io/badge/offline--first-no_API_key_for_core-00A8E8?style=flat-square&logo=python&logoColor=white" alt="Works offline">
+  <img src="https://img.shields.io/badge/1600%2B_tests-passing-00C9A7?style=flat-square" alt="1600+ tests passing">
+  <img src="https://img.shields.io/badge/13_MCP_tools-agent_ready-845EC2?style=flat-square" alt="13 MCP tools">
   <img src="https://img.shields.io/badge/license-MIT-gray?style=flat-square" alt="MIT">
 </p>
 
@@ -49,7 +49,7 @@ opencontext demo
 opencontext install   # detects your stack, builds the graph, wires your editor
 ```
 
-The install wizard asks which editor you use and guides you to the first real result — a verified context query in your editor.
+The install wizard asks which editor you use and optionally configures an LLM provider for the agentic features (loop, harness). Context packing, knowledge graph, MCP tools, and benchmarks work with no API key at all.
 
 ---
 
@@ -172,6 +172,8 @@ opencontext bytecode decode <path.aicx>
 
 ## 🤖 Agentic Loop & Harness
 
+> **Requires an LLM provider.** Run `opencontext install` and configure a provider, or set `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Context packing and knowledge graph features work with no key.
+
 ### Loop — high-level interface
 
 Hand a task description to OpenContext. It plans the phases, gates each transition, and retries on failure.
@@ -186,6 +188,9 @@ opencontext loop --task "rename variable in utils" --flow quick
 # No prompts — gates decide
 opencontext loop --task "fix payment bug" --flow autonomous
 
+# With adversarial review + coding standards enforcement
+opencontext loop --task "add rate limiting" --flow quality
+
 # Retry up to 3× if verify fails
 opencontext loop --task "..." --flow full --max-rounds 3
 
@@ -199,10 +204,21 @@ opencontext loop --task "..." --flow full --dry-run
 | `standard` | explore → spec+design → apply → verify | Features, refactors |
 | `full` | All 8 phases | Architecture, security |
 | `autonomous` | All 8, no prompts | CI/CD, automation |
+| `quality` | All 8 + GGA rules + judgment | Maximum quality gates |
+
+### Clarify before you build
+
+Convert a vague idea into a structured brief before SDD starts:
+
+```bash
+opencontext clarify "add OAuth2 login"
+```
+
+Produces a template with objective, non-goals, constraints, acceptance criteria, and testing strategy. Fill it in, then feed it to `loop`.
 
 ### Harness — low-level engine
 
-The harness is what the loop runs under the hood. Each phase has an explicit token budget and a set of gates that must pass before the next phase starts.
+The harness is what the loop runs under the hood. Each phase has an explicit token budget and gates that must pass before the next phase starts.
 
 ```bash
 $ opencontext harness run --workflow sdd --task "add rate limiting to API"
@@ -229,11 +245,51 @@ Harness Run: sdd-c9135ab0112f
 Each run persists its full artifact trail to `.opencontext/runs/<run_id>/` — proposal, decisions, ledger, gates, verify report.
 
 ```bash
-opencontext harness list              # available workflows
+opencontext harness list              # available workflows (sdd, full+quality, full+judgment, full+gga, ...)
 opencontext harness report <run_id>   # inspect past run
 ```
 
-### Built-in agents
+### Quality phases
+
+Two optional phases sit after `verify` in the `quality` track:
+
+| Phase | What it does |
+|-------|-------------|
+| `gga` | Reads `.opencontext/rules.yaml` and validates changed files against project rules (max lines, forbidden patterns, etc.) |
+| `judgment` | Structural adversarial review — checks artifact presence, gate failures, LLM warnings. Returns BLOCKER / SHOULD_FIX / APPROVED |
+
+Create `.opencontext/rules.yaml` to enable GGA enforcement:
+
+```yaml
+max_lines_per_file: 300
+forbidden_patterns:
+  - "TODO: remove before ship"
+  - "print(password"
+```
+
+### Per-phase model configuration
+
+Assign different LLM models per phase to balance cost vs quality:
+
+```yaml
+# opencontext.yaml
+models:
+  default:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+  phases:
+    spec:
+      provider: anthropic
+      model: claude-opus-4-8
+    design:
+      provider: anthropic
+      model: claude-opus-4-8
+    verify:
+      provider: anthropic
+      model: claude-sonnet-4-6
+```
+
+### Built-in agent skills
 
 | Agent | Role |
 |-------|------|
@@ -317,6 +373,33 @@ opencontext memory review           # confirm or correct high-stakes memories
 opencontext memory gc --dry-run     # preview what would be pruned
 ```
 
+When memory is active, `opencontext pack` shows it on output:
+
+```
+↓ 91.3% fewer tokens than reading the whole project (48,221 → 4,192)  memory: 14 items active
+```
+
+---
+
+## 🛠️ Skills & Workflow
+
+### Skill registry
+
+Drop `.skill.md` files anywhere in a `skills/` directory. OpenContext indexes them and injects the right ones into the harness based on file extensions and task keywords.
+
+```bash
+opencontext skill-registry refresh   # scan .skill.md files, write .opencontext/skill-registry.md
+```
+
+Built-in skills (always available):
+
+| Skill | When used |
+|-------|-----------|
+| `fix` | Disciplined debugging: reproduce → hypothesize → instrument → fix + regression test |
+| `prd` | Convert vague idea to structured brief before SDD |
+| `work-unit-commits` | Atomic commit discipline per task |
+| `sdd-onboard` | Project onboarding checklist + readiness report |
+
 ---
 
 ## 🔒 Security
@@ -380,7 +463,8 @@ opencontext preset list
 # opencontext.yaml
 models:
   default:
-    provider: mock   # swap: anthropic / openai / openrouter / local
+    provider: mock      # replace: anthropic / openai / openrouter
+  phases: {}            # optional per-phase model overrides
 
 memory:
   enabled: true
@@ -389,6 +473,8 @@ memory:
 security:
   mode: private_project
   fail_closed: true
+
+ui_language: en         # en or es
 ```
 
 ---
@@ -421,7 +507,7 @@ security:
 | Windows | `irm https://raw.githubusercontent.com/CesarMSFelipe/OpenContext-Runtime/main/install.ps1 \| iex` |
 | Portable binary | `make binary` → `dist/opencontext.pyz` (runs anywhere Python 3.12+ is present) |
 
-Requires **Python 3.12+**. No API key required for core functionality.
+Requires **Python 3.12+**. No API key required for core functionality (context packing, knowledge graph, MCP, benchmarks). An API key is needed for `loop` and `harness run`.
 
 ```bash
 opencontext verify   # health check
@@ -439,6 +525,9 @@ opencontext demo                 # 30-second proof on your own repo
 opencontext verify               # health check
 opencontext doctor               # deep diagnostics
 
+# Pre-implementation
+opencontext clarify "idea"       # vague idea → structured SDD brief
+
 # Context
 opencontext index .
 opencontext pack . --query "task" --copy
@@ -453,10 +542,11 @@ opencontext bytecode decode <path.aicx>
 
 # Agentic loop & harness
 opencontext loop --task "..." --flow full
+opencontext loop --task "..." --flow quality    # + GGA rules + adversarial review
 opencontext loop --task "..." --flow quick --dry-run
 opencontext harness run --workflow sdd --task "..."
+opencontext harness run --workflow full+quality --task "..."
 opencontext harness list
-opencontext harness report <run_id>
 
 # Knowledge graph
 opencontext knowledge-graph search "symbol"
@@ -467,6 +557,9 @@ opencontext knowledge-graph impact "Class" --radius 2
 opencontext memory search "query"
 opencontext memory collect
 opencontext memory gc --dry-run
+
+# Skills
+opencontext skill-registry refresh
 
 # Analysis
 opencontext routes scan . --framework fastapi
