@@ -134,7 +134,7 @@ Run the demo on your actual repository, then wire OpenContext into your editor.
 pip install opencontext-cli
 cd your-project
 opencontext demo        # real token reduction on your actual repo
-opencontext install     # stack detection · editor setup · optional LLM provider
+opencontext install     # stack detection · editor setup · index repo
 ```
 
 </td>
@@ -158,6 +158,8 @@ opencontext install     # stack detection · editor setup · optional LLM provid
 <h3>Proof, Not Promises</h3>
 
 Every benchmark runs on a public repository. No hidden dataset. No hosted service. No benchmark-only path. Fully reproducible with `opencontext explain`.
+
+**Benchmark methodology:** "Agent loop" means reading full files discovered via grep-style search, without call-graph tracing. OpenContext numbers come from `opencontext explain` on the same public repositories. Real agent behavior varies by model, editor, and tool strategy.
 
 </td>
 </tr>
@@ -198,13 +200,6 @@ Every benchmark runs on a public repository. No hidden dataset. No hosted servic
 <table>
 <tr>
 <td width="760">
-
-<details>
-<summary><strong>Benchmark Methodology</strong></summary>
-
-"Agent loop" means reading full files discovered via grep-style search, without call-graph tracing. OpenContext numbers come from `opencontext explain` on the same public repositories. Real agent behavior varies by model, editor, and tool strategy.
-
-</details>
 
 When a file exceeds the per-item budget, OpenContext is explicit — it never silently drops content:
 
@@ -272,8 +267,7 @@ required_symbols: ['*crash*', '*auth*', '*middleware*']
 must_verify: [run-tests, lint, type-check]
 ```
 
-<details>
-<summary><strong>Risk Tiers</strong></summary>
+**Risk Tiers**
 
 | Risk Tier | Token Budget | When |
 |-----------|-------------|------|
@@ -281,10 +275,7 @@ must_verify: [run-tests, lint, type-check]
 | `precise` | 16,000 | Bugfixes, features, refactors |
 | `critical` | 28,000 | Security, migrations, architecture |
 
-</details>
-
-<details>
-<summary><strong>AICX Bytecode</strong></summary>
+**AICX Bytecode**
 
 Context packs are serialized as AICX bytecode — compact, verifiable, with a cryptographic checksum. Agents can validate integrity before acting.
 
@@ -293,8 +284,6 @@ opencontext bytecode compile --query "fix auth bug"
 opencontext bytecode inspect
 opencontext bytecode decode <path.aicx>
 ```
-
-</details>
 
 </td>
 </tr>
@@ -381,15 +370,17 @@ opencontext bridges scan . --type HTTP --json
 
 <h3>Agent Interface</h3>
 
-13 MCP tools, pre-approved after `opencontext install`. Compatible with Claude Code, Cursor, Copilot, Windsurf, OpenCode, and any MCP-compatible editor.
+13 MCP tools. Compatible with Claude Code, Cursor, Copilot, Windsurf, OpenCode, and any MCP-compatible editor.
 
-`opencontext install` also writes three agent personas to your editor's agents directory — available in OpenCode via Tab, and as subagents in Claude Code:
+`opencontext install` writes three agent personas to your editor's agents directory. In OpenCode, press **Tab** to switch to one. In Claude Code, they appear as subagents.
 
 | Persona | Role |
 |---------|------|
-| **OC Orchestrator** | Plans, delegates, and verifies through the gates |
-| **OC Professor** | Explains the why and the concept before the code |
-| **OC Reviewer** | One finding per line, severity-tagged, no praise |
+| **OC Orchestrator** | Plans and delegates. Coordinates the full SDD workflow — explore → spec → design → apply → verify — using sub-agents for each phase. Delegates reading 4+ files, writing 2+ files, and every commit to a focused sub-step. |
+| **OC Professor** | Teaching mentor. Explains the why and the concept before the code, grounded in your actual codebase via the knowledge graph. |
+| **OC Reviewer** | Rigorous reviewer. Code review (one finding per line, severity-tagged), GGA quality gate enforcement, and judgment-day adversarial review of harness artifacts. |
+
+**Multi-agent execution:** the OC Orchestrator is a thin coordinator — it never does all the work itself. Reading, writing, and verifying are always delegated to specialized sub-agents. When you run the harness (`opencontext loop`), each phase runs in its own context: explore → propose → spec → design → tasks → apply → verify → archive. Phases that can run in parallel do.
 
 </td>
 </tr>
@@ -402,7 +393,7 @@ opencontext bridges scan . --type HTTP --json
 </p>
 
 <p align="center">
-  <sub>Agent Interface · 13 MCP tools · read + symbol-level edits · pre-approved</sub>
+  <sub>Agent Interface · 13 MCP tools · 9 read + 4 symbol-level edits</sub>
 </p>
 
 <div align="center">
@@ -416,6 +407,49 @@ opencontext setup claude-code
 opencontext setup cursor
 opencontext setup --all
 ```
+
+</td>
+</tr>
+</table>
+
+</div>
+
+<p align="center">
+  <img src="docs/assets/divider.svg" alt="" width="720">
+</p>
+
+<!-- ─────────────── AGENTIC HARNESS ─────────────── -->
+
+<div id="agentic-harness" align="center">
+
+<table>
+<tr>
+<td width="760">
+
+<h3>Agentic Harness</h3>
+
+The execution harness runs structured multi-agent workflows. Each phase is isolated: it reads what it needs, does its work, passes gates, then hands off. No phase can skip a gate.
+
+**Requires an LLM provider** — set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` before running.
+
+```bash
+opencontext clarify "add OAuth2 login"
+opencontext loop --task "..." --flow full
+opencontext loop --task "..." --flow quality
+opencontext loop --task "..." --flow quick --dry-run
+```
+
+| Track | Phases | When |
+|-------|--------|------|
+| `quick` | explore → apply → verify | Simple fixes |
+| `standard` | explore → spec + design → apply → verify | Features, refactors |
+| `full` | All 9 phases | Architecture, security |
+| `autonomous` | All 9, no prompts | CI/CD, automation |
+| `quality` | All 9 + GGA rules + judgment | Maximum quality gates |
+
+**Phases:** `explore → propose → spec → design → tasks → apply → verify → judgment → archive`
+
+The `judgment` phase runs adversarial structural review of apply artifacts — missing files, failed gates, missing verify. The `quality` track also enforces GGA rules before judgment.
 
 </td>
 </tr>
@@ -506,7 +540,7 @@ opencontext verify      # confirm all checks pass
 opencontext doctor      # deep diagnostics if something looks wrong
 ```
 
-The installer auto-detects Claude Code, OpenCode, Cursor, Copilot, Windsurf, and more. For OpenCode users, pressing **Tab** after install shows three built-in personas: **OC Orchestrator**, **OC Professor**, and **OC Reviewer** — each with different working styles on top of the knowledge graph.
+`opencontext install` auto-detects Claude Code, OpenCode, Cursor, Copilot, Windsurf, and more. It writes MCP config and the three OC personas (Orchestrator, Professor, Reviewer) to your editor's agents directory.
 
 </td>
 </tr>
@@ -518,7 +552,7 @@ The installer auto-detects Claude Code, OpenCode, Cursor, Copilot, Windsurf, and
   <img src="docs/assets/divider.svg" alt="" width="720">
 </p>
 
-<!-- ─────────────── DOCS INDEX ─────────────── -->
+<!-- ─────────────── LOCAL AGENT MEMORY ─────────────── -->
 
 <div align="center">
 
@@ -526,62 +560,7 @@ The installer auto-detects Claude Code, OpenCode, Cursor, Copilot, Windsurf, and
 <tr>
 <td width="760">
 
-<details open>
-<summary><strong>Documentation Index</strong></summary>
-
-| Area | Links |
-|------|-------|
-| Getting Started | [Quickstart](docs/getting-started/quickstart.md) · [Installation](docs/getting-started/installation.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) |
-| Architecture | [Overview](docs/architecture/overview.md) · [Context Pack Builder](docs/architecture/context-pack-builder.md) · [Safety Layer](docs/architecture/safety-layer.md) |
-| Workflows | [Flow Modes](docs/workflows/modes.md) · [SDD Guide](docs/workflows/sdd-workflow.md) · [Custom Workflows](docs/workflows/custom-workflows.md) |
-| Security | [Threat Model](docs/security/threat-model.md) · [Data Classification](docs/security/data-classification.md) |
-| Integrations | [Python SDK](docs/integrations/python-sdk.md) · [API](docs/integrations/api.md) · [GitHub Action](docs/integrations/github-action.md) · [Air-Gapped](docs/enterprise/air-gapped.md) |
-| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) · [Architecture deep-dive](docs/architecture/overview.md) |
-
-</details>
-
-</td>
-</tr>
-</table>
-
-</div>
-
-<p align="center">
-  <img src="docs/assets/divider.svg" alt="" width="720">
-</p>
-
-<!-- ─────────────── SECONDARY SECTIONS (DETAILS) ─────────────── -->
-
-<div align="center">
-
-<table>
-<tr>
-<td width="760">
-
-<details>
-<summary><strong>Execution Harness</strong></summary>
-
-<sub>Requires an LLM provider — <code>ANTHROPIC_API_KEY</code> or <code>OPENAI_API_KEY</code>, or configure via <code>opencontext install</code>.</sub>
-
-```bash
-opencontext clarify "add OAuth2 login"
-opencontext loop --task "..." --flow full
-opencontext loop --task "..." --flow quality
-opencontext loop --task "..." --flow quick --dry-run
-```
-
-| Track | Phases | When |
-|-------|--------|------|
-| `quick` | explore → apply → verify | Simple fixes |
-| `standard` | explore → spec + design → apply → verify | Features, refactors |
-| `full` | All 9 phases | Architecture, security |
-| `autonomous` | All 9, no prompts | CI/CD, automation |
-| `quality` | All 9 + GGA rules + judgment | Maximum quality gates |
-
-</details>
-
-<details>
-<summary><strong>Local Agent Memory</strong></summary>
+<h3>Local Agent Memory</h3>
 
 Five layers, SQLite + FTS5, zero external services. Past failures automatically surface first in the next run.
 
@@ -600,10 +579,25 @@ opencontext memory review
 opencontext memory gc --dry-run
 ```
 
-</details>
+</td>
+</tr>
+</table>
 
-<details>
-<summary><strong>Workflow Skills</strong></summary>
+</div>
+
+<p align="center">
+  <img src="docs/assets/divider.svg" alt="" width="720">
+</p>
+
+<!-- ─────────────── WORKFLOW SKILLS ─────────────── -->
+
+<div align="center">
+
+<table>
+<tr>
+<td width="760">
+
+<h3>Workflow Skills</h3>
 
 Drop `.skill.md` files in `skills/`. OpenContext injects the right ones based on file extensions and task keywords.
 
@@ -618,22 +612,25 @@ Drop `.skill.md` files in `skills/`. OpenContext injects the right ones based on
 opencontext skill-registry refresh
 ```
 
-</details>
+</td>
+</tr>
+</table>
 
-<details>
-<summary><strong>Runtime Configuration</strong></summary>
+</div>
 
-```bash
-opencontext config wizard
-opencontext config show
-opencontext config backup
-opencontext preset apply <name>
-```
+<p align="center">
+  <img src="docs/assets/divider.svg" alt="" width="720">
+</p>
 
-</details>
+<!-- ─────────────── RUNTIME COMMANDS ─────────────── -->
 
-<details>
-<summary><strong>Runtime Commands</strong></summary>
+<div align="center">
+
+<table>
+<tr>
+<td width="760">
+
+<h3>Runtime Commands</h3>
 
 ```bash
 # Setup
@@ -681,7 +678,34 @@ opencontext security scan .
 opencontext benchmark run
 ```
 
-</details>
+</td>
+</tr>
+</table>
+
+</div>
+
+<p align="center">
+  <img src="docs/assets/divider.svg" alt="" width="720">
+</p>
+
+<!-- ─────────────── DOCS INDEX ─────────────── -->
+
+<div align="center">
+
+<table>
+<tr>
+<td width="760">
+
+<h3>Documentation</h3>
+
+| Area | Links |
+|------|-------|
+| Getting Started | [Quickstart](docs/getting-started/quickstart.md) · [Installation](docs/getting-started/installation.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) |
+| Architecture | [Overview](docs/architecture/overview.md) · [Context Pack Builder](docs/architecture/context-pack-builder.md) · [Safety Layer](docs/architecture/safety-layer.md) |
+| Workflows | [Flow Modes](docs/workflows/modes.md) · [SDD Guide](docs/workflows/sdd-workflow.md) · [Custom Workflows](docs/workflows/custom-workflows.md) |
+| Security | [Threat Model](docs/security/threat-model.md) · [Data Classification](docs/security/data-classification.md) |
+| Integrations | [Python SDK](docs/integrations/python-sdk.md) · [API](docs/integrations/api.md) · [GitHub Action](docs/integrations/github-action.md) · [Air-Gapped](docs/enterprise/air-gapped.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) · [Architecture deep-dive](docs/architecture/overview.md) |
 
 </td>
 </tr>

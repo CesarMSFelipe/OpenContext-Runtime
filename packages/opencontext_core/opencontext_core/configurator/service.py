@@ -204,10 +204,11 @@ class Configurator:
             if path.exists():
                 path.unlink()
                 changed.append(str(path))
-            # Remove OC persona files written by _plan_opencode_personas
+        subdir = constants.global_agents_subdir(adapter.agent_id)
+        if subdir:
             from opencontext_core.personas import PERSONAS
             for persona in PERSONAS:
-                path = adapter.config_dir / "agents" / f"{persona.id}.md"
+                path = adapter.config_dir / subdir / f"{persona.id}.md"
                 if path.exists():
                     path.unlink()
                     changed.append(str(path))
@@ -296,7 +297,8 @@ class Configurator:
             entries.append(self._plan_claude_permissions(adapter))
         if adapter.agent_id == "opencode":
             entries.append(self._plan_opencode_profile(adapter))
-            entries.extend(self._plan_opencode_personas(adapter))
+        if constants.global_agents_subdir(adapter.agent_id):
+            entries.extend(self._plan_global_personas(adapter))
         if constants.ignore_filename(adapter.agent_id):
             entries.append(self._plan_ignore(adapter))
         if constants.command_dir(adapter.agent_id):
@@ -353,11 +355,12 @@ class Configurator:
         content = json.dumps(existing, indent=2) + "\n"
         return path, _content_if_changed(path, content)
 
-    def _plan_opencode_personas(self, adapter: Adapter) -> list[PlanEntry]:
-        """Write OC Orchestrator/Professor/Reviewer personas to ~/.config/opencode/agents/."""
+    def _plan_global_personas(self, adapter: Adapter) -> list[PlanEntry]:
+        """Write OC personas to the agent's global agents dir (e.g. ~/.config/opencode/agents/)."""
         from opencontext_core.personas import PERSONAS
 
-        agents_dir = adapter.config_dir / "agents"
+        subdir = constants.global_agents_subdir(adapter.agent_id)
+        agents_dir = adapter.config_dir / str(subdir)
         entries: list[PlanEntry] = []
         for persona in PERSONAS:
             path = agents_dir / f"{persona.id}.md"
