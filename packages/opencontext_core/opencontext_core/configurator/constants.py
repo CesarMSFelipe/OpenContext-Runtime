@@ -181,6 +181,19 @@ def persona_dir(agent_id: str) -> str | None:
     return _PERSONA_DIR.get(agent_id)
 
 
+# Agents with a global (home-dir-relative) agents directory — persona .md files go here.
+# Key: agent_id → subdir within agent_home(agent_id).
+_GLOBAL_AGENTS_SUBDIR: dict[str, str] = {
+    "opencode": "agents",
+}
+
+
+def global_agents_subdir(agent_id: str) -> str | None:
+    """Subdir within config_dir where global persona files go, or None."""
+
+    return _GLOBAL_AGENTS_SUBDIR.get(agent_id)
+
+
 # Agents whose instructions root is the project tree rather than the agent's
 # home directory (e.g. AGENTS.md / CLAUDE.md live next to the code).
 PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
