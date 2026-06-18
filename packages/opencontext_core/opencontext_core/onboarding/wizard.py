@@ -1,8 +1,8 @@
 """Interactive TUI onboarding wizard for first-time setup.
 
-Guides new users through project initialization with Rich-based
-interactive prompts. Falls back to non-interactive mode when
-stdout is not a TTY or CI is detected.
+Uses InquirerPy for arrow-key selectors and checkboxes when available,
+falls back to Rich text prompts otherwise. Falls back to non-interactive
+mode when stdout is not a TTY or CI is detected.
 """
 
 from __future__ import annotations
@@ -26,15 +26,82 @@ from opencontext_core.onboarding.service import (
 
 console = Console()
 
-# Config templates the wizard can apply. ``air_gapped`` mirrors the
-# SecurityMode enum value exactly (no hyphen) so the written config loads.
 _TEMPLATE_CHOICES = ("generic", "enterprise", "air_gapped")
 
+# ---------------------------------------------------------------------------
+# InquirerPy helpers — graceful fallback to Rich Prompt when not installed
+# ---------------------------------------------------------------------------
+
+def _iq_select(
+    message: str,
+    choices: list[dict[str, str]],
+    default: str = "",
+    instruction: str = "Use arrow keys, Enter to confirm.",
+) -> str:
+    """Arrow-key single select. Falls back to Rich Prompt.ask if InquirerPy missing."""
+    try:
+        from InquirerPy import inquirer
+        from InquirerPy.base.control import Choice
+
+        iq_choices = [Choice(value=c["value"], name=c["name"]) for c in choices]
+        default_val = default or choices[0]["value"]
+        return inquirer.select(  # type: ignore[return-value]
+            message=message,
+            choices=iq_choices,
+            default=default_val,
+            long_instruction=instruction,
+            show_cursor=True,
+        ).execute()
+    except ImportError:
+        str_choices = [c["value"] for c in choices]
+        console.print(
+            "  " + "  ".join(f"[cyan]{c['name']}[/]" for c in choices)
+        )
+        return Prompt.ask(message, choices=str_choices, default=default or str_choices[0])
+
+
+def _iq_checkbox(
+    message: str,
+    choices: list[dict[str, str]],
+    defaults: list[str] | None = None,
+    instruction: str = "Space to select, Enter to confirm.",
+) -> list[str]:
+    """Arrow-key multi-select checkbox. Falls back to comma-separated text input."""
+    try:
+        from InquirerPy import inquirer
+        from InquirerPy.base.control import Choice
+
+        iq_choices = [
+            Choice(value=c["value"], name=c["name"], enabled=(c["value"] in (defaults or [])))
+            for c in choices
+        ]
+        result: list[str] = inquirer.checkbox(
+            message=message,
+            choices=iq_choices,
+            long_instruction=instruction,
+            validate=lambda x: len(x) > 0,
+            invalid_message="Select at least one option.",
+        ).execute()
+        return result
+    except ImportError:
+        str_choices = [c["value"] for c in choices]
+        console.print("  " + ", ".join(f"[cyan]{c['value']}[/]" for c in choices))
+        raw = Prompt.ask(
+            f"{message} (comma-separated)",
+            default=",".join(defaults or [str_choices[0]]),
+        )
+        selected = [a.strip() for a in raw.split(",") if a.strip()]
+        return selected or [str_choices[0]]
+
+
+# ---------------------------------------------------------------------------
+# Wizard
+# ---------------------------------------------------------------------------
 
 class OnboardingWizard:
     """Interactive TUI wizard for project onboarding.
 
-    Wraps OnboardingService with Rich-based interactive steps.
+    Wraps OnboardingService with InquirerPy-based interactive steps.
     Auto-detects non-interactive environments and falls back to defaults.
     """
 
@@ -59,29 +126,16 @@ class OnboardingWizard:
 
     @staticmethod
     def security_mode_choices() -> list[str]:
-        """Valid security-mode choices, derived from the SecurityMode enum.
-
-        Deriving from the enum guarantees the wizard can never emit a value
-        that fails to load (the previous ``cross_project`` / ``open`` choices
-        were not enum members and produced unloadable configs).
-        """
+        """Valid security-mode choices, derived from the SecurityMode enum."""
         return [mode.value for mode in SecurityMode]
 
     @staticmethod
     def template_choices() -> list[str]:
-        """Valid config-template choices (enum-aligned, no hyphenated names)."""
+        """Valid config-template choices."""
         return list(_TEMPLATE_CHOICES)
 
     def run(self, **overrides: Any) -> OnboardingResult:
-        """Run the full onboarding wizard.
-
-        Accepts keyword overrides for non-interactive mode:
-        - template: str
-        - security_mode: str
-        - tdd: str (ask|strict|off)
-        - agents: list[str]
-        - non_interactive: bool (force non-interactive)
-        """
+        """Run the full onboarding wizard."""
         force_non_interactive = overrides.pop("non_interactive", False)
         if force_non_interactive:
             self._interactive = False
@@ -89,16 +143,10 @@ class OnboardingWizard:
         self._show_welcome()
 
         template = overrides.get("template") or self._choose_template()
-
         security_mode = overrides.get("security_mode") or self._choose_security_mode()
-
-        # Step 4: TDD mode
         tdd = overrides.get("tdd") or self._choose_tdd_mode()
-
-        # Step 5: Active agents
         agents = overrides.get("agents") or self._choose_agents()
 
-        # Build options
         options = OnboardingOptions(
             root=self.root,
             template=template,
@@ -109,10 +157,8 @@ class OnboardingWizard:
             force_agent_files=True,
         )
 
-        # Step 6: Index and summarize
         result = self._run_onboarding(options)
         self._show_summary(result)
-
         return result
 
     # ------------------------------------------------------------------
@@ -121,173 +167,169 @@ class OnboardingWizard:
 
     @staticmethod
     def _is_interactive() -> bool:
-        """Detect if we're in an interactive terminal."""
         ci = os.environ.get("CI", "").strip().lower()
         if ci in ("true", "1"):
             return False
         return sys.stdout.isatty() and sys.stdin.isatty()
 
     # ------------------------------------------------------------------
-    # Step implementations
+    # Steps
     # ------------------------------------------------------------------
 
     def _show_welcome(self) -> None:
-        """Step 1: Display welcome screen."""
         if self._interactive:
             console.clear()
         welcome = Panel(
             self.WELCOME_ART
             + f"\n[bold]Project:[/] {self.root}\n"
-            + "\nThis wizard will help you set up OpenContext for your project in 5 steps:\n"
-            + "[cyan]1.[/] Choose a configuration template\n"
-            + "[cyan]2.[/] Set your security mode\n"
-            + "[cyan]3.[/] Choose TDD (Test-Driven Development) mode\n"
-            + "[cyan]4.[/] Select active AI coding agents\n"
-            + "[cyan]5.[/] Index your project and review the results\n",
-            title="Welcome",
+            + "\nThis wizard will guide you through 4 steps:\n"
+            + "[cyan]1.[/] Configuration template\n"
+            + "[cyan]2.[/] Security mode\n"
+            + "[cyan]3.[/] TDD mode\n"
+            + "[cyan]4.[/] AI coding agents to configure\n",
+            title="OpenContext Setup",
             border_style="cyan",
             padding=(1, 2),
         )
         console.print(welcome)
 
         if self._interactive:
-            Prompt.ask("[dim]Press Enter to continue[/]", default="")
+            Prompt.ask("[dim]Press Enter to start[/]", default="")
 
     def _choose_template(self) -> str:
-        """Step 2: Choose a configuration template."""
         if not self._interactive:
             return "generic"
 
-        help_panel = Panel(
-            "[bold]Template presets[/]\n\n"
-            "[cyan]Generic (default)[/]  — Standard project, recommended for most users\n"
-            "[cyan]Enterprise[/]         — Strict security, all external providers blocked\n"
-            "[cyan]Air-gapped[/]         — No external access, no semantic cache, max isolation",
-            title="Template Options",
-            border_style="blue",
-            padding=(1, 1),
-        )
-        console.print(help_panel)
+        console.print()
+        console.rule("[bold cyan]Step 1 / 4 — Configuration Template[/]")
+        console.print()
 
-        return Prompt.ask(
-            "Choose a template",
-            choices=self.template_choices(),
-            default="generic",
-        )
+        choices = [
+            {
+                "value": "generic",
+                "name": "Generic (default)  — Standard project, recommended for most users",
+            },
+            {
+                "value": "enterprise",
+                "name": "Enterprise         — Strict security, all external providers blocked",
+            },
+            {
+                "value": "air_gapped",
+                "name": "Air-gapped         — No external access, no semantic cache, max isolation",
+            },
+        ]
+        return _iq_select("Choose a configuration template", choices, default="generic")
 
     def _choose_security_mode(self) -> str:
-        """Step 3: Choose security mode."""
         if not self._interactive:
             return SecurityMode.PRIVATE_PROJECT.value
 
-        help_panel = Panel(
-            "[bold]Security modes[/]\n\n"
-            "[cyan]developer[/]        — Local dev posture, fewest restrictions\n"
-            "[cyan]private_project[/]  — Redaction on, external providers off (default)\n"
-            "[cyan]enterprise[/]       — Team sharing with governance\n"
-            "[cyan]air_gapped[/]       — Completely offline, no external access",
-            title="Security Modes",
-            border_style="blue",
-            padding=(1, 1),
-        )
-        console.print(help_panel)
+        console.print()
+        console.rule("[bold cyan]Step 2 / 4 — Security Mode[/]")
+        console.print()
 
-        return Prompt.ask(
+        choices = [
+            {
+                "value": SecurityMode.PRIVATE_PROJECT.value,
+                "name": "private_project  — Redaction on, external providers off (recommended)",
+            },
+            {
+                "value": "developer",
+                "name": "developer        — Local dev posture, fewest restrictions",
+            },
+            {
+                "value": "enterprise",
+                "name": "enterprise       — Team sharing with governance",
+            },
+            {
+                "value": "air_gapped",
+                "name": "air_gapped       — Completely offline, no external access",
+            },
+        ]
+        return _iq_select(
             "Choose security mode",
-            choices=self.security_mode_choices(),
+            choices,
             default=SecurityMode.PRIVATE_PROJECT.value,
         )
 
     def _choose_tdd_mode(self) -> str:
-        """Step 4: Choose TDD mode."""
         if not self._interactive:
             return "ask"
 
-        help_panel = Panel(
-            "[bold]TDD (Test-Driven Development) modes[/]\n\n"
-            "[cyan]Ask me[/]   — Prompt before each TDD decision (default)\n"
-            "[cyan]Strict[/]   — Always require a failing test before production code\n"
-            "[cyan]Off[/]      — No TDD enforcement, code-first workflow",
-            title="TDD Modes",
-            border_style="blue",
-            padding=(1, 1),
-        )
-        console.print(help_panel)
+        console.print()
+        console.rule("[bold cyan]Step 3 / 4 — TDD Mode[/]")
+        console.print()
 
-        return Prompt.ask(
-            "Choose TDD mode",
-            choices=["ask", "strict", "off"],
-            default="ask",
-        )
+        choices = [
+            {
+                "value": "ask",
+                "name": "Ask me   — Prompt before each TDD decision (default)",
+            },
+            {
+                "value": "strict",
+                "name": "Strict   — Always require a failing test before production code",
+            },
+            {
+                "value": "off",
+                "name": "Off      — No TDD enforcement, code-first workflow",
+            },
+        ]
+        return _iq_select("Choose TDD mode", choices, default="ask")
 
     def _choose_agents(self) -> list[str]:
-        """Step 5: Choose active AI coding agents."""
         if not self._interactive:
             return ["opencode"]
 
-        known_agents = [
-            ("opencode", True),
-            ("claude", False),
-            ("cursor", False),
-            ("codex", False),
-            ("windsurf", False),
-            ("copilot", False),
-            ("kilo-code", False),
-            ("gemini-cli", False),
-            ("aider", False),
-        ]
-
-        help_panel = Panel(
-            "[bold]Select AI coding agents to configure[/]\n\n"
-            "OpenContext will generate instruction files for each selected agent.\n"
-            "[dim]Use arrow keys or type comma-separated names[/]",
-            title="Agent Selection",
-            border_style="blue",
-            padding=(1, 1),
-        )
-        console.print(help_panel)
-
-        # Build comma-separated list of choices
-        choices_str = ", ".join(f"[cyan]{name}[/]" for name, _selected in known_agents)
-        console.print(f"Available agents: {choices_str}")
         console.print()
-
-        agent_input = Prompt.ask(
-            "Enter agent names (comma-separated)",
-            default="opencode",
+        console.rule("[bold cyan]Step 4 / 4 — AI Coding Agents[/]")
+        console.print(
+            "[dim]OpenContext will write MCP config and agent persona files for each selection.[/]\n"  # noqa: E501
         )
-        selected = [a.strip() for a in agent_input.split(",") if a.strip()]
-        return selected if selected else ["opencode"]
+
+        choices = [
+            {"value": "opencode",    "name": "OpenCode      — opencode.ai (Tab personas, MCP)"},
+            {"value": "claude-code", "name": "Claude Code   — Anthropic CLI (.claude/agents)"},
+            {"value": "cursor",      "name": "Cursor        — .cursor/mcp.json"},
+            {"value": "windsurf",    "name": "Windsurf      — .windsurf/mcp.json"},
+            {"value": "kilo-code",   "name": "Kilo Code     — VS Code extension"},
+            {"value": "gemini-cli",  "name": "Gemini CLI    — Google AI CLI"},
+            {"value": "codex",       "name": "Codex         — OpenAI Codex CLI"},
+            {"value": "aider",       "name": "Aider         — aider.chat CLI"},
+            {"value": "cline",       "name": "Cline         — VS Code Cline extension"},
+            {"value": "roo",         "name": "Roo           — Roo-Code extension"},
+            {"value": "continue",    "name": "Continue      — continue.dev extension"},
+        ]
+        return _iq_checkbox(
+            "Select agents to configure",
+            choices,
+            defaults=["opencode"],
+            instruction="Space to select/deselect, Enter to confirm.",
+        )
 
     def _run_onboarding(self, options: OnboardingOptions) -> OnboardingResult:
-        """Execute the onboarding pipeline with progress indicator."""
         service = OnboardingService()
-
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
             progress.add_task("[green]Setting up project...", total=None)
-
             try:
                 result = service.run(options)
             except Exception as exc:
                 console.print(f"\n[red]Setup failed: {exc}[/]")
                 raise
-
         return result
 
     def _show_summary(self, result: OnboardingResult) -> None:
-        """Display the final setup summary."""
         summary = Panel(
             "\n".join(
                 [
                     "[bold green]✓ Setup complete![/]\n",
                     "[cyan]Configuration[/]",
-                    f"  Config:      {result.config_path}",
-                    f"  SDD context:  {result.sdd_context_path}",
-                    f"  Harness:      {result.harness_config_path}",
+                    f"  Config:        {result.config_path}",
+                    f"  SDD context:   {result.sdd_context_path}",
+                    f"  Harness:       {result.harness_config_path}",
                     "",
                     "[cyan]Indexing[/]",
                     f"  Files indexed: {result.indexed_files}",
