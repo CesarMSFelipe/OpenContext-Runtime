@@ -280,15 +280,48 @@ def _run_configure_models() -> None:
     store = UserConfigStore()
     prefs = store.load()
 
-    from rich.prompt import Prompt as RPrompt
-
     console.print("[bold]Current model configuration:[/]")
     console.print(f"  Default provider: {prefs.default_provider or '[dim]not set[/dim]'}")
     console.print(f"  Default model:    {prefs.default_model or '[dim]not set[/dim]'}")
     console.print()
 
-    provider = RPrompt.ask("Default provider", default=prefs.default_provider or "mock")
-    model = RPrompt.ask("Default model", default=prefs.default_model or "mock-llm")
+    known_providers = ["anthropic", "openai", "mock"]
+    known_models = {
+        "anthropic": ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5-20251001"],
+        "openai": ["gpt-4o", "gpt-4o-mini", "o1"],
+        "mock": ["mock-llm"],
+    }
+
+    try:
+        from InquirerPy import inquirer
+        from InquirerPy.base.control import Choice
+
+        provider = inquirer.select(
+            message="Default provider",
+            choices=[Choice(value=p, name=p) for p in known_providers],
+            default=prefs.default_provider or "anthropic",
+        ).execute()
+
+        model_choices = known_models.get(provider, [])
+        if model_choices:
+            model = inquirer.select(
+                message="Default model",
+                choices=[Choice(value=m, name=m) for m in model_choices],
+                default=prefs.default_model if prefs.default_model in model_choices
+                else model_choices[0],
+            ).execute()
+        else:
+            model = inquirer.text(
+                message="Default model",
+                default=prefs.default_model or "",
+            ).execute()
+    except ImportError:
+        from rich.prompt import Prompt as RPrompt
+
+        default_prov = prefs.default_provider or "anthropic"
+        provider = RPrompt.ask("Default provider", choices=known_providers, default=default_prov)
+        model = RPrompt.ask("Default model", default=prefs.default_model or "")
+
     prefs.default_provider = provider
     prefs.default_model = model
     store.save(prefs)
@@ -316,16 +349,27 @@ def _run_agent_integrations() -> None:
     console.print()
 
     supported = [t.value for t in AgentTarget]
-    console.print(f"[bold]Available agents:[/] {', '.join(supported)}")
     console.print()
 
-    from rich.prompt import Prompt as RPrompt
+    try:
+        from InquirerPy import inquirer
+        from InquirerPy.base.control import Choice
 
-    target_raw = RPrompt.ask(
-        "Regenerate integration files for which agent?",
-        default="opencode",
-    )
-    target = target_raw.strip()
+        target = inquirer.select(
+            message="Regenerate integration files for which agent?",
+            choices=[Choice(value=v, name=v) for v in supported],
+            default="opencode",
+        ).execute()
+    except ImportError:
+        from rich.prompt import Prompt as RPrompt
+
+        console.print(f"[bold]Available agents:[/] {', '.join(supported)}")
+        target = RPrompt.ask(
+            "Regenerate integration files for which agent?",
+            choices=supported,
+            default="opencode",
+        ).strip()
+
     if not target:
         return
 
