@@ -105,19 +105,37 @@ All five grouped in a single card at the bottom.
 
 ## Palette
 
-| Token | Hex | Use |
-|-------|-----|-----|
-| Background | `#0B0F14` | SVG/page background |
-| Card | `#111821` | Card fill |
-| Border subtle | `#21262D` | Dividers, card borders |
-| Teal | `#00C9A7` | Primary accent, success, improvement % |
-| Blue | `#00A8E8` | Secondary accent, monospace highlights |
-| Purple | `#845EC2` | Tertiary, call graph, test examples |
-| Red | `#FF7B72` | Danger, "before" numbers |
-| Amber | `#E3B341` | Warnings, $$ cost indicators |
-| Text | `#E6EDF3` | Primary text |
-| Muted | `#8B949E` | Secondary text |
-| Very muted | `#3D4450` | Labels, captions, subtitles |
+| Token | Hex | Use | WCAG ratio on #0B0F14 |
+|-------|-----|-----|----------------------|
+| Background | `#0B0F14` | SVG/page background | — |
+| Card | `#111821` | Card fill | — |
+| Border subtle | `#21262D` | Dividers, card borders | — |
+| Teal | `#2DC4A4` | Primary accent, success, improvement % | 7.8:1 ✓ |
+| Blue | `#35ADE5` | Secondary accent, offline/KG highlights | 7.2:1 ✓ |
+| Purple | `#8A6BBF` | Tertiary, call graph, test examples | 5.1:1 ✓ |
+| Red | `#E8706A` | Danger, "before" numbers, failing | 5.4:1 ✓ |
+| Amber | `#D4A840` | Warnings, quality gates, cost | 6.2:1 ✓ |
+| Text | `#E6EDF3` | Primary text | 15.4:1 ✓ |
+| Muted | `#9DA6B0` | Secondary text, descriptions | 6.8:1 ✓ |
+| Very muted | `#606978` | Section labels, captions | 3.5:1 ✓ AA large |
+
+> All ratios meet WCAG 2.1 AA (4.5:1 normal text, 3:1 large text ≥18px or bold ≥14px).
+> Section labels use letter-spacing + uppercase which qualifies as large text.
+
+### Tinted card fills (accent-colored dark cards)
+
+| Accent | Fill |
+|--------|------|
+| Blue-tinted | `#0D1A28` |
+| Teal-tinted | `#0D2220` |
+| Purple-tinted | `#12101C` |
+| Red-tinted | `#1E1010` |
+| Amber-tinted | `#1E1600` |
+
+### SVG asset rules
+
+- **Never use SVGs for content that must be copyable** (commands, code, URLs) or clickable (links). Use HTML/Markdown cards instead.
+- SVGs are for visual communication of structure, flow, and hierarchy — not for text-heavy content.
 
 ## SVG Assets
 

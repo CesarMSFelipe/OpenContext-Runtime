@@ -7,48 +7,45 @@
   <rect x="12" y="10" width="166" height="68" rx="8" fill="#111821" stroke="rgba(0,201,167,0.22)" stroke-width="1"/>
   <text x="95" y="40" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="26" font-weight="700" fill="#00C9A7">62–82%</text>
+        font-size="26" font-weight="700" fill="#2DC4A4">62–82%</text>
   <text x="95" y="58" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="11" fill="#8B949E">fewer tokens than grep+read</text>
+        font-size="11" fill="#9DA6B0">fewer tokens than grep+read</text>
   <text x="95" y="72" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="9.5" fill="#3D4450">measured on real public repos</text>
+        font-size="9.5" fill="#606978">measured on real public repos</text>
 
   <!-- Stat 2: rounds -->
   <rect x="190" y="10" width="166" height="68" rx="8" fill="#111821" stroke="rgba(0,168,232,0.22)" stroke-width="1"/>
-  <text x="273" y="36" text-anchor="middle"
+  <text x="273" y="34" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="14" font-weight="600" fill="#8B949E">4–8 rounds</text>
-  <text x="273" y="52" text-anchor="middle"
+        font-size="13" font-weight="600" fill="#9DA6B0">4–8 rounds</text>
+  <text x="273" y="54" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="18" font-weight="700" fill="#00A8E8">→ 1 call</text>
-  <text x="273" y="70" text-anchor="middle"
+        font-size="18" font-weight="700" fill="#35ADE5">→ 1 call</text>
+  <text x="273" y="71" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#8B949E">replaces full grep+read loop</text>
+        font-size="10" fill="#9DA6B0">replaces full grep+read loop</text>
 
   <!-- Stat 3: call graph -->
   <rect x="368" y="10" width="166" height="68" rx="8" fill="#111821" stroke="rgba(132,92,194,0.22)" stroke-width="1"/>
   <text x="451" y="36" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="13" fill="#8B949E">call graph</text>
+        font-size="13" fill="#9DA6B0">call graph</text>
   <text x="451" y="54" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="22" font-weight="700" fill="#845EC2">included</text>
+        font-size="22" font-weight="700" fill="#8A6BBF">included</text>
   <text x="451" y="70" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#8B949E">grep can't give call direction</text>
+        font-size="10" fill="#9DA6B0">grep can't give call direction</text>
 
   <!-- Stat 4: deterministic -->
   <rect x="546" y="10" width="162" height="68" rx="8" fill="#111821" stroke="rgba(0,201,167,0.14)" stroke-width="1"/>
-  <text x="627" y="36" text-anchor="middle"
+  <text x="627" y="46" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="13" fill="#8B949E">results</text>
-  <text x="627" y="54" text-anchor="middle"
+        font-size="18" font-weight="700" fill="#2DC4A4">deterministic</text>
+  <text x="627" y="66" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="20" font-weight="700" fill="#00C9A7">deterministic</text>
-  <text x="627" y="70" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#8B949E">same query, same ranked result</text>
+        font-size="10" fill="#9DA6B0">same query, same ranked result</text>
 
 </svg>
