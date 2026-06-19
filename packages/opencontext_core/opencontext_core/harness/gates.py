@@ -147,15 +147,18 @@ class ArtifactPersistedGate:
 class ConfidenceGate:
     """Evaluate phase confidence based on complexity, coverage, and history.
 
-    Produces a 0-1 score by combining:
-    - Phase complexity (more complex phases need higher confidence)
-    - Test coverage (from project manifest metadata)
-    - Previous phase success (passed/failed prior gates)
+    Score = 0.2*(1-complexity) + 0.5*prev_success_rate + 0.3*coverage_factor
 
-    The gate FAILS if the combined score falls below the configured threshold.
+    With no history and no coverage (both default to 0.5), scores are:
+    - explore (complexity=0.2) → 0.56  passes default threshold 0.5
+    - apply   (complexity=0.8) → 0.44  passes harness threshold 0.4 (not 0.5)
+
+    The harness uses a lower threshold (0.4) for apply precisely because
+    apply is the most complex phase and would otherwise fail every first run.
+    Increase test coverage or lower PhaseConfig.complexity to raise the score.
 
     Complexity can be overridden per-project via PhaseConfig.complexity in
-    harness.yaml (e.g., {"spec": {"complexity": 0.6}} to make spec more lenient).
+    harness.yaml (e.g., {"apply": {"complexity": 0.6}} to make apply easier).
     """
 
     id = "confidence"
@@ -181,8 +184,11 @@ class ConfidenceGate:
         previous_gates: list[PhaseGate] | None = None,
         test_coverage: float | None = None,
         complexity_override: float | None = None,
+        first_run_bypass: bool = False,
     ) -> PhaseGate:
         """Evaluate confidence for a phase.
+
+        Score formula: 0.2*(1-complexity) + 0.5*prev_success_rate + 0.3*coverage_factor.
 
         Args:
             phase: Phase identifier (e.g. ``"apply"``).
@@ -192,10 +198,22 @@ class ConfidenceGate:
             complexity_override: Per-project complexity (0.0-1.0) from
                 PhaseConfig.complexity. When set, overrides the default
                 baseline for this phase.
+            first_run_bypass: When True and no previous_gates exist, auto-pass
+                with score 1.0. Useful for the very first run of a new project
+                where no history is available yet.
 
         Returns:
             A PhaseGate with PASSED or FAILED status.
         """
+        if first_run_bypass and not previous_gates:
+            return PhaseGate(
+                id=self.id,
+                phase=phase,
+                status=GateStatus.PASSED,
+                message="First run bypass — no history available.",
+                metadata={"confidence_score": 1.0, "threshold": threshold, "first_run": True},
+            )
+
         # Use per-project override if provided, otherwise fall back to default
         complexity = (
             complexity_override
