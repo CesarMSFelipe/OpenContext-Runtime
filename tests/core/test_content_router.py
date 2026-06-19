@@ -7,7 +7,7 @@ def test_code_routes_to_code_strategy() -> None:
     route = ContentRouter().route("def login(): pass", path="src/auth.py")
 
     assert route.content_type is ContentType.CODE
-    assert route.compression_strategy == "code_aware_symbol_selection"
+    assert route.compression_strategy == "code_ast"
 
 
 def test_json_and_yaml_route_to_structured_serializers() -> None:
