@@ -187,6 +187,87 @@ class RankingConfig(BaseModel):
     provenance: float = Field(default=0.02, ge=0.0, description="v2: provenance.")
 
 
+class CacheAlignerConfig(BaseModel):
+    """CacheAligner — KV cache prefix stabilization."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False, description="Align prompt prefixes for KV cache hits.")
+    stable_prefix_tokens: int = Field(
+        default=1200, ge=100, description="Tokens in the stable prefix (NOT compressed)."
+    )
+    provider_cache_hints: bool = Field(
+        default=True,
+        description="Emit provider-specific cache boundary markers.",
+    )
+    max_cache_age_turns: int = Field(
+        default=10, ge=1, description="Max turns before forcing a full re-send."
+    )
+
+
+class SmartCrusherConfig(BaseModel):
+    """SmartCrusher — JSON structural compression."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=True, description="Compress JSON arrays to tabular form.")
+    min_array_length: int = Field(
+        default=3, ge=2, description="Minimum array length to trigger smart crushing."
+    )
+    max_inline_schema_keys: int = Field(
+        default=20, ge=1, description="Max schema keys before falling back to prose compress."
+    )
+    tabular_format: str = Field(
+        default="compact_table",
+        description="Output format: 'compact_table' or 'aligned_columns'.",
+    )
+
+
+class CodeCompressorConfig(BaseModel):
+    """CodeCompressor — AST-aware code compression."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=True, description="Compress source code using AST.")
+    strip_docstrings: bool = Field(default=True, description="Replace docstrings with signatures.")
+    strip_comments: bool = Field(default=True, description="Strip comments in non-PLAN mode.")
+    shorten_locals: bool = Field(default=True, description="Shorten local identifiers.")
+    preserve_exports: bool = Field(default=True, description="Never shorten exported symbols.")
+
+
+class CCRCacheConfig(BaseModel):
+    """CCR — reversible compression cache."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False, description="Cache originals for reversible compression.")
+    ttl_seconds: int = Field(default=300, ge=30, description="Time-to-live for cached originals.")
+    max_entries: int = Field(default=500, ge=10, description="Max entries in the CCR cache.")
+    storage_path: str | None = Field(default=None, description="Override for cache file path.")
+
+
+class OutputReducerConfig(BaseModel):
+    """OutputReducer — reduce what the model writes back."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False, description="Steer LLM output to be terse.")
+    verbosity_instruction: str = Field(
+        default=(
+            "Be concise. Omit recaps of code already in context. "
+            "Avoid preambles like 'Sure, let me'. Answer directly."
+        ),
+        description="Instruction appended to system prompt.",
+    )
+    effort_routing: bool = Field(
+        default=True,
+        description="Dial thinking effort down on tool-result turns.",
+    )
+    holdout_fraction: float = Field(
+        default=0.1, ge=0.0, le=1.0, description="Fraction of turns left unshaped as control group."
+    )
+
+
 class CompressionConfig(BaseModel):
     """Safe compression configuration."""
 
@@ -212,6 +293,26 @@ class CompressionConfig(BaseModel):
     protected_spans: bool = Field(
         default=True,
         description="Whether protected spans prevent unsafe lossy compression.",
+    )
+    cache_aligner: CacheAlignerConfig = Field(
+        default_factory=CacheAlignerConfig,
+        description="KV cache prefix alignment.",
+    )
+    smart_crusher: SmartCrusherConfig = Field(
+        default_factory=SmartCrusherConfig,
+        description="JSON structural compression.",
+    )
+    code_compressor: CodeCompressorConfig = Field(
+        default_factory=CodeCompressorConfig,
+        description="AST-aware code compression.",
+    )
+    ccr_cache: CCRCacheConfig = Field(
+        default_factory=CCRCacheConfig,
+        description="Reversible compression cache.",
+    )
+    output_reducer: OutputReducerConfig = Field(
+        default_factory=OutputReducerConfig,
+        description="Output token reduction.",
     )
 
 
@@ -498,8 +599,11 @@ class MemoryPolicyConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="Local memory layer enabled.")
     provider: str = Field(
-        default="local",
-        description="Memory backend provider: 'local' (SQLite) or 'engram'.",
+        default="auto",
+        description=(
+            "Memory backend provider: 'auto' (couple to a co-resident engram if "
+            "present, else local), 'local' (SQLite), or 'engram' (force coupling)."
+        ),
     )
     harvest_after_run: bool = Field(
         default=True, description="Harvest memory automatically after each run."
@@ -1308,6 +1412,7 @@ def default_config_data() -> dict[str, Any]:
         },
         "memory": {
             "enabled": True,
+            "provider": "auto",
             "harvest_after_run": True,
             "require_approval": True,
             "store_raw": False,
