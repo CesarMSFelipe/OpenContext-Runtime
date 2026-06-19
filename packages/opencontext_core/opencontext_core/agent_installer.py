@@ -10,32 +10,17 @@ merging into existing files without clobbering developer content.
 from __future__ import annotations
 
 import json
-from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
 
+# Single AgentTarget enum (was duplicated here) — re-export the canonical superset
+# so every caller shares one definition.
+from opencontext_core.adapters.agent_manifest import AgentTarget
 from opencontext_core.configurator.constants import agent_home
 from opencontext_core.configurator.filemerge import write_text_atomic
 from opencontext_core.configurator.service import Configurator
 
-
-class AgentTarget(StrEnum):
-    """Supported AI coding agents."""
-
-    CLAUDE_CODE = "claude-code"
-    OPENCODE = "opencode"
-    KILO_CODE = "kilo-code"
-    GEMINI_CLI = "gemini-cli"
-    CURSOR = "cursor"
-    VSCODE_COPILOT = "vscode-copilot"
-    CODEX = "codex"
-    WINDSURF = "windsurf"
-    ANTIGRAVITY = "antigravity"
-    KIMI_CODE = "kimi-code"
-    KIRO_IDE = "kiro-ide"
-    QWEN_CODE = "qwen-code"
-    OPENCLAW = "openclaw"
-    PI = "pi"
+__all__ = ["AgentInstaller", "AgentTarget"]
 
 
 class AgentInstaller:
@@ -45,7 +30,11 @@ class AgentInstaller:
     surface (``install``, ``detect_installed_agents``) and the ``AgentTarget`` enum.
     """
 
-    SUPPORTED_AGENTS: ClassVar[list[AgentTarget]] = list(AgentTarget)
+    # Real, installable agents — excludes GENERIC (a meta-target for generic
+    # instruction output, not an agent to configure).
+    SUPPORTED_AGENTS: ClassVar[list[AgentTarget]] = [
+        t for t in AgentTarget if t != AgentTarget.GENERIC
+    ]
 
     @staticmethod
     def _get_agent_dir(target: AgentTarget) -> Path:
@@ -64,7 +53,7 @@ class AgentInstaller:
         """Auto-detect which agents are installed on the system."""
 
         detected: list[AgentTarget] = []
-        for agent in AgentTarget:
+        for agent in self.SUPPORTED_AGENTS:
             if self._get_agent_dir(agent).exists():
                 detected.append(agent)
         return detected

@@ -88,12 +88,13 @@ class TestAgentInstaller:
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         installer = AgentInstaller(project_root=tmp_path)
-        result = installer.install(targets=list(AgentTarget), location="global")
+        supported = AgentInstaller.SUPPORTED_AGENTS
+        result = installer.install(targets=supported, location="global")
 
-        assert len(result["results"]) == len(list(AgentTarget))
+        assert len(result["results"]) == len(supported)
         for r in result["results"]:
             assert r["status"] == "configured", f"{r['agent']} was not configured"
-        assert result["agents_configured"] == len(list(AgentTarget))
+        assert result["agents_configured"] == len(supported)
 
     def test_merge_json_config(self, tmp_path: Path) -> None:
         """Test JSON config merging."""
