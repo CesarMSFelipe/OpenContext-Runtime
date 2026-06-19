@@ -9,8 +9,10 @@ Extensible plugin architecture:
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import logging
 import shutil
 import tempfile
 import zipfile
@@ -23,6 +25,8 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 # ── Constants ──────────────────────────────────────────────────────────────
+
+_log = logging.getLogger(__name__)
 
 DEFAULT_REGISTRY_URL = (
     "https://raw.githubusercontent.com/opencontext/plugin-registry/main/registry.json"
@@ -979,12 +983,35 @@ class PluginRegistry:
             if not module_path.exists():
                 return None
 
+            # Tamper check: if the plugin declares an entry-point checksum, the file
+            # on disk must match it before we execute it. Refuse on mismatch.
+            declared = info.get("entry_checksum", "")
+            if declared.startswith("sha256:"):
+                actual = hashlib.sha256(module_path.read_bytes()).hexdigest()
+                if actual != declared[len("sha256:") :]:
+                    _log.error(
+                        "Refusing to load plugin %r: entry-point checksum mismatch "
+                        "(declared %s, actual sha256:%s)",
+                        name,
+                        declared,
+                        actual,
+                    )
+                    return None
+
             spec = importlib.util.spec_from_file_location(
                 f"opencontext_plugin_{name}", str(module_path)
             )
             if spec is None or spec.loader is None:
                 return None
 
+            # Executing third-party plugin code is a security-relevant action — make
+            # it visible. (Full capability sandboxing is not yet implemented.)
+            _log.info(
+                "Executing plugin %r from %s%s",
+                name,
+                module_path,
+                "" if declared else " (no entry_checksum declared — integrity unverified)",
+            )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
