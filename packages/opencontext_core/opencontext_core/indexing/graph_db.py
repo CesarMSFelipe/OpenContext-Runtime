@@ -7,11 +7,15 @@ Uses SQLite with FTS5 for full-text search across symbol names and docstrings.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
 from dataclasses import dataclass
+from dataclasses import replace as dc_replace
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 def _sanitize_fts_query(query: str) -> str:
@@ -361,10 +365,11 @@ class GraphDatabase:
         file_path = nodes[0].file_path
 
         ids: list[str] = []
-        for node in nodes:
+        for i, node in enumerate(nodes):
             qualified = f"{node.container}.{node.name}" if node.container else node.name
             node_id = node.id or _stable_symbol_id(project_id, node.file_path, qualified, node.kind)
-            node.id = node_id
+            nodes[i] = dc_replace(node, id=node_id)
+            node = nodes[i]
             ids.append(node_id)
             conn.execute(
                 """
@@ -419,8 +424,9 @@ class GraphDatabase:
         try:
             conn.execute('INSERT INTO nodes_fts(nodes_fts) VALUES("rebuild")')
             conn.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("FTS rebuild failed — search index may be stale: %s", exc)
+            raise
 
     def get_node_by_id(self, node_id: int | str) -> Node | None:
         """Get a node by ID (stable text id; ints are accepted and coerced by SQLite)."""
@@ -444,6 +450,7 @@ class GraphDatabase:
             docstring=row["docstring"],
             signature=row["signature"],
             is_exported=bool(row["is_exported"]),
+            content_snippet=row["content_snippet"],
         )
 
     def get_nodes_by_file(self, file_path: str) -> list[Node]:
@@ -468,6 +475,7 @@ class GraphDatabase:
                 docstring=row["docstring"],
                 signature=row["signature"],
                 is_exported=bool(row["is_exported"]),
+                content_snippet=row["content_snippet"],
             )
             for row in rows
         ]
@@ -659,6 +667,11 @@ class GraphDatabase:
         """Delete all nodes and edges for a file."""
 
         conn = self._connect()
+        # Prune inbound edges before deleting nodes (subquery must run first)
+        conn.execute(
+            "DELETE FROM edges WHERE target_node_id IN (SELECT id FROM nodes WHERE file_path = ?)",
+            (file_path,),
+        )
         conn.execute("DELETE FROM edges WHERE call_site_file = ?", (file_path,))
         conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
         conn.execute("DELETE FROM files WHERE path = ?", (file_path,))
