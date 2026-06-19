@@ -566,21 +566,17 @@ class HarnessRunner:
 
                 # Canonical KG db name — same as runtime/explore (context_graph.db).
                 db_path = state.root / ".storage" / "opencontext" / "context_graph.db"
-                if db_path.exists():
+                py_changed = {p for p in changed if (state.root / p).suffix == ".py"}
+                if db_path.exists() and py_changed:
                     kg = KnowledgeGraph(db_path=db_path)
-                    for path in changed:
-                        full = state.root / path
-                        if full.exists() and full.suffix == ".py":
-                            try:
-                                kg.index_file(
-                                    path, full.read_text(encoding="utf-8", errors="ignore")
-                                )
-                            except Exception as exc:
-                                _log.warning("post-run re-index failed for %s: %s", path, exc)
                     try:
-                        kg.db.rebuild_fts()  # so search reflects the re-indexed symbols
+                        # reindex_files re-parses, rebuilds FTS, AND finalizes
+                        # cross-file edges — the manual per-file loop skipped the
+                        # last step, leaving call edges (which power graph ranking)
+                        # stale after every task.
+                        kg.reindex_files(py_changed, state.root)
                     except Exception as exc:
-                        _log.warning("post-run FTS rebuild failed: %s", exc)
+                        _log.warning("post-run re-index failed: %s", exc)
                     kg.close()
             except Exception:
                 pass
