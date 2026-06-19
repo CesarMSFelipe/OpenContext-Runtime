@@ -13,7 +13,7 @@
         font-size="12" font-weight="600" fill="#E6EDF3">Install</text>
   <text x="36" y="78"
         font-family="'JetBrains Mono','Cascadia Code',Consolas,monospace"
-        font-size="10" fill="#3D4450">pip install opencontext-cli</text>
+        font-size="10" fill="#606978">pip · uv · brew</text>
 
   <!-- Arrow -->
   <text x="183" y="56" text-anchor="middle"
@@ -30,7 +30,7 @@
         font-size="12" font-weight="600" fill="#E6EDF3">Run Demo</text>
   <text x="212" y="78"
         font-family="'JetBrains Mono','Cascadia Code',Consolas,monospace"
-        font-size="10" fill="#3D4450">opencontext demo</text>
+        font-size="10" fill="#606978">opencontext demo</text>
 
   <!-- Arrow -->
   <text x="359" y="56" text-anchor="middle"
@@ -47,7 +47,7 @@
         font-size="12" font-weight="600" fill="#E6EDF3">Configure</text>
   <text x="388" y="78"
         font-family="'JetBrains Mono','Cascadia Code',Consolas,monospace"
-        font-size="10" fill="#3D4450">opencontext install</text>
+        font-size="10" fill="#606978">opencontext install</text>
 
   <!-- Arrow -->
   <text x="535" y="56" text-anchor="middle"
@@ -55,15 +55,15 @@
         font-size="16" fill="#21262D">›</text>
 
   <!-- Step 4 -->
-  <rect x="548" y="20" width="152" height="64" rx="8" fill="#0A1F1A" stroke="rgba(0,201,167,0.40)" stroke-width="1.5"/>
+  <rect x="548" y="20" width="152" height="64" rx="8" fill="#0D2220" stroke="rgba(0,201,167,0.40)" stroke-width="1.5"/>
   <text x="564" y="46"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
         font-size="22" font-weight="700" fill="rgba(0,201,167,0.30)">04</text>
   <text x="564" y="64"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="12" font-weight="600" fill="#00C9A7">Editor Ready  ✓</text>
+        font-size="12" font-weight="600" fill="#2DC4A4">Editor Ready  ✓</text>
   <text x="564" y="78"
         font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#8B949E">MCP wired · graph indexed</text>
+        font-size="10" fill="#9DA6B0">MCP wired · indexed</text>
 
 </svg>

@@ -2,118 +2,119 @@
 
   <rect width="720" height="140" rx="8" fill="#0B0F14"/>
 
-  <!-- Connector lines -->
+  <!-- 8 boxes: w=70, gap=16px, margin=22px each side
+       starts: 22, 108, 194, 280, 366, 452, 538, 624 -->
+
+  <!-- Connector lines (box_right+0 to box_right+8, arrowhead +8 to +16 = next box left) -->
   <g stroke="#21262D" stroke-width="1.5" fill="none">
-    <line x1="109" y1="70" x2="119" y2="70"/>
-    <line x1="201" y1="70" x2="211" y2="70"/>
-    <line x1="293" y1="70" x2="303" y2="70"/>
-    <line x1="385" y1="70" x2="395" y2="70"/>
-    <line x1="477" y1="70" x2="487" y2="70"/>
-    <line x1="569" y1="70" x2="579" y2="70"/>
-    <line x1="651" y1="70" x2="661" y2="70"/>
+    <line x1="92"  y1="70" x2="100" y2="70"/>
+    <line x1="178" y1="70" x2="186" y2="70"/>
+    <line x1="264" y1="70" x2="272" y2="70"/>
+    <line x1="350" y1="70" x2="358" y2="70"/>
+    <line x1="436" y1="70" x2="444" y2="70"/>
+    <line x1="522" y1="70" x2="530" y2="70"/>
+    <line x1="608" y1="70" x2="616" y2="70"/>
   </g>
-
-  <!-- Arrow heads -->
   <g fill="#21262D">
-    <polygon points="119,66 119,74 127,70"/>
-    <polygon points="211,66 211,74 219,70"/>
-    <polygon points="303,66 303,74 311,70"/>
-    <polygon points="395,66 395,74 403,70"/>
-    <polygon points="487,66 487,74 495,70"/>
-    <polygon points="579,66 579,74 587,70"/>
-    <polygon points="661,66 661,74 669,70"/>
+    <polygon points="100,66 100,74 108,70"/>
+    <polygon points="186,66 186,74 194,70"/>
+    <polygon points="272,66 272,74 280,70"/>
+    <polygon points="358,66 358,74 366,70"/>
+    <polygon points="444,66 444,74 452,70"/>
+    <polygon points="530,66 530,74 538,70"/>
+    <polygon points="616,66 616,74 624,70"/>
   </g>
 
-  <!-- Step 1: query -->
-  <rect x="37" y="44" width="72" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
-  <text x="73" y="65" text-anchor="middle"
-        font-family="'JetBrains Mono','Cascadia Code',Consolas,monospace"
-        font-size="19" fill="#00A8E8">?</text>
-  <text x="73" y="84" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#3D4450">query</text>
+  <!-- Box 1: query -->
+  <rect x="22" y="44" width="70" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="57" y="65" text-anchor="middle"
+        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
+        font-size="19" fill="#35ADE5">?</text>
+  <text x="57" y="84" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="10" fill="#606978">query</text>
 
-  <!-- Step 2: classify risk -->
-  <rect x="129" y="44" width="72" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
-  <text x="165" y="63" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <!-- Box 2: classify risk -->
+  <rect x="108" y="44" width="70" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="143" y="63" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">classify</text>
-  <text x="165" y="77" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <text x="143" y="77" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">risk</text>
-  <text x="165" y="88" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="9" fill="#3D4450">cheap·precise·critical</text>
+  <text x="143" y="88" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="9" fill="#606978">cheap·precise·critical</text>
 
-  <!-- Step 3: ContextContract -->
-  <rect x="221" y="44" width="72" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
-  <text x="257" y="63" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <!-- Box 3: ContextContract -->
+  <rect x="194" y="44" width="70" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="229" y="63" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">Context</text>
-  <text x="257" y="77" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <text x="229" y="77" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">Contract</text>
-  <text x="257" y="88" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="9" fill="#3D4450">budget · symbols</text>
+  <text x="229" y="88" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="9" fill="#606978">budget · symbols</text>
 
-  <!-- Step 4: retrieve -->
-  <rect x="313" y="44" width="72" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
-  <text x="349" y="63" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <!-- Box 4: retrieve -->
+  <rect x="280" y="44" width="70" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="315" y="63" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">retrieve</text>
-  <text x="349" y="77" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <text x="315" y="77" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">from graph</text>
-  <text x="349" y="88" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="9" fill="#3D4450">BM25 · RRF</text>
+  <text x="315" y="88" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="9" fill="#606978">BM25 · RRF</text>
 
-  <!-- Step 5: score + rank -->
-  <rect x="405" y="44" width="72" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
-  <text x="441" y="63" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <!-- Box 5: score + rank -->
+  <rect x="366" y="44" width="70" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="401" y="63" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">score</text>
-  <text x="441" y="77" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <text x="401" y="77" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">+ rank</text>
-  <text x="441" y="88" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="9" fill="#3D4450">call·git·memory</text>
+  <text x="401" y="88" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="9" fill="#606978">call·git·memory</text>
 
-  <!-- Step 6: pack minimum -->
-  <rect x="497" y="44" width="72" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
-  <text x="533" y="63" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <!-- Box 6: pack minimum -->
+  <rect x="452" y="44" width="70" height="52" rx="6" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="487" y="63" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">pack</text>
-  <text x="533" y="77" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+  <text x="487" y="77" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
         font-size="10" fill="#E6EDF3">minimum</text>
-  <text x="533" y="88" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="9" fill="#3D4450">AICX bytecode</text>
+  <text x="487" y="88" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="9" fill="#606978">AICX bytecode</text>
 
-  <!-- Step 7: gates (amber warning) -->
-  <rect x="589" y="44" width="62" height="52" rx="6" fill="#1A1600" stroke="#E3B341" stroke-width="1"/>
-  <text x="620" y="67" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#E3B341">validate</text>
-  <text x="620" y="81" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#E3B341">gates</text>
+  <!-- Box 7: validate gates (amber) -->
+  <rect x="538" y="44" width="70" height="52" rx="6" fill="#1A1600" stroke="#D4A840" stroke-width="1"/>
+  <text x="573" y="67" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="10" fill="#D4A840">validate</text>
+  <text x="573" y="81" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="10" fill="#D4A840">gates</text>
 
-  <!-- Step 8: deliver -->
-  <rect x="669" y="44" width="50" height="52" rx="6" fill="#0A1F1A" stroke="#00C9A7" stroke-width="1.5"/>
-  <text x="694" y="67" text-anchor="middle"
-        font-family="'JetBrains Mono','Cascadia Code',Consolas,monospace"
-        font-size="18" fill="#00C9A7">✓</text>
-  <text x="694" y="84" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="10" fill="#00C9A7">deliver</text>
+  <!-- Box 8: deliver (teal) -->
+  <rect x="624" y="44" width="70" height="52" rx="6" fill="#0D2220" stroke="#2DC4A4" stroke-width="1.5"/>
+  <text x="659" y="67" text-anchor="middle"
+        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
+        font-size="18" fill="#2DC4A4">✓</text>
+  <text x="659" y="84" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="10" fill="#2DC4A4">deliver</text>
 
-  <!-- Footer label -->
+  <!-- Footer -->
   <text x="360" y="120" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="11" fill="#3D4450">deterministic · no LLM guessing what's relevant · offline</text>
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="11" fill="#606978">deterministic · no LLM guessing what's relevant · offline</text>
 
 </svg>

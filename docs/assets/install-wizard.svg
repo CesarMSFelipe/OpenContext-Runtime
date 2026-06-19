@@ -1,187 +1,152 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" width="720" height="420" role="img" aria-label="opencontext install wizard animation: stack detection, editor selection, LLM provider, knowledge graph build, ready">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 700" width="720" height="700" role="img" aria-label="opencontext install wizard: template, security mode, TDD mode, and AI coding agents">
 
-  <!-- Terminal shell -->
-  <rect width="720" height="420" rx="10" fill="#0B0F14"/>
+  <rect width="720" height="700" rx="10" fill="#0B0F14"/>
+
+  <!-- Title bar — plain terminal style, no OS circles -->
   <rect width="720" height="40" rx="10" fill="#111821"/>
   <rect y="30" width="720" height="10" fill="#111821"/>
-  <circle cx="24" cy="20" r="6.5" fill="#FF7B72"/>
-  <circle cx="46" cy="20" r="6.5" fill="#E3B341"/>
-  <circle cx="68" cy="20" r="6.5" fill="#00C9A7"/>
+  <text x="20" y="25" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="12" fill="#2DC4A4">❯</text>
   <text x="360" y="25" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="12" fill="#3D4450">opencontext — ~/projects/my-app</text>
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="12" fill="#606978">opencontext — ~/projects/my-app</text>
 
-  <!-- ── LINE 0: shell prompt (0.2s = 2%) ── -->
-  <text x="20" y="62"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00C9A7">~/projects/my-app</tspan>
-    <tspan fill="#3D4450">  on </tspan>
-    <tspan fill="#00A8E8"> main</tspan>
-    <tspan fill="#00C9A7"> ✓</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.02;0.04;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- ── 0: shell prompt ── appear at 3% -->
+  <text x="20" y="62" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#2DC4A4">~/my-app</tspan><tspan fill="#606978"> on </tspan><tspan fill="#35ADE5">main</tspan><tspan fill="#2DC4A4"> ✓</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.03;0.05;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
 
-  <!-- ── LINE 1: command (0.5s = 5%) ── -->
-  <text x="20" y="80"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00A8E8">❯</tspan>
-    <tspan fill="#E6EDF3"> opencontext install</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.05;0.07;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- ── 1: command ── appear at 6% -->
+  <text x="20" y="80" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">❯</tspan><tspan fill="#E6EDF3"> opencontext install</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.06;0.08;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
 
-  <!-- cursor after command -->
-  <rect x="198" y="68" width="8" height="14" rx="1" fill="#00A8E8" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;0;1;0;1;0;0" keyTimes="0;0.07;0.08;0.09;0.10;0.11;0.12;0.13;1" dur="10s" repeatCount="indefinite"/>
-  </rect>
-
-  <!-- ── LINE 2: detected stack (1.4s = 14%) ── -->
-  <text x="20" y="104"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#3D4450">  Detected  </tspan>
-    <tspan fill="#00C9A7">Python 3.12</tspan>
-    <tspan fill="#3D4450">  ·  </tspan>
-    <tspan fill="#00C9A7">FastAPI</tspan>
-    <tspan fill="#3D4450">  ·  </tspan>
-    <tspan fill="#00C9A7">pytest</tspan>
-    <tspan fill="#3D4450">  ·  </tspan>
-    <tspan fill="#00C9A7">git</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.14;0.16;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- ── 2: detected stack ── appear at 10% -->
+  <text x="20" y="104" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#606978">  Detected  </tspan><tspan fill="#2DC4A4">Python 3.12</tspan><tspan fill="#606978"> · </tspan><tspan fill="#2DC4A4">FastAPI</tspan><tspan fill="#606978"> · </tspan><tspan fill="#2DC4A4">pytest</tspan><tspan fill="#606978"> · </tspan><tspan fill="#2DC4A4">git</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.10;0.12;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
 
-  <!-- ── DIVIDER 1 (1.7s = 17%) ── -->
+  <!-- divider 1 ── 14% -->
   <line x1="20" y1="116" x2="700" y2="116" stroke="#21262D" stroke-width="1" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.17;0.19;0.94;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.14;0.16;0.94;1" dur="20s" repeatCount="indefinite"/>
   </line>
 
-  <!-- ── LINE 3: editor question (2.0s = 20%) ── -->
-  <text x="20" y="136"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00A8E8">?</tspan>
-    <tspan fill="#E6EDF3"> Which editor do you use?</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.20;0.22;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- ── STEP 1: template question ── 16% -->
+  <text x="20" y="134" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5" opacity="0">── Step 1 / 4 — Configuration Template ──────────────────────────────<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.16;0.17;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="20" y="154" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Choose a configuration template</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.17;0.19;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
 
-  <!-- Claude Code option highlight -->
-  <rect x="20" y="144" width="260" height="22" rx="3" fill="#0D1117" stroke="rgba(0,168,232,0.25)" stroke-width="1" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.24;0.26;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- step 1 options ── 19% -->
+  <rect x="20" y="162" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.19;0.21;0.94;1" dur="20s" repeatCount="indefinite"/>
   </rect>
-
-  <!-- ── LINE 4: Claude Code selected (2.4s = 24%) ── -->
-  <text x="28" y="159"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00A8E8">❯ </tspan>
-    <tspan fill="#E6EDF3">Claude Code</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.24;0.26;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <text x="28" y="176" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#E6EDF3">Generic (default)  </tspan><tspan fill="#606978">— Standard project, recommended for most users</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.19;0.21;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
+  <text x="28" y="196" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">  Enterprise         — Strict security, all external providers blocked<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.21;0.22;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="214" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">  Air-gapped         — No external access, no semantic cache, max isolation<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.22;0.23;0.94;1" dur="20s" repeatCount="indefinite"/></text>
 
-  <!-- other editor options (2.7s = 27%) -->
-  <text x="28" y="181" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#3D4450" opacity="0">  Cursor<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.27;0.28;0.94;1" dur="10s" repeatCount="indefinite"/></text>
-  <text x="28" y="199" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#3D4450" opacity="0">  VS Code + Copilot<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.28;0.29;0.94;1" dur="10s" repeatCount="indefinite"/></text>
-  <text x="28" y="217" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#3D4450" opacity="0">  Other<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.29;0.30;0.94;1" dur="10s" repeatCount="indefinite"/></text>
-
-  <!-- ── DIVIDER 2 (3.4s = 34%) ── -->
-  <line x1="20" y1="228" x2="700" y2="228" stroke="#21262D" stroke-width="1" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.34;0.36;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- divider 2 ── 28% -->
+  <line x1="20" y1="226" x2="700" y2="226" stroke="#21262D" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.28;0.30;0.94;1" dur="20s" repeatCount="indefinite"/>
   </line>
 
-  <!-- ── LINE 5: LLM question (3.7s = 37%) ── -->
-  <text x="20" y="248"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00A8E8">?</tspan>
-    <tspan fill="#E6EDF3"> Configure an LLM provider?</tspan>
-    <tspan fill="#3D4450">  (loop and harness require one)</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.37;0.39;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- ── STEP 2: security mode ── 30% -->
+  <text x="20" y="244" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5" opacity="0">── Step 2 / 4 — Security Mode ───────────────────────────────────────<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.30;0.31;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="20" y="264" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Choose security mode</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.31;0.33;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
 
-  <!-- Anthropic option highlight -->
-  <rect x="20" y="256" width="300" height="22" rx="3" fill="#0D1117" stroke="rgba(0,168,232,0.25)" stroke-width="1" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.41;0.43;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- step 2 options ── 33% -->
+  <rect x="20" y="272" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.33;0.35;0.94;1" dur="20s" repeatCount="indefinite"/>
   </rect>
-
-  <!-- ── LINE 6: Anthropic selected (4.1s = 41%) ── -->
-  <text x="28" y="271"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00A8E8">❯ </tspan>
-    <tspan fill="#E6EDF3">Anthropic (Claude)</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.41;0.43;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <text x="28" y="286" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#E6EDF3">private_project  </tspan><tspan fill="#606978">— Redaction on, external providers off (recommended)</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.33;0.35;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
+  <text x="28" y="306" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">  developer        — Local dev posture, fewest restrictions<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.35;0.36;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="322" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">  enterprise       — Team sharing with governance<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.36;0.37;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="338" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">  air_gapped       — Completely offline, no external access<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.37;0.38;0.94;1" dur="20s" repeatCount="indefinite"/></text>
 
-  <!-- other LLM options (4.4s = 44%) -->
-  <text x="28" y="293" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#3D4450" opacity="0">  OpenAI<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.44;0.45;0.94;1" dur="10s" repeatCount="indefinite"/></text>
-  <text x="28" y="311" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#3D4450" opacity="0">  OpenRouter<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.45;0.46;0.94;1" dur="10s" repeatCount="indefinite"/></text>
-  <text x="28" y="329" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#3D4450" opacity="0">  Skip for now<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.46;0.47;0.94;1" dur="10s" repeatCount="indefinite"/></text>
-
-  <!-- ── DIVIDER 3 (5.0s = 50%) ── -->
-  <line x1="20" y1="340" x2="700" y2="340" stroke="#21262D" stroke-width="1" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.50;0.52;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- divider 3 ── 44% -->
+  <line x1="20" y1="350" x2="700" y2="350" stroke="#21262D" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.44;0.46;0.94;1" dur="20s" repeatCount="indefinite"/>
   </line>
 
-  <!-- ── LINE 7: building KG (5.3s = 53%) ── -->
-  <!-- "Building knowledge graph ..." -->
-  <text x="20" y="360"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#3D4450">  Building knowledge graph  </tspan>
-    <tspan fill="#8B949E">...</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.53;0.55;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- ── STEP 3: TDD mode ── 46% -->
+  <text x="20" y="368" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5" opacity="0">── Step 3 / 4 — TDD Mode ────────────────────────────────────────────<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.46;0.47;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="20" y="388" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Choose TDD mode</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.47;0.49;0.94;1" dur="20s" repeatCount="indefinite"/>
   </text>
 
-  <!-- Progress bar track (5.3s = 53%) -->
-  <rect x="276" y="350" width="200" height="8" rx="3" fill="#21262D" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.53;0.55;0.94;1" dur="10s" repeatCount="indefinite"/>
+  <!-- step 3 options ── 49% -->
+  <rect x="20" y="396" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.49;0.51;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </rect>
+  <text x="28" y="410" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#E6EDF3">Ask me   </tspan><tspan fill="#606978">— Prompt before each TDD decision (default)</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.49;0.51;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </text>
+  <text x="28" y="428" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">  Strict   — Always require a failing test before production code<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.51;0.52;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="444" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">  Off      — No TDD enforcement, code-first workflow<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.52;0.53;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+
+  <!-- divider 4 ── 58% -->
+  <line x1="20" y1="456" x2="700" y2="456" stroke="#21262D" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.58;0.60;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- ── STEP 4: agents checkbox ── 60% -->
+  <text x="20" y="474" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5" opacity="0">── Step 4 / 4 — AI Coding Agents ────────────────────────────────────<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.60;0.61;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="20" y="494" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Select agents to configure  </tspan><tspan fill="#606978">(Space to select/deselect, Enter to confirm.)</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.61;0.63;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </text>
+
+  <!-- step 4 options (appear staggered) ── 63%+ -->
+  <rect x="20" y="502" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.63;0.65;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </rect>
+  <text x="28" y="516" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#2DC4A4">◉ </tspan><tspan fill="#E6EDF3">OpenCode      </tspan><tspan fill="#606978">— opencode.ai (Tab personas, MCP)</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.63;0.65;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </text>
+  <text x="28" y="534" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Claude Code   — Anthropic CLI (.claude/agents)<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.65;0.66;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="550" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Cursor        — .cursor/mcp.json<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.66;0.67;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="566" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Windsurf      — .windsurf/mcp.json<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.67;0.68;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="582" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Kilo Code     — VS Code extension<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.68;0.69;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="598" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Gemini CLI    — Google AI CLI<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.69;0.70;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="614" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Codex         — OpenAI Codex CLI<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.70;0.71;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="630" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Aider         — aider.chat CLI<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.71;0.72;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="646" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Cline         — VS Code Cline extension<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.72;0.73;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="662" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Roo           — Roo-Code extension<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.73;0.74;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+  <text x="28" y="678" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978" opacity="0">    ◯ Continue      — continue.dev extension<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.74;0.75;0.94;1" dur="20s" repeatCount="indefinite"/></text>
+
+  <!-- ── Result: setup running ── 82% -->
+  <text x="20" y="696" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" opacity="0">
+    <tspan fill="#606978">  Setting up project... </tspan><tspan fill="#2DC4A4">done  </tspan><tspan fill="#9DA6B0">opencode.md · claude-code.md installed</tspan>
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.82;0.84;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </text>
+
+  <!-- Progress bar ── 82% → fills to 90% -->
+  <rect x="212" y="684" width="200" height="6" rx="3" fill="#21262D" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.82;0.84;0.94;1" dur="20s" repeatCount="indefinite"/>
+  </rect>
+  <rect x="212" y="684" width="0" height="6" rx="3" fill="#2DC4A4" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.82;0.84;0.94;1" dur="20s" repeatCount="indefinite"/>
+    <animate attributeName="width" values="0;0;0;200;200" keyTimes="0;0.82;0.84;0.90;1" dur="20s" repeatCount="indefinite"/>
   </rect>
 
-  <!-- Progress bar fill (5.3s → 6.0s = 53% → 60%) -->
-  <rect x="276" y="350" width="0" height="8" rx="3" fill="#00C9A7" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.53;0.55;0.94;1" dur="10s" repeatCount="indefinite"/>
-    <animate attributeName="width" values="0;0;0;200;200;200" keyTimes="0;0.53;0.55;0.60;0.94;1" dur="10s" repeatCount="indefinite"/>
-  </rect>
-
-  <!-- " done  1,247 symbols indexed" appears after progress (6.0s = 60%) -->
-  <text x="484" y="360"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00C9A7"> done  </tspan>
-    <tspan fill="#8B949E">1,247 symbols indexed</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.60;0.62;0.94;1" dur="10s" repeatCount="indefinite"/>
-  </text>
-
-  <!-- ── LINE 8: wiring MCP (6.5s = 65%) ── -->
-  <text x="20" y="378"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#3D4450">  Wiring Claude Code MCP   </tspan>
-    <tspan fill="#8B949E">... </tspan>
-    <tspan fill="#00C9A7"> done</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.65;0.67;0.94;1" dur="10s" repeatCount="indefinite"/>
-  </text>
-
-  <!-- ── LINE 9: Ready (7.0s = 70%) ── -->
-  <text x="20" y="398"
-        font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-        font-size="13" opacity="0">
-    <tspan fill="#00C9A7">  Ready. </tspan>
-    <tspan fill="#E6EDF3"> Run </tspan>
-    <tspan fill="#00A8E8">opencontext demo</tspan>
-    <tspan fill="#E6EDF3"> to see it in action.</tspan>
-    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.70;0.72;0.94;1" dur="10s" repeatCount="indefinite"/>
-  </text>
-
-  <!-- blinking cursor on ready state (7.5s → end) -->
-  <rect x="20" y="408" width="8" height="2" rx="1" fill="#00A8E8" opacity="0">
-    <animate attributeName="opacity" values="0;0;1;0;1;0;1;0;1;0;1;0;0" keyTimes="0;0.75;0.77;0.79;0.81;0.83;0.85;0.87;0.89;0.91;0.93;0.95;1" dur="10s" repeatCount="indefinite"/>
-  </rect>
-
-  <!-- ── FADE OVERLAY (9.4s → 10s) — black curtain between loops ── -->
-  <rect width="720" height="420" rx="10" fill="#0B0F14" opacity="0">
-    <animate attributeName="opacity" values="0;0;0;1;0" keyTimes="0;0.93;0.95;0.98;1" dur="10s" repeatCount="indefinite"/>
+  <!-- ── FADE OVERLAY between loops ── -->
+  <rect width="720" height="700" rx="10" fill="#0B0F14" opacity="0">
+    <animate attributeName="opacity" values="0;0;0;1;0" keyTimes="0;0.93;0.95;0.98;1" dur="20s" repeatCount="indefinite"/>
   </rect>
 
 </svg>
