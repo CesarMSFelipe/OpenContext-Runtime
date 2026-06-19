@@ -32,6 +32,7 @@ _TEMPLATE_CHOICES = ("generic", "enterprise", "air_gapped")
 # InquirerPy helpers — graceful fallback to Rich Prompt when not installed
 # ---------------------------------------------------------------------------
 
+
 def _iq_select(
     message: str,
     choices: list[dict[str, str]],
@@ -45,18 +46,17 @@ def _iq_select(
 
         iq_choices = [Choice(value=c["value"], name=c["name"]) for c in choices]
         default_val = default or choices[0]["value"]
-        return inquirer.select(  # type: ignore[return-value]
+        selected = inquirer.select(
             message=message,
             choices=iq_choices,
             default=default_val,
             long_instruction=instruction,
             show_cursor=True,
         ).execute()
+        return str(selected)
     except ImportError:
         str_choices = [c["value"] for c in choices]
-        console.print(
-            "  " + "  ".join(f"[cyan]{c['name']}[/]" for c in choices)
-        )
+        console.print("  " + "  ".join(f"[cyan]{c['name']}[/]" for c in choices))
         return Prompt.ask(message, choices=str_choices, default=default or str_choices[0])
 
 
@@ -97,6 +97,7 @@ def _iq_checkbox(
 # ---------------------------------------------------------------------------
 # Wizard
 # ---------------------------------------------------------------------------
+
 
 class OnboardingWizard:
     """Interactive TUI wizard for project onboarding.
@@ -287,17 +288,17 @@ class OnboardingWizard:
         )
 
         choices = [
-            {"value": "opencode",    "name": "OpenCode      — opencode.ai (Tab personas, MCP)"},
+            {"value": "opencode", "name": "OpenCode      — opencode.ai (Tab personas, MCP)"},
             {"value": "claude-code", "name": "Claude Code   — Anthropic CLI (.claude/agents)"},
-            {"value": "cursor",      "name": "Cursor        — .cursor/mcp.json"},
-            {"value": "windsurf",    "name": "Windsurf      — .windsurf/mcp.json"},
-            {"value": "kilo-code",   "name": "Kilo Code     — VS Code extension"},
-            {"value": "gemini-cli",  "name": "Gemini CLI    — Google AI CLI"},
-            {"value": "codex",       "name": "Codex         — OpenAI Codex CLI"},
-            {"value": "aider",       "name": "Aider         — aider.chat CLI"},
-            {"value": "cline",       "name": "Cline         — VS Code Cline extension"},
-            {"value": "roo",         "name": "Roo           — Roo-Code extension"},
-            {"value": "continue",    "name": "Continue      — continue.dev extension"},
+            {"value": "cursor", "name": "Cursor        — .cursor/mcp.json"},
+            {"value": "windsurf", "name": "Windsurf      — .windsurf/mcp.json"},
+            {"value": "kilo-code", "name": "Kilo Code     — VS Code extension"},
+            {"value": "gemini-cli", "name": "Gemini CLI    — Google AI CLI"},
+            {"value": "codex", "name": "Codex         — OpenAI Codex CLI"},
+            {"value": "aider", "name": "Aider         — aider.chat CLI"},
+            {"value": "cline", "name": "Cline         — VS Code Cline extension"},
+            {"value": "roo", "name": "Roo           — Roo-Code extension"},
+            {"value": "continue", "name": "Continue      — continue.dev extension"},
         ]
         return _iq_checkbox(
             "Select agents to configure",
