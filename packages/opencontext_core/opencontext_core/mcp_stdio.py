@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import re
+import select
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -919,10 +921,16 @@ class MCPServer:
 
         self._write_json({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
 
-    def _request_sampling(self, system_prompt: str, prompt: str, max_tokens: int) -> str:
+    def _request_sampling(
+        self, system_prompt: str, prompt: str, max_tokens: int, *, timeout: float = 60.0
+    ) -> str:
         """Host sampler: run a generation on the client's selected model via MCP
         sampling. Sends ``sampling/createMessage`` and waits for the matching
         response, handling any client requests that interleave the round-trip.
+
+        Bounded by ``timeout``: a host that advertises ``sampling`` but never
+        answers would otherwise deadlock the server forever on ``readline()``.
+        Returns ``""`` on timeout, disconnect, or an error response.
         """
         self._sampling_seq = getattr(self, "_sampling_seq", 0) + 1
         req_id = f"oc-sampling-{self._sampling_seq}"
@@ -933,15 +941,48 @@ class MCPServer:
         if system_prompt:
             params["systemPrompt"] = system_prompt
         self._send_request(req_id, "sampling/createMessage", params)
+        deadline = time.monotonic() + timeout
         while True:
-            msg = self._read_message()
+            msg = self._read_message_before(deadline)
             if msg is None:
-                return ""  # client disconnected mid-request
+                return ""  # timed out or client disconnected mid-request
             if msg.get("id") == req_id:
+                if "error" in msg:
+                    return ""  # client refused/failed the sampling request
                 content = (msg.get("result") or {}).get("content", {})
                 return str(content.get("text", "")) if isinstance(content, dict) else str(content)
             if "method" in msg:  # interleaved client request — service it
                 self._handle_request(msg)
+
+    def _read_message_before(self, deadline: float) -> dict[str, Any] | None:
+        """Read one JSON-RPC message, or None if ``deadline`` passes first.
+
+        Uses ``select`` on a real stdin fd so a silent host cannot block forever;
+        when stdin has no pollable fd (e.g. an in-memory test buffer) it falls
+        back to a plain blocking read.
+        """
+        try:
+            fd = sys.stdin.fileno()
+        except Exception:
+            fd = None
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            if fd is not None:
+                ready, _, _ = select.select([fd], [], [], remaining)
+                if not ready:
+                    return None
+            line = sys.stdin.readline()
+            if not line:
+                return None  # EOF
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                return json.loads(line)  # type: ignore[no-any-return]
+            except json.JSONDecodeError:
+                self._send_error(None, -32700, "Parse error")
 
     @staticmethod
     def _write_json(data: dict[str, Any]) -> None:

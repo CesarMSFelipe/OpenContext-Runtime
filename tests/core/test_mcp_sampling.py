@@ -61,6 +61,24 @@ def test_initialize_registers_host_sampler_when_client_supports_sampling(
     assert get_host_sampler() is not None
 
 
+def test_request_sampling_returns_empty_when_host_never_answers(
+    server: MCPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A host that advertises sampling but never replies must not deadlock.
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert server._request_sampling("be terse", "say hi", 128, timeout=0.5) == ""
+
+
+def test_request_sampling_returns_empty_on_error_response(
+    server: MCPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    error = json.dumps(
+        {"jsonrpc": "2.0", "id": "oc-sampling-1", "error": {"code": -1, "message": "denied"}}
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(error + "\n"))
+    assert server._request_sampling("be terse", "say hi", 128) == ""
+
+
 def test_initialize_without_sampling_does_not_register(server: MCPServer) -> None:
     assert get_host_sampler() is None
     server._handle_request(
