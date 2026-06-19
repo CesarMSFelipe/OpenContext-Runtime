@@ -39,3 +39,12 @@ mypy_path = "packages/opencontext_core:packages/opencontext_profiles"
 warn_unreachable = true
 exclude = [
 ]
+
+# InquirerPy ships partial/dynamic type info and no usable stubs; the wizard
+# guards its use behind a runtime ImportError fallback. Detach it from type
+# checking entirely so results are identical whether or not it is installed
+# (otherwise mypy reports missing-import locally and attr-defined in CI).
+[[tool.mypy.overrides]]
+module = "InquirerPy.*"
+ignore_missing_imports = true
+follow_imports = "skip"
