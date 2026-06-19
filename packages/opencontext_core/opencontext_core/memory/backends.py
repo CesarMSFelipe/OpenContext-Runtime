@@ -327,6 +327,19 @@ class SQLiteMemoryBackend:
             ).fetchall()
         return [row["key"] for row in rows]
 
+    def list_records(self, *, limit: int = 200) -> list[MemoryRecord]:
+        """All active (not-yet-superseded) records, most-recent first.
+
+        Backs `memory list` so the CLI shows the canonical SQLite store directly.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memory_records WHERE invalid_at IS NULL "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
     def get(self, record_id: str) -> MemoryRecord | None:
         """Fetch a single record by id, or None."""
         with self._connect() as conn:

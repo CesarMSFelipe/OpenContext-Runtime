@@ -58,6 +58,14 @@ def test_layer_filter(backend: SQLiteMemoryBackend) -> None:
     assert all(r.layer == MemoryLayer.EPISODIC for r in results)
 
 
+def test_list_records_enumerates_active(backend: SQLiteMemoryBackend) -> None:
+    """list_records backs `memory list` — it must enumerate without a query."""
+    backend.store(make_record(record_id="a", content="alpha note"))
+    backend.store(make_record(record_id="b", content="beta note"))
+    ids = {r.id for r in backend.list_records()}
+    assert {"a", "b"} <= ids
+
+
 def test_fts5_finds_content(backend: SQLiteMemoryBackend) -> None:
     backend.store(make_record(content="knowledge graph indexing failure pattern"))
     results = backend.search("knowledge graph")

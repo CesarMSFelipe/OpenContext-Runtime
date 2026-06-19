@@ -3904,6 +3904,14 @@ def _eval(
     print(json.dumps([r.model_dump() for r in eval_results], indent=2))
 
 
+def _agent_memory_store(args: argparse.Namespace) -> Any:
+    """The canonical SQLite AgentMemoryStore (source of truth), or None."""
+    try:
+        return _runtime(getattr(args, "config", None))._v2_memory_store
+    except Exception:
+        return None
+
+
 def _memory(args: argparse.Namespace) -> None:
     """Handle memory subcommands."""
     command = args.memory_command
@@ -3915,20 +3923,45 @@ def _memory(args: argparse.Namespace) -> None:
             print(f"- {path}")
         return
     if command == "list":
-        items = repo.list_items()
-        if not items:
-            print("No items in context repository. Run 'opencontext memory harvest' to populate.")
-        for item in items:
-            print(f"{item.id}: {item.kind} ({item.classification.value}) - {item.tokens} tokens")
+        # Canonical SQLite store first (what the agent recalls), markdown second.
+        shown = False
+        store = _agent_memory_store(args)
+        if store is not None and hasattr(store, "list_records"):
+            for rec in store.list_records(limit=200):
+                print(f"{rec.id}: {rec.layer.value} [{rec.key}] - {len(rec.content)} chars")
+                shown = True
+        for item in repo.list_items():
+            print(
+                f"{item.id}: {item.kind} ({item.classification.value}) - "
+                f"{item.tokens} tokens [md]"
+            )
+            shown = True
+        if not shown:
+            print("No memory yet. Run 'opencontext memory harvest' or an agentic loop.")
         return
     if command == "search":
-        results = repo.search(args.query)
-        if not results:
+        seen: set[str] = set()
+        hit = False
+        store = _agent_memory_store(args)
+        if store is not None:
+            for rec in store.search(args.query, limit=10):
+                seen.add(rec.id)
+                print(f"{rec.id} [{rec.layer.value}]: {rec.content[:100]}...")
+                hit = True
+        for item in repo.search(args.query):
+            if item.id in seen:
+                continue
+            print(f"{item.id} [{item.kind}]: {item.content[:100]}... [md]")
+            hit = True
+        if not hit:
             print(f"No memories match '{args.query}'.")
-        for item in results:
-            print(f"{item.id} [{item.kind}]: {item.content[:100]}...")
         return
     if command == "show":
+        store = _agent_memory_store(args)
+        rec = store.get(args.memory_id) if store is not None and hasattr(store, "get") else None
+        if rec is not None:
+            print(yaml.safe_dump(rec.model_dump(mode="json"), sort_keys=True))
+            return
         item = repo.get(args.memory_id)
         print(yaml.safe_dump(item.model_dump(mode="json"), sort_keys=True))
         return
