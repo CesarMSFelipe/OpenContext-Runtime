@@ -105,6 +105,10 @@ class LocalMemoryStore:
     ) -> list[MemoryRecord]:
         return self._backend.search(query, layer=scope, limit=limit)
 
+    def list_records(self, *, limit: int = 200) -> list[MemoryRecord]:
+        """All active records, most-recent first — backs `memory list`."""
+        return self._backend.list_records(limit=limit)
+
     def search_hybrid(
         self, query: str, *, scope: MemoryLayer | None = None, limit: int = 10
     ) -> list[MemoryRecord]:
