@@ -1830,9 +1830,16 @@ def _install(args: argparse.Namespace) -> None:
                                 encoding="utf-8",
                             )
 
+                    # Copy the oc-* SDD skill commands into the project so the phase
+                    # commands actually land (.opencontext/skills/). Project-scoped.
+                    mgr = InstallationManager()
+                    try:
+                        mgr._install_skills(root)
+                    except Exception:
+                        pass
+
                     # Global agent config (MCP registration, agent profiles) is a
                     # once-per-machine concern — skip if already installed globally.
-                    mgr = InstallationManager()
                     if mgr._is_installed():
                         results[phase_key] = (
                             f"✓ ({len(agent_files)} files, global integration already installed)"
