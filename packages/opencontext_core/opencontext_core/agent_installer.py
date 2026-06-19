@@ -111,11 +111,3 @@ class AgentInstaller:
             else:
                 result[key] = value
         return result
-
-    def uninstall(self, targets: list[AgentTarget] | None = None) -> dict[str, Any]:
-        """Remove OpenContext configuration from agents."""
-
-        return {
-            "status": "not_implemented",
-            "message": "Uninstall requires tracking what was installed",
-        }
