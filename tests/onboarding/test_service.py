@@ -60,6 +60,16 @@ def test_onboarding_service_run_creates_workspace(tmp_path: Path) -> None:
     assert result.root == str(tmp_path.resolve())
 
 
+def test_onboarding_bridges_runtime_prefs_into_yaml(tmp_path: Path) -> None:
+    """M6: prefs the runtime reads from yaml (e.g. security mode) must be synced
+    during onboarding, not just saved to the prefs store."""
+    service = OnboardingService()
+    service.run(OnboardingOptions(root=tmp_path, security_mode="air_gapped"))
+
+    config = yaml.safe_load((tmp_path / "opencontext.yaml").read_text(encoding="utf-8"))
+    assert config["security"]["mode"] == "air_gapped"
+
+
 def test_onboarding_service_creates_config(tmp_path: Path) -> None:
     service = OnboardingService()
     result = service.run(OnboardingOptions(root=tmp_path))

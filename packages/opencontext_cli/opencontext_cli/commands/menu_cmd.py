@@ -259,6 +259,11 @@ def _run_configure_models() -> None:
     prefs.default_provider = provider
     prefs.default_model = model
     store.save(prefs)
+    # Bridge to opencontext.yaml — the runtime reads models.default from yaml, so
+    # without this the chosen provider/model silently no-op at runtime.
+    from opencontext_core.config_sync import sync_runtime_prefs_to_yaml
+
+    sync_runtime_prefs_to_yaml(prefs)
     console.print("[green]✓ Model configuration saved[/]")
 
 

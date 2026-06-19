@@ -140,6 +140,11 @@ class OnboardingService:
         for known_agent in list(prefs.agent_integrations):
             prefs.agent_integrations[known_agent] = known_agent in options.active_clients
         store.save(prefs)
+        # Bridge runtime-affecting prefs into opencontext.yaml — the runtime reads
+        # provider/model/security from yaml, not from the prefs store.
+        from opencontext_core.config_sync import sync_runtime_prefs_to_yaml
+
+        sync_runtime_prefs_to_yaml(prefs, root=root)
 
         # 4. Index project
         try:
