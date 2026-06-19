@@ -617,10 +617,14 @@ def _run_uninstall() -> None:
     global_items: list[Any] = []
     with console.status("[cyan]Removing global installation state...[/]", spinner="dots"):
         try:
-            from opencontext_core.install_manager import InstallationManager
+            from opencontext_core.configurator import KNOWN_AGENTS, Configurator
 
-            result = InstallationManager().uninstall(keep_backups=False, yes=True)
-            global_items = result.get("removed", [])
+            # Surgically strip our managed block + MCP entry from each agent's
+            # config — never unlink the whole CLAUDE.md / mcp.json, which would
+            # wipe user-authored content and any other MCP server they configured.
+            report = Configurator().deconfigure(list(KNOWN_AGENTS), scope="global")
+            for result in report.get("results", []):
+                global_items.extend(result.get("files", []))
             global_ok = True
         except Exception as exc:
             global_ok = False
