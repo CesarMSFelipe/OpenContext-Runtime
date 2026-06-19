@@ -224,6 +224,6 @@ def test_recent_failure_memory_boosts_matching_candidate(tmp_path: Path) -> None
     boosted = RetrievalPlanner([_Source()], memory_store=_Memory())
     plain = RetrievalPlanner([_Source()])
 
-    assert [e.id for e in boosted.plan(request, top_k=2).evidence][0] == "b"
+    assert boosted.plan(request, top_k=2).evidence[0].id == "b"
     # Without the failure memory the tie breaks the other way (token, id order).
-    assert [e.id for e in plain.plan(request, top_k=2).evidence][0] == "a"
+    assert plain.plan(request, top_k=2).evidence[0].id == "a"
