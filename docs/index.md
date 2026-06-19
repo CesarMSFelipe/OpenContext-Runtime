@@ -46,4 +46,3 @@ opencontext pack . --query "How does auth work?" --copy
 - [Installation](getting-started/installation.md)
 - [Quickstart](getting-started/quickstart.md)
 - [Configuration Reference](configuration/reference.md)
-- [Project State](STATE.md)
