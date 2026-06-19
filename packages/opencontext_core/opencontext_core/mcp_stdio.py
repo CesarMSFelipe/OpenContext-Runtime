@@ -252,6 +252,21 @@ class MCPServer:
                     "file": {"type": "string", "description": "File path (optional)"},
                 },
             },
+            "opencontext_run": {
+                "description": (
+                    "Drive the SDD agentic loop in-process using THIS host's selected "
+                    "model via MCP sampling (zero provider config). Runs the workflow "
+                    "phases (explore -> ... -> apply -> verify) and applies code edits."
+                ),
+                "parameters": {
+                    "task": {"type": "string", "description": "Task / change to implement"},
+                    "workflow": {
+                        "type": "string",
+                        "description": "Workflow track (sdd/standard/quick/...)",
+                        "default": "sdd",
+                    },
+                },
+            },
         }
 
     def run(self) -> None:
@@ -395,6 +410,7 @@ class MCPServer:
             "opencontext_insert_before_symbol": self._handle_insert_before_symbol,
             "opencontext_insert_after_symbol": self._handle_insert_after_symbol,
             "opencontext_rename_symbol": self._handle_rename_symbol,
+            "opencontext_run": self._handle_run,
         }
 
     def _default_tool_names(self) -> list[str]:
@@ -415,7 +431,41 @@ class MCPServer:
             "opencontext_insert_before_symbol",
             "opencontext_insert_after_symbol",
             "opencontext_rename_symbol",
+            "opencontext_run",
         ]
+
+    def _handle_run(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Drive the agentic harness in-process using the host's model.
+
+        This is the in-process LLM consumer that makes MCP sampling reachable: the
+        harness runs in THIS process, where the host sampler was registered during
+        ``initialize`` (the standalone ``opencontext loop`` runs in a separate
+        process where the sampler is absent). The runner resolves a
+        ``SamplingGateway`` from the live sampler, so spec/design/tasks and apply
+        codegen use the host's selected model with zero provider config.
+        """
+        from pathlib import Path
+
+        from opencontext_core.harness.runner import HarnessRunner
+
+        task = str(params.get("task", "")).strip()
+        if not task:
+            return {"error": "task is required"}
+        workflow = str(params.get("workflow", "sdd")) or "sdd"
+
+        from opencontext_core.llm.sampling_gateway import get_host_sampler
+
+        runner = HarnessRunner(root=Path.cwd())
+        result = runner.run(workflow, task)
+        return {
+            "run_id": result.run_id,
+            "workflow": workflow,
+            "status": getattr(result.status, "value", str(result.status)),
+            "host_model_used": get_host_sampler() is not None,
+            "artifacts": len(getattr(result, "artifacts", [])),
+            "gates": len(getattr(result, "gates", [])),
+            "warnings": list(getattr(result, "warnings", []))[:10],
+        }
 
     def _handle_search(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle search tool."""

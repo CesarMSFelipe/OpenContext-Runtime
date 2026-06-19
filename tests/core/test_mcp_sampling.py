@@ -92,6 +92,41 @@ def test_sampling_prompt_is_redacted_before_send(
     assert secret not in sent
 
 
+def test_opencontext_run_requires_task(server: MCPServer) -> None:
+    assert "error" in server._call_tool("opencontext_run", {})
+
+
+def test_opencontext_run_drives_harness_with_host_sampler(
+    server: MCPServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C3: the in-process run tool drives the harness where the host sampler is
+    live (the standalone loop runs in a separate process where it is absent)."""
+    register_host_sampler(lambda s, p, m: "ok")
+
+    captured: dict[str, str] = {}
+
+    class _Result:
+        run_id = "r1"
+        status = "passed"
+        artifacts: list[object] = []
+        gates: list[object] = []
+        warnings: list[str] = []
+
+    def _fake_run(self: object, workflow: str, task: str, *a: object, **k: object) -> _Result:
+        captured["workflow"] = workflow
+        captured["task"] = task
+        return _Result()
+
+    from opencontext_core.harness import runner as runner_mod
+
+    monkeypatch.setattr(runner_mod.HarnessRunner, "run", _fake_run)
+    out = server._call_tool("opencontext_run", {"task": "do X", "workflow": "sdd"})
+
+    assert captured == {"workflow": "sdd", "task": "do X"}
+    assert out["host_model_used"] is True
+    assert out["status"] == "passed"
+
+
 def test_initialize_without_sampling_does_not_register(server: MCPServer) -> None:
     assert get_host_sampler() is None
     server._handle_request(

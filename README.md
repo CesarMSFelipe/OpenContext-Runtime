@@ -370,7 +370,7 @@ opencontext bridges scan . --type HTTP --json
 
 <h3>Agent Interface</h3>
 
-13 MCP tools. Compatible with Claude Code, Cursor, Copilot, Windsurf, OpenCode, and any MCP-compatible editor.
+14 MCP tools. Compatible with Claude Code, Cursor, Copilot, Windsurf, OpenCode, and any MCP-compatible editor.
 
 `opencontext install` writes three agent personas to your editor's agents directory. In OpenCode, press **Tab** to switch to one. In Claude Code, they appear as subagents.
 
@@ -389,11 +389,11 @@ opencontext bridges scan . --type HTTP --json
 </div>
 
 <p align="center">
-  <img src="docs/assets/mcp-tools.svg" alt="13 MCP tools: 9 read tools (search, context, callers, callees, impact, node, files, status, trace) and 4 symbol-level edit tools" width="720">
+  <img src="docs/assets/mcp-tools.svg" alt="14 MCP tools: 9 read tools (search, context, callers, callees, impact, node, files, status, trace), 4 symbol-level edit tools, and an in-process agentic run tool" width="720">
 </p>
 
 <p align="center">
-  <sub>Agent Interface · 13 MCP tools · 9 read + 4 symbol-level edits</sub>
+  <sub>Agent Interface · 14 MCP tools · 9 read + 4 symbol-level edits + 1 agentic run</sub>
 </p>
 
 <div align="center">
