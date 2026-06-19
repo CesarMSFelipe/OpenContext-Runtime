@@ -155,6 +155,17 @@ OPENCONTEXT_COMMANDS: tuple[tuple[str, str, str], ...] = (
         "Use the `opencontext_impact` MCP tool to report what changing this symbol "
         "affects (callers, files, tests, risk) before editing.\n\nSymbol: $ARGUMENTS",
     ),
+    (
+        "oc-new",
+        "Start a new SDD change — runs the full flow automatically",
+        "Start a new spec-driven change and drive the whole flow in order, "
+        "switching to each phase's persona and using OpenContext's MCP tools:\n"
+        "explore (Explorer) -> propose/spec/tasks (Orchestrator) -> design "
+        "(Architect) -> approval gate -> apply (Builder, tests first) -> verify "
+        "(Reviewer) -> archive. Build context with `opencontext_context` and check "
+        "`opencontext_impact` before any edit; pause for approval before writing "
+        "code.\n\nChange: $ARGUMENTS",
+    ),
 )
 
 # Agents with a project-scoped Markdown command directory (relative to project root).
