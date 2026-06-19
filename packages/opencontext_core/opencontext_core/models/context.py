@@ -21,6 +21,20 @@ class ContextPriority(IntEnum):
     P5 = 5
 
 
+class ContentFormat(StrEnum):
+    """Structural format of content, detected at routing time."""
+
+    PROSE = "prose"
+    CODE = "code"
+    JSON_STRUCTURED = "json_structured"
+    JSON_ARRAY = "json_array"
+    SHELL_OUTPUT = "shell_output"
+    LOGS = "logs"
+    MARKDOWN = "markdown"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
 class CompressionStrategy(StrEnum):
     """Supported v0.1 compression strategies."""
 
@@ -33,6 +47,11 @@ class CompressionStrategy(StrEnum):
     DEEP = "deep"
     EFFICIENT = "efficient"
     SIGNATURE = "signature"
+    SMART_CRUSHER = "smart_crusher"
+    CODE_AST = "code_ast"
+    CACHE_ALIGN = "cache_align"
+    OUTPUT_REDUCE = "output_reduce"
+    CCR = "ccr"
 
     @classmethod
     def _missing_(cls, value: object) -> CompressionStrategy | None:
@@ -130,6 +149,14 @@ class CompressionResult(BaseModel):
     compressed_tokens: int = Field(ge=0, description="Token estimate after compression.")
     strategy: CompressionStrategy = Field(description="Compression strategy that was applied.")
     lossiness: str = Field(description="Human-readable lossiness classification.")
+    reversible: bool = Field(
+        default=False,
+        description="True when the original content can be fully recovered (e.g. CCR cache).",
+    )
+    expand_hint: str = Field(
+        default="",
+        description="How to recover the original if reversible=True (e.g. cache key).",
+    )
 
 
 class ProtectedSpan(BaseModel):
@@ -179,6 +206,18 @@ class PromptSection(BaseModel):
     source_ids: list[str] = Field(default_factory=list, description="Source identifiers.")
 
 
+class CacheAlignment(BaseModel):
+    """KV-cache alignment metadata produced by CacheAligner."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stable_prefix: str = Field(description="Byte-stable portion for KV cache hits.")
+    compressible_payload: str = Field(description="Variable portion that may be compressed.")
+    prefix_hash: str = Field(description="SHA-256 prefix of the stable portion (first 16 hex).")
+    prefix_tokens_estimate: int = Field(ge=0, description="Estimated stable prefix token count.")
+    is_cacheable: bool = Field(description="True when the stable prefix matches the prior turn.")
+
+
 class AssembledPrompt(BaseModel):
     """Complete prompt and section-level accounting."""
 
@@ -187,3 +226,7 @@ class AssembledPrompt(BaseModel):
     content: str = Field(description="Final prompt text sent to the LLM gateway.")
     sections: list[PromptSection] = Field(description="Prompt sections in assembly order.")
     total_tokens: int = Field(ge=0, description="Estimated total prompt tokens.")
+    cache_alignment: CacheAlignment | None = Field(
+        default=None,
+        description="KV-cache alignment info. Present when CacheAligner was applied.",
+    )

@@ -82,7 +82,11 @@ def test_handles_fenced_code_blocks_and_preserves_prose() -> None:
 def test_engine_signature_strategy_reduces_tokens() -> None:
     config = OpenContextConfig.model_validate(default_config_data())
     compression = config.context.compression.model_copy(
-        update={"strategy": CompressionStrategy.SIGNATURE, "protected_spans": False}
+        update={
+            "strategy": CompressionStrategy.SIGNATURE,
+            "protected_spans": False,
+            "adaptive": False,
+        }
     )
     engine = CompressionEngine(compression)
     item = ContextItem(

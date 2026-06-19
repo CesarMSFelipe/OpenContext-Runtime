@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
+from typing import TYPE_CHECKING
 
 from opencontext_core.context.bytecode.models import (
     VERSION,
@@ -15,12 +17,36 @@ from opencontext_core.context.bytecode.models import (
 )
 from opencontext_core.retrieval.contracts import EvidencePlan
 
+if TYPE_CHECKING:
+    from opencontext_core.compression.ccr_cache import CCRCacheBackend
+
+_log = logging.getLogger(__name__)
+
+
+def _smart_crush(content: str) -> str:
+    """Compress JSON content with SmartCrusher if applicable; else return as-is."""
+    stripped = content.strip()
+    if not (stripped.startswith("[") or stripped.startswith("{")):
+        return content
+    try:
+        from opencontext_core.compression.smart_crusher import compress as _sc
+
+        return _sc(content, min_array_length=3)
+    except Exception as exc:
+        _log.debug("SmartCrusher skipped for AICX evidence: %s", exc)
+        return content
+
 
 class AICXCompiler:
     """Compiles an EvidencePlan into compact AICX bytecode.
 
     All text stays as dictionary references. No evidence content is inlined
     unless expand_mode=INLINE is explicitly requested.
+
+    When ``ccr_backend`` is provided, large INLINE evidence bodies are stored
+    in the CCR cache and the dictionary entry becomes ``ccr:<hash>``.  The
+    decoder transparently expands these on decode.  Old decoders receive the
+    token string as-is (graceful degradation — no version bump required).
     """
 
     def compile(
@@ -28,6 +54,8 @@ class AICXCompiler:
         plan: EvidencePlan,
         *,
         default_expand_mode: ExpandMode = ExpandMode.HANDLE,
+        ccr_backend: CCRCacheBackend | None = None,
+        ccr_threshold_chars: int = 500,
     ) -> ContextBytecode:
         dictionary: dict[str, str] = {}
         instructions: list[BytecodeInstruction] = []
@@ -76,7 +104,18 @@ class AICXCompiler:
                 f"mode:{mode.value}",
             ]
             if mode is ExpandMode.INLINE and item.content:
-                args.append(f"c:{_short(item.content, 'c')}")
+                content_val = _smart_crush(item.content)
+                if ccr_backend and len(content_val) >= ccr_threshold_chars:
+                    from opencontext_core.compression.ccr_cache import store_original
+
+                    ccr_hash = store_original(
+                        item.content,
+                        content_val,
+                        content_type="evidence",
+                        backend=ccr_backend,
+                    )
+                    content_val = f"ccr:{ccr_hash}"
+                args.append(f"c:{_short(content_val, 'c')}")
             if item.protected:
                 args.append("protected:1")
             instructions.append(BytecodeInstruction(op=OpCode.EVIDENCE, args=args))

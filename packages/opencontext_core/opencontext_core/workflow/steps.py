@@ -430,6 +430,18 @@ def prompt_assemble(state: WorkflowRunState, services: WorkflowServices) -> str:
     if manifest is not None and services.config.repo_map.enabled:
         repo_map = RepoMapEngine().build(manifest, state.user_request)
         repo_map_text = RepoMapEngine().render(repo_map, services.config.repo_map.max_tokens)
+
+    extra_instructions = ""
+    or_cfg = services.config.context.compression.output_reducer
+    if or_cfg.enabled:
+        from opencontext_core.compression.output_reducer import OutputReducer
+
+        extra_instructions = OutputReducer(
+            verbosity_instruction=or_cfg.verbosity_instruction,
+            effort_routing=or_cfg.effort_routing,
+            holdout_fraction=or_cfg.holdout_fraction,
+        ).build_verbosity_instruction()
+
     state.prompt = assembler.assemble(
         state.user_request,
         state.selected_context,
@@ -440,6 +452,7 @@ def prompt_assemble(state: WorkflowRunState, services: WorkflowServices) -> str:
             "Use stable prefix sections first, then retrieved context, then the current input. "
             "Do not use omitted context."
         ),
+        instructions=extra_instructions,
     )
     return f"assembled prompt with {state.prompt.total_tokens} estimated tokens"
 

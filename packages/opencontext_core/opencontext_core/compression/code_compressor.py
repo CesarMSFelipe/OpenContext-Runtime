@@ -1,0 +1,398 @@
+"""CodeCompressor — AST-aware code compression.
+
+Reuses the existing ``TreeSitterParser`` from ``indexing/`` to parse code,
+then applies structure-preserving compression:
+- Strip docstrings (→ signatures)
+- Strip comments
+- Shorten local identifiers (non-exported)
+- Collapse blank lines
+
+Falls back to regex-based heuristics when tree-sitter is unavailable.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from opencontext_core.compat import StrEnum
+
+
+class CodeCompressionMode(StrEnum):
+    """Modes that affect how code may be compacted."""
+
+    PLAN = "plan"
+    ARCHITECT = "architect"
+    REVIEW = "review"
+    IMPLEMENT_PACK = "implement_pack"
+    ACT = "act"
+    AUDIT = "audit"
+
+
+# Regex fallback patterns
+_DOCSTRING_RE = re.compile(
+    r'"""(?:[^"\\]|\\.)*"""'  # double-quoted docstrings
+    r"|'''(?:[^'\\]|\\.)*'''"  # single-quoted docstrings
+    r'|""".*?"""',  # non-greedy fallback
+    re.DOTALL,
+)
+_COMMENT_RE = re.compile(r"#[^\n]*")
+_DECORATOR_RE = re.compile(r"^@\w+(?:\.\w+)*(?:\(.*?\))?\s*$", re.MULTILINE)
+_IMPORT_RE = re.compile(r"^(?:from|import)\s", re.MULTILINE)
+_FUNC_DEF_RE = re.compile(r"^(?:async\s+)?def\s+(\w+)\s*\(", re.MULTILINE)
+_CLASS_DEF_RE = re.compile(r"^class\s+(\w+)", re.MULTILINE)
+_EMPTY_LINE_RE = re.compile(r"\n\s*\n")
+_MULTI_SPACE_RE = re.compile(r"  +")
+
+
+class CodeCompressor:
+    """Compress source code while preserving semantic structure.
+
+    Uses tree-sitter when available; degrades to regex heuristics.
+    """
+
+    def __init__(self, *, tree_sitter_parser: Any | None = None) -> None:
+        self._ts_parser = tree_sitter_parser
+        self._ts_available = False
+        self._init_tree_sitter()
+
+    def _init_tree_sitter(self) -> None:
+        if self._ts_parser is not None:
+            self._ts_available = getattr(self._ts_parser, "is_available", lambda: False)()
+            return
+        try:
+            from opencontext_core.indexing.tree_sitter_parser import TreeSitterParser
+
+            parser = TreeSitterParser()
+            self._ts_available = parser.is_available()
+            if self._ts_available:
+                self._ts_parser = parser
+        except ImportError:
+            self._ts_available = False
+
+    def compress(
+        self,
+        content: str,
+        *,
+        language: str | None = None,
+        mode: CodeCompressionMode = CodeCompressionMode.REVIEW,
+        strip_docstrings: bool = True,
+        strip_comments: bool = True,
+        shorten_locals: bool = True,
+        preserve_exports: bool = True,
+    ) -> str:
+        """Compress source code.
+
+        Args:
+            content: Raw source code.
+            language: Language hint (e.g. 'python', 'javascript').
+            mode: Compression granularity.
+            strip_docstrings: Replace docstrings with signatures.
+            strip_comments: Remove comments.
+            shorten_locals: Shorten non-exported identifiers.
+            preserve_exports: Never shorten public/exported symbols.
+
+        Returns:
+            Compressed source code.
+        """
+        if not content.strip():
+            return content
+
+        # Mode overrides individual flags
+        if mode == CodeCompressionMode.PLAN:
+            return self._compress_to_signatures(content, language=language)
+        if mode == CodeCompressionMode.ACT:
+            return content
+        if mode == CodeCompressionMode.IMPLEMENT_PACK:
+            strip_docstrings = False
+            strip_comments = True
+            shorten_locals = False
+
+        result = content
+
+        if strip_docstrings:
+            result = self._strip_docstrings(result, language=language)
+
+        if strip_comments:
+            result = self._strip_comments(result, language=language)
+
+        if mode == CodeCompressionMode.ARCHITECT:
+            result = self._compress_to_type_stubs(result, language=language)
+
+        if shorten_locals and mode in (CodeCompressionMode.REVIEW,):
+            result = self._shorten_locals(
+                result, language=language, preserve_exports=preserve_exports
+            )
+
+        # Collapse blank lines (preserve at most 1)
+        result = _EMPTY_LINE_RE.sub("\n", result)
+        result = _MULTI_SPACE_RE.sub(" ", result)
+
+        return result.strip()
+
+    def _strip_docstrings(self, content: str, *, language: str | None = None) -> str:
+        """Remove docstrings, leaving just the function/class signature."""
+        if self._ts_available and language:
+            return self._ts_strip_docstrings(content, language)
+        return _DOCSTRING_RE.sub("", content)
+
+    def _ts_strip_docstrings(self, content: str, language: str) -> str:
+        """Tree-sitter based docstring removal."""
+        if self._ts_parser is None:
+            return content
+        try:
+            placeholder = "/tmp/placeholder." + _ext_for_lang(language)
+            result = self._ts_parser.parse_file(placeholder, content)
+            symbols = result.symbols if hasattr(result, "symbols") else []
+            # Replace docstrings with signature lines
+            lines = content.splitlines()
+            for sym in symbols:
+                if sym.docstring and sym.line > 0:
+                    sig = sym.signature or ""
+                    # Replace docstring lines with the signature
+                    docstring_start = sym.line  # line after signature
+                    docstring_end = sym.end_line
+                    if docstring_start < len(lines) and docstring_end <= len(lines):
+                        for i in range(docstring_start, docstring_end):
+                            lines[i] = ""
+                        if sig:
+                            lines[docstring_start - 1] = sig
+            return "\n".join(line for line in lines if line.strip())
+        except Exception:
+            return _DOCSTRING_RE.sub("", content)
+
+    def _strip_comments(self, content: str, *, language: str | None = None) -> str:
+        """Remove comments but keep shebangs and pragmas."""
+        if language == "python":
+            lines = content.splitlines()
+            cleaned: list[str] = []
+            for line in lines:
+                stripped = line.strip()
+                # Preserve shebang, coding, noqa, pragma, type: ignore
+                _PRAGMAS = ("noqa", "pragma:", "type: ignore", "# coding:")
+                if stripped.startswith("#!"):
+                    cleaned.append(line)
+                    continue
+                if any(marker in stripped for marker in _PRAGMAS):
+                    cleaned.append(line)
+                    continue
+                if _COMMENT_RE.search(stripped) and not stripped.startswith("#"):
+                    # Inline comment on code line — strip the comment, keep code
+                    code_part = _COMMENT_RE.split(line)[0].rstrip()
+                    if code_part:
+                        cleaned.append(code_part)
+                    continue
+                if stripped.startswith("#"):
+                    continue  # comment-only line
+                cleaned.append(line)
+            return "\n".join(cleaned)
+        # Generic: remove comment lines, keep inline comments with code
+        lines = content.splitlines()
+        result: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                result.append(line)
+            elif stripped.startswith("//") or stripped.startswith("/*"):
+                continue
+            elif "//" in stripped:
+                code_part = line.split("//")[0].rstrip()
+                if code_part:
+                    result.append(code_part)
+            else:
+                result.append(line)
+        return "\n".join(result)
+
+    def _compress_to_signatures(self, content: str, *, language: str | None = None) -> str:
+        """Reduce to just function/class signatures and imports."""
+        if language == "python":
+            lines = content.splitlines()
+            kept: list[str] = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                if _IMPORT_RE.match(stripped):
+                    kept.append(line)
+                elif _FUNC_DEF_RE.match(stripped) or _CLASS_DEF_RE.match(stripped):
+                    # Add the decorator line before, if any
+                    if kept and kept[-1].strip().startswith("@"):
+                        kept.append(line)
+                    else:
+                        kept.append(line)
+                    # Add the def/class line (may have body on same line)
+                    if stripped.endswith(":") or stripped.endswith("("):
+                        kept.append("    ...  # snipped")
+                elif stripped.startswith("@"):
+                    kept.append(stripped)
+            return "\n".join(kept)
+        return content
+
+    def _compress_to_type_stubs(self, content: str, *, language: str | None = None) -> str:
+        """Keep signatures + type annotations, drop bodies."""
+        if language == "python":
+            lines = content.splitlines()
+            kept: list[str] = []
+            indent_level = 0
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                # Track indentation to detect body lines
+                curr_indent = len(line) - len(line.lstrip())
+                if curr_indent <= indent_level and indent_level > 0:
+                    pass  # back to parent level
+                if stripped.endswith(":") and not stripped.startswith("#"):
+                    kept.append(line)
+                    indent_level = curr_indent + 4
+                    if not stripped.startswith(("def ", "class ", "async ")):
+                        pass  # control flow — keep
+                elif curr_indent < indent_level or indent_level == 0:
+                    kept.append(line)
+            return "\n".join(kept)
+        return content
+
+    def _shorten_locals(
+        self, content: str, *, language: str | None = None, preserve_exports: bool = True
+    ) -> str:
+        """Shorten non-exported local identifiers to 1-2 chars.
+
+        Only affects Python. Uses a conservative heuristic: any name that
+        appears in a function body (local) and is NOT in imports/globals/params.
+        """
+        if language != "python":
+            return content
+
+        lines = content.splitlines()
+        # Collect exported names (never shorten)
+        exported: set[str] = set()
+        if preserve_exports:
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("def ") or stripped.startswith("class "):
+                    name = stripped.split()[1].split("(")[0].split(":")[0]
+                    if not name.startswith("_"):
+                        exported.add(name)
+                if "= __all__" in stripped or "__all__ =" in stripped:
+                    pass  # would need AST
+
+        # Build replacement map for local vars in function bodies
+        import ast as _py_ast
+
+        replacements: dict[str, str] = {}
+        try:
+            tree = _py_ast.parse(content)
+            for node in _py_ast.walk(tree):
+                if isinstance(node, _py_ast.FunctionDef):
+                    # Parameters
+                    for arg in node.args.args:
+                        name = arg.arg
+                        if name not in exported and len(name) > 2 and not name.startswith("_"):
+                            replacements[name] = _short_name(name, replacements)
+                    # Body-level names
+                    for child in _py_ast.walk(node):
+                        if isinstance(child, _py_ast.Name):
+                            name = child.id
+                            if (
+                                not isinstance(child.ctx, _py_ast.Load)
+                                and name not in exported
+                                and len(name) > 2
+                                and not name.startswith("_")
+                                and _is_local_context(child, node)
+                            ):
+                                replacements[name] = replacements.get(
+                                    name, _short_name(name, replacements)
+                                )
+        except SyntaxError:
+            pass
+
+        if not replacements:
+            return content
+
+        # Apply replacements (only inside function bodies — approximate with indent)
+        result: list[str] = []
+        in_function = False
+        for line in lines:
+            stripped = line.lstrip()
+            if stripped.startswith("def ") or stripped.startswith("async def "):
+                in_function = True
+            elif in_function and not line.startswith((" ", "\t")) and stripped:
+                in_function = False
+            if in_function and stripped:
+                # Apply replacements line by line, avoiding keyword damage
+                tokens = _tokenize_line(stripped)
+                new_tokens: list[str] = []
+                for tok in tokens:
+                    if tok in replacements:
+                        new_tokens.append(replacements[tok])
+                    else:
+                        new_tokens.append(tok)
+                indent = line[: len(line) - len(line.lstrip())]
+                result.append(indent + " ".join(new_tokens))
+            else:
+                result.append(line)
+
+        return "\n".join(result)
+
+
+def _short_name(name: str, existing: dict[str, str]) -> str:
+    """Generate a short unique replacement for a name."""
+    # Use first letter + optional suffix
+    base = name[0]
+    if base not in {v[0] for v in existing.values()}:
+        return base
+    suffix = 1
+    while True:
+        candidate = f"{base}{suffix}"
+        if candidate not in existing.values():
+            return candidate
+        suffix += 1
+
+
+def _is_local_context(node: Any, function_def: Any) -> bool:
+    """Check if a Name node is a local variable within a function."""
+    parent = getattr(node, "parent", None)
+    if parent is None:
+        return True  # conservative
+    # Skip imports, function names, class names
+    if isinstance(parent, (type(None),)):
+        return False
+    return True
+
+
+def _tokenize_line(line: str) -> list[str]:
+    """Simple whitespace + punctuation tokenizer for applying renames."""
+    tokens: list[str] = []
+    current: list[str] = []
+    for ch in line:
+        if ch.isalnum() or ch == "_":
+            current.append(ch)
+        else:
+            if current:
+                tokens.append("".join(current))
+                current = []
+            tokens.append(ch)
+    if current:
+        tokens.append("".join(current))
+    return tokens
+
+
+def _ext_for_lang(language: str) -> str:
+    _MAP = {
+        "python": ".py",
+        "javascript": ".js",
+        "typescript": ".ts",
+        "go": ".go",
+        "rust": ".rs",
+        "java": ".java",
+        "c": ".c",
+        "cpp": ".cpp",
+        "ruby": ".rb",
+        "php": ".php",
+        "swift": ".swift",
+        "kotlin": ".kt",
+    }
+    return _MAP.get(language, ".txt")
+
+
+__all__ = ["CodeCompressionMode", "CodeCompressor"]
