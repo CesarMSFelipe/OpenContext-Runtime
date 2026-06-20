@@ -83,39 +83,38 @@ class BudgetAwareLLMGateway:
         self.quality_gate = quality_gate
 
     def generate(self, request: LLMRequest) -> LLMResponse:
-        # Determine task complexity for routing
         task_complexity = request.metadata.get("task_complexity", "standard")
         role = request.metadata.get("role", "generate")
 
-        # Route with budget
         route = self.router.route_with_budget(role, task_complexity)
 
-        # Update request with routed provider/model
-        request.provider = route["provider"]
-        request.model = route["model"]
+        # Route onto a COPY — never mutate the caller's request. In-place mutation
+        # relabels an explicitly-injected gateway and makes retries non-idempotent.
+        routed = request.model_copy(update={"provider": route["provider"], "model": route["model"]})
 
-        # Final quality gate check
-        source_count = len(request.context_items)
+        # This gateway owns the *budget* decision only. Context-size limits are
+        # enforced upstream by the planner's token budget, and provider/secret
+        # policy by ContextFirewall.check_provider_call — so only budget risks are
+        # fatal here (a context-free generation is valid, not a gate failure).
+        # NOTE: if a budget swap ever routes to a *different* provider than the
+        # firewall approved, re-run check_provider_call on `routed.provider`.
         gate_report = self.quality_gate.evaluate(
-            context_tokens=0,  # Simplified for now
-            max_tokens=1000000,
+            context_tokens=0,
+            max_tokens=1_000_000,
             provider_allowed=True,
-            source_count=source_count or 1,  # Hack to avoid missing_sources block in simple tests
+            source_count=len(routed.context_items),
             budget_manager=self.budget_manager,
-            provider=request.provider,
-            model=request.model,
+            provider=routed.provider,
+            model=routed.model,
         )
-
-        if not gate_report.passed:
+        budget_risks = [r for r in gate_report.risks if r.startswith("call_budget")]
+        if budget_risks:
             raise WorkflowExecutionError(
-                f"Call blocked by budget quality gate: {gate_report.reason} - {gate_report.risks}"
+                f"Call blocked by budget quality gate: {gate_report.reason} - {budget_risks}"
             )
 
-        # Consume budget
-        self.budget_manager.consume(request.provider, request.model)
-
-        # Execute
-        return self.base_gateway.generate(request)
+        self.budget_manager.consume(routed.provider, routed.model)
+        return self.base_gateway.generate(routed)
 
 
 class RuntimeResult(BaseModel):
