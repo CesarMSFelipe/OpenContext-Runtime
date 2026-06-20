@@ -99,7 +99,9 @@ class ExplorePhase(HarnessPhase):
             storage_path=state.root / ".storage" / "opencontext",
         )
         manifest = runtime.index_project(state.root)
-        pack = runtime.build_context_pack(state.task, state.max_tokens or self.config.budget_tokens)
+        pack, pack_trace_id = runtime.build_context_pack_with_trace(
+            state.task, state.max_tokens or self.config.budget_tokens
+        )
 
         # Persist context pack to run directory
         run_dir = state.root / ".opencontext" / "runs" / state.run_id
@@ -214,6 +216,7 @@ class ExplorePhase(HarnessPhase):
             ledger=ledger,
             gates=gates,
             artifacts=explore_artifacts,
+            trace_id=pack_trace_id,
             metadata={
                 "included": len(pack.included),
                 "omitted": len(pack.omitted),
