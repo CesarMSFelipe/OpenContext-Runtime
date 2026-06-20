@@ -127,7 +127,7 @@ class HarnessRunner:
             from opencontext_core.backends.factory import BackendFactory
             from opencontext_core.config import load_config_or_defaults
 
-            oc_config = load_config_or_defaults(self.root / "opencontext.yaml")
+            oc_config = load_config_or_defaults(self.root / "opencontext.yaml", auto_detect=False)
             storage_path = self.root / ".storage" / "opencontext"
             storage_path.mkdir(parents=True, exist_ok=True)
             self._memory_store = BackendFactory.create_memory_store(oc_config, storage_path)
@@ -688,7 +688,7 @@ class HarnessRunner:
             try:
                 from opencontext_core.config import load_config_or_defaults
 
-                cfg = load_config_or_defaults(self.root / "opencontext.yaml")
+                cfg = load_config_or_defaults(self.root / "opencontext.yaml", auto_detect=False)
                 harness_cfg = getattr(cfg, "harness", None)
                 if harness_cfg is not None:
                     if tdd_mode == "ask":

@@ -127,13 +127,17 @@ class ExplorePhase(HarnessPhase):
                 from opencontext_core.indexing.graph_db import GraphDatabase
 
                 db = GraphDatabase(db_path)
-                analyzer = ImpactAnalyzer(db)
-                impact_results = analyzer.analyze_by_name(state.task, depth=2)
-                kg_available = True
-                for ir in impact_results:
-                    impact_affected_files.extend(ir.affected_files)
-                    impact_affected_tests.extend(ir.affected_tests)
-                db.close()
+                try:
+                    analyzer = ImpactAnalyzer(db)
+                    impact_results = analyzer.analyze_by_name(state.task, depth=2)
+                    kg_available = True
+                    for ir in impact_results:
+                        impact_affected_files.extend(ir.affected_files)
+                        impact_affected_tests.extend(ir.affected_tests)
+                finally:
+                    # Always close — a present-but-broken graph raises in analyze_by_name
+                    # and would otherwise leak the sqlite/WAL handles.
+                    db.close()
             else:
                 kg_error = "context_graph.db not found — run `opencontext index` first"
         except Exception as exc:
@@ -1395,7 +1399,7 @@ class VerifyPhase(HarnessPhase):
         try:
             from opencontext_core.config import load_config_or_defaults
 
-            _cfg = load_config_or_defaults(state.root / "opencontext.yaml")
+            _cfg = load_config_or_defaults(state.root / "opencontext.yaml", auto_detect=False)
             _mut_cfg = getattr(getattr(_cfg, "testing", None), "mutation", None)
             if _mut_cfg is not None and getattr(_mut_cfg, "enabled", False):
                 from opencontext_core.mutation.models import MutationResult  # noqa: F401

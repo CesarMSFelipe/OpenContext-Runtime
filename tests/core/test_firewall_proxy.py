@@ -134,7 +134,7 @@ class TestContextFirewall:
     def test_stats(self) -> None:
         fw = ContextFirewall()
         fw.scan_context("clean", provider="a")
-        fw.scan_context("sk-secret", provider="b")
+        fw.scan_context("sk-abc123def456ghi789jklmno", provider="b")
         fw.scan_context("email@test.com", provider="a")
         stats = fw.get_stats()
         assert stats["total_requests"] == 3

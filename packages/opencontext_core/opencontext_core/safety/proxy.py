@@ -175,7 +175,7 @@ def _scan_pii_simple(text: str) -> list[dict[str, Any]]:
 
 # Secrets detection
 _SECRETS_RE = [
-    (re.compile(r"\b(?:sk|pk|sk-[a-zA-Z0-9]{20,})\b"), "api_key.openai"),
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "api_key.openai"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "aws_access_key"),
     (re.compile(r"-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "private_key"),
     (re.compile(r"\bghp_[a-zA-Z0-9]{36}\b"), "github_token"),
