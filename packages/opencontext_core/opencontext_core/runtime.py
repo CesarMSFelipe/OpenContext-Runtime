@@ -446,6 +446,22 @@ class OpenContextRuntime:
     ) -> ContextPackResult:
         """Build a token-aware context pack from retrieved project context."""
 
+        pack, _trace_id = self.build_context_pack_with_trace(query, max_tokens, surface=surface)
+        return pack
+
+    def build_context_pack_with_trace(
+        self,
+        query: str,
+        max_tokens: int | None = None,
+        surface: RetrievalSurface = RetrievalSurface.RUNTIME,
+    ) -> tuple[ContextPackResult, str]:
+        """Build a context pack and return it with the id of the persisted trace.
+
+        The trace is always persisted by ``_build_context_pack_with_trace``; this
+        surfaces its id so callers (e.g. the harness explore phase) can record the
+        run's retrieval provenance instead of discarding it.
+        """
+
         # Use optimized budget if no explicit max_tokens provided
         if max_tokens is None:
             max_tokens = self.learning.get_optimized_budget(
@@ -462,7 +478,7 @@ class OpenContextRuntime:
             context_items_omitted=len(pack.omitted),
             metadata={"max_tokens": budget, "pack_tokens": pack.used_tokens},
         )
-        return pack
+        return pack, trace.run_id
 
     def prepare_context(
         self,
