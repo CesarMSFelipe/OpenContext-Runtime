@@ -462,14 +462,14 @@ opencontext loop --task "..." --flow quick --dry-run
 | Track | Phases | When |
 |-------|--------|------|
 | `quick` | explore → apply → verify | Simple fixes |
-| `standard` | explore → spec + design → apply → verify | Features, refactors |
+| `standard` | explore → propose → spec + design → apply → verify | Features, refactors |
 | `full` | All 9 phases | Architecture, security |
 | `autonomous` | All 9, no prompts | CI/CD, automation |
 | `quality` | All 9 + GGA rules + judgment | Maximum quality gates |
 
-**Phases:** `explore → propose → spec → design → tasks → apply → verify → judgment → archive`
+**Phases:** `explore → propose → spec → design → tasks → apply → verify → review → archive`
 
-The `judgment` phase runs adversarial structural review of apply artifacts — missing files, failed gates, missing verify. The `quality` track also enforces GGA rules before judgment.
+The base flow ends with `review` (the final quality gate) then `archive`. The `quality` track appends an extra `judgment` phase — adversarial structural review of apply artifacts (missing files, failed gates, missing verify) — and enforces GGA rules before it.
 
 </td>
 </tr>
@@ -642,7 +642,7 @@ Drop `.skill.md` files in `skills/`. OpenContext injects the right ones based on
 | `fix` | Task mentions "bug", "fix", "crash", "regression" |
 | `prd` | Task is a vague idea before SDD |
 | `work-unit-commits` | Any apply phase |
-| `sdd-onboard` | First run on a new project |
+| `oc-onboard` | First run on a new project |
 
 ```bash
 opencontext skill-registry refresh

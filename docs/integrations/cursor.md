@@ -39,7 +39,7 @@ opencontext config reconfigure plugins
 ## MCP Tools
 
 Cursor supports MCP via its config. Run `opencontext onboard . --setup-mcp`
-to configure, then use the 8 KG tools directly.
+to configure, then use the 14 MCP tools directly.
 
 ## Related Commands
 

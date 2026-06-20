@@ -12,7 +12,7 @@ opencontext agent init --target claude-code
 ```
 
 This creates:
-- `~/.claude/mcp.json` — MCP server for 8 KG tools
+- `~/.claude/mcp.json` — MCP server for 14 MCP tools
 - `~/.claude/CLAUDE.md` — Instructions with all CLI commands
 - `~/.claude/settings.json` — Pre-approved MCP tools
 
