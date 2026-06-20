@@ -76,3 +76,29 @@ def test_explore_propagates_trace_id_so_propose_gate_passes(tmp_path: Path) -> N
     trace_gates = [g for g in result.gates if g.id == "trace_id_created"]
     assert trace_gates, "propose declares a trace_id_created gate"
     assert all(g.status == GateStatus.PASSED for g in trace_gates)
+
+
+def test_run_records_acon_feedback_outcome_with_omissions(tmp_path: Path) -> None:
+    # ACON-lite needs the outcome and the retrieval omissions co-recorded on one
+    # operation. A harness run must record a 'context_pack' metric with success set
+    # (not None) so the token optimizer can later widen the budget.
+    from opencontext_core.learning.feedback_collector import FeedbackCollector
+
+    _git_init(tmp_path)
+    (tmp_path / "calc.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    (tmp_path / "opencontext.yaml").write_text(
+        yaml.safe_dump(default_config_data()), encoding="utf-8"
+    )
+    runtime = OpenContextRuntime(
+        config_path=str(tmp_path / "opencontext.yaml"),
+        storage_path=tmp_path / ".storage" / "opencontext",
+    )
+    runtime.index_project(tmp_path)
+
+    HarnessRunner(root=tmp_path).run("standard", "add a subtract function")
+
+    fb = FeedbackCollector(storage_path=tmp_path / ".storage" / "opencontext" / "learning")
+    metrics = fb.load_metrics(operation_type="context_pack")
+    assert metrics, "the run recorded a context_pack feedback metric"
+    # success is co-recorded with the run (True/False, never left None).
+    assert metrics[0].success is not None
