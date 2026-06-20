@@ -100,7 +100,6 @@ nav:
     - workflows/orchestrate-mode.md
     - workflows/validation-mode.md
     - workflows/patch-proposals.md
-    - workflows/sdd-implementation-summary.md
   - Integrations:
     - integrations/index.md
     - integrations/opencode-kilo-code.md
