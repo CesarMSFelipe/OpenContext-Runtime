@@ -73,6 +73,16 @@ class CallBudgetConfig(BaseModel):
     )
 
 
+# When budget forces a swap from a paid provider to a local one, the paid model
+# name (e.g. "gpt-4o") is meaningless to the local backend and 404s. Substitute a
+# provider-appropriate default model on swap.
+_LOCAL_DEFAULT_MODELS = {
+    "ollama": "llama3",
+    "lmstudio": "local-model",
+    "localai": "gpt-3.5-turbo",
+}
+
+
 class CallBudgetManager:
     """Manages call budgets across providers to minimize paid API usage."""
 
@@ -153,7 +163,11 @@ class CallBudgetManager:
                 for local in local_providers:
                     local_available, _ = self.check_budget(local, model)
                     if local_available:
-                        return (local, model, "budget_low_switching_to_local")
+                        return (
+                            local,
+                            _LOCAL_DEFAULT_MODELS.get(local, model),
+                            "budget_low_switching_to_local",
+                        )
                 return (preferred_provider, model, "budget_low_using_paid")
             return (preferred_provider, model, "budget_ok")
 
@@ -161,11 +175,15 @@ class CallBudgetManager:
             for local in local_providers:
                 local_key = (local, model)
                 if local_key not in self._usage or not self._usage[local_key].exhausted:
-                    return (local, model, "paid_exhausted_using_local")
+                    return (
+                        local,
+                        _LOCAL_DEFAULT_MODELS.get(local, model),
+                        "paid_exhausted_using_local",
+                    )
             return (preferred_provider, model, "no_fallback_available")
 
         for local in local_providers:
-            return (local, model, "paid_unavailable_using_local")
+            return (local, _LOCAL_DEFAULT_MODELS.get(local, model), "paid_unavailable_using_local")
 
         return (preferred_provider, model, "fallback_failed")
 
