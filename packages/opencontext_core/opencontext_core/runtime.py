@@ -961,13 +961,20 @@ class OpenContextRuntime:
             )
 
             repo = ContextRepository(project_root)
-            plan = ProgressiveDisclosureMemory(repo).select(query, max_tokens=1000)
+            # Over-fetch candidates, then compress to the recall budget: more
+            # signal fits the same prompt tokens. Compression uses the cheap
+            # summarize role when a model is bound, else a deterministic trim.
+            target = 1000
+            plan = ProgressiveDisclosureMemory(repo).select(query, max_tokens=target * 3)
+            rendered = "\n".join(f"- {item.content}" for item in plan.included)
+            from opencontext_core.memory.rehydration import summarize_to_budget
+
+            return summarize_to_budget(rendered, target, gateway=self.llm_gateway)
         except Exception as exc:
             import logging
 
             logging.getLogger("opencontext").warning("memory recall failed: %s", exc)
             return ""
-        return "\n".join(f"- {item.content}" for item in plan.included)
 
     def _persist_local_context_pack_trace(
         self,
