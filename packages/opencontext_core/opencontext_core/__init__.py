@@ -54,11 +54,13 @@ from opencontext_core.runtime import (
 )
 from opencontext_core.safety.proxy import (
     AuditEntry,
-    ContextFirewall,
     ProxyAction,
     ProxyDecision,
     ProxyPolicy,
     SimpleProxyServer,
+)
+from opencontext_core.safety.proxy import (
+    ContextFirewall as ContextFirewallProxy,
 )
 from opencontext_core.setup.plan import (
     FileChange,
@@ -121,7 +123,7 @@ __all__ = [
     "ComponentState",
     # Observability
     "ContextDashboard",
-    "ContextFirewall",
+    "ContextFirewallProxy",
     "ContextScore",
     "ContextScorer",
     "DeepDiagnostic",

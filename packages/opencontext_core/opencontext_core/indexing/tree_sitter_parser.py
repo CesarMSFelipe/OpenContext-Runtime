@@ -710,8 +710,9 @@ class TreeSitterParser:
                             return str(piece.text.decode("utf-8", errors="replace"))
                     raw = str(sub.text.decode("utf-8", errors="replace")).strip()
                     for quote in ('"""', "'''", '"', "'"):
-                        if raw.startswith(quote) and raw.endswith(quote) and len(raw) >= 2 * len(quote):
-                            return raw[len(quote) : -len(quote)]
+                        q = len(quote)
+                        if raw.startswith(quote) and raw.endswith(quote) and len(raw) >= 2 * q:
+                            return raw[q:-q]
                     return raw
             return None
         return None
