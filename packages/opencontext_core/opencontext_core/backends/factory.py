@@ -84,7 +84,12 @@ class BackendFactory:
             return NullAgentMemoryStore()
 
         def _local() -> Any:
-            return LocalMemoryStore(storage_path / "memory.db")
+            embedder, vector_store = cls._memory_semantic_backends(config, storage_path)
+            return LocalMemoryStore(
+                storage_path / "memory.db",
+                vector_store=vector_store,
+                embedder=embedder,
+            )
 
         provider = getattr(memory_cfg, "provider", "auto")
         if provider in ("engram", "auto"):
@@ -118,6 +123,26 @@ class BackendFactory:
                 return _local()
 
         return _local()
+
+    @staticmethod
+    def _memory_semantic_backends(config: Any, storage_path: Path) -> tuple[Any, Any]:
+        """Return (embedder, vector_store) for semantic memory recall when embeddings
+        are enabled, else (None, None).
+
+        Without these the LocalMemoryStore semantic leg is dead code. Vectors live
+        under ``storage_path/memory`` so they never collide with the code index.
+        Never raises — degrades to lexical recall on any error.
+        """
+        emb_cfg = getattr(config, "embedding", None)
+        if emb_cfg is None or not getattr(emb_cfg, "enabled", False):
+            return None, None
+        try:
+            from opencontext_core.embeddings.generators import create_generator
+            from opencontext_core.embeddings.stores import LocalVectorStore
+
+            return create_generator(config), LocalVectorStore(storage_path / "memory")
+        except Exception:
+            return None, None
 
     @staticmethod
     def _is_air_gapped(config: Any) -> bool:
