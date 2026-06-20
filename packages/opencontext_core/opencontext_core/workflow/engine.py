@@ -175,8 +175,10 @@ class WorkflowEngine:
         if self.hooks.before_run is not None:
             self.hooks.before_run(state)
         for step in workflow.steps:
-            step_name = step if isinstance(step, str) else str(step)
-            self._run_named_step(state, step_name)
+            # Route through the structured dispatcher (same as run_workflow) so dict
+            # steps (parallel / if / fan-out) work instead of being stringified into
+            # an "Unknown workflow step" error.
+            self._execute_step_def(state, step)
         if self.hooks.after_run is not None:
             self.hooks.after_run(state)
         return state

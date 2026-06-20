@@ -207,6 +207,10 @@ def global_agents_subdir(agent_id: str) -> str | None:
 
 # Agents whose instructions root is the project tree rather than the agent's
 # home directory (e.g. AGENTS.md / CLAUDE.md live next to the code).
+# Every AGENTS.md-honoring agent is project-scoped (AGENTS.md lives at the project
+# root, not the agent's home dir). Must stay in sync with _HONORS_AGENTS_MD below —
+# previously kiro-ide, pi, and kimi-code honored AGENTS.md but were missing here, so
+# their instructions landed in the home dir instead of the project root.
 PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
     {
         "codex",
@@ -215,6 +219,7 @@ PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
         "windsurf",
         "vscode-copilot",
         "kilo-code",
+        "kiro-ide",
         "kiro",
         "aider",
         "zed",
@@ -224,6 +229,8 @@ PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
         "goose",
         "copilot-cli",
         "openhands",
+        "pi",
+        "kimi-code",
     }
 )
 
