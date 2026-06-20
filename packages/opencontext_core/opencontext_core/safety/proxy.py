@@ -332,9 +332,12 @@ class ContextFirewall:
         all_findings.extend(secret_findings)
         all_findings.extend(injection_findings)
 
-        # 4. Determine action
+        # 4. Determine action: any BLOCK policy with findings blocks; otherwise
+        # collect every finding whose policy is REDACT and redact their union (so a
+        # REDACT policy on secrets/injection is honored, not silently dropped).
         action = ProxyAction.ALLOW
         reason_parts: list[str] = []
+        redact_findings: list[dict[str, Any]] = []
 
         if injection_findings and self.policy.action_on_injection == ProxyAction.BLOCK:
             action = ProxyAction.BLOCK
@@ -342,21 +345,24 @@ class ContextFirewall:
         elif secret_findings and self.policy.action_on_secrets == ProxyAction.BLOCK:
             action = ProxyAction.BLOCK
             reason_parts.append(f"Secrets detected ({len(secret_findings)} matches)")
-        elif pii_findings and self.policy.action_on_pii == ProxyAction.REDACT:
-            action = ProxyAction.REDACT
-            reason_parts.append(f"PII detected ({len(pii_findings)} items, will redact)")
-        elif all_findings:
-            action = ProxyAction.LOG_ONLY
-            reason_parts.append(f"{len(all_findings)} finding(s) found, logging only")
+        else:
+            if pii_findings and self.policy.action_on_pii == ProxyAction.REDACT:
+                redact_findings.extend(pii_findings)
+            if secret_findings and self.policy.action_on_secrets == ProxyAction.REDACT:
+                redact_findings.extend(secret_findings)
+            if injection_findings and self.policy.action_on_injection == ProxyAction.REDACT:
+                redact_findings.extend(injection_findings)
+            if redact_findings:
+                action = ProxyAction.REDACT
+                reason_parts.append(f"{len(redact_findings)} item(s) redacted")
+            elif all_findings:
+                action = ProxyAction.LOG_ONLY
+                reason_parts.append(f"{len(all_findings)} finding(s) found, logging only")
 
-        # 5. Redact if needed
+        # 5. Redact the union of all REDACT-policy findings (not just PII).
         redacted = None
-        if action == ProxyAction.REDACT or (
-            action == ProxyAction.ALLOW
-            and pii_findings
-            and self.policy.action_on_pii == ProxyAction.REDACT
-        ):
-            redacted = self._redact_text(text, pii_findings)
+        if action == ProxyAction.REDACT and redact_findings:
+            redacted = self._redact_text(text, redact_findings)
 
         # 6. Create audit entry
         duration = (time.monotonic() - start) * 1000

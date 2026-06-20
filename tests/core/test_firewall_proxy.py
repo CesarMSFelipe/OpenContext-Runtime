@@ -219,3 +219,23 @@ class TestHelpers:
         assert d["action_on_pii"] == "redact"
         assert d["action_on_secrets"] == "block"
         assert "redact_placeholder" in d
+
+
+class TestRedactPolicies:
+    def test_secret_redact_policy_is_honored(self) -> None:
+        # action_on_secrets=REDACT must actually redact the secret, not log it raw.
+        fw = ContextFirewall(ProxyPolicy(action_on_secrets=ProxyAction.REDACT))
+        secret = "sk-abc123def456ghi789jklmno"
+        decision = fw.scan_context(f"key {secret} here", provider="openai")
+        assert decision.action == ProxyAction.REDACT
+        assert decision.redacted_text is not None
+        assert secret not in decision.redacted_text
+
+
+def test_basic_pii_scanner_gates_card_numbers_with_luhn() -> None:
+    from opencontext_core.safety.pii import BasicPiiScanner
+
+    scanner = BasicPiiScanner()
+    # A Luhn-valid card number is flagged; a long non-card digit run is not.
+    assert any(f.kind == "credit_card_like" for f in scanner.scan("pay 4111 1111 1111 1111"))
+    assert not any(f.kind == "credit_card_like" for f in scanner.scan("build 20240101120000"))
