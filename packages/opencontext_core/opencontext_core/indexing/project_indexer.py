@@ -24,6 +24,13 @@ from opencontext_core.project.profiles import (
 
 _log = logging.getLogger(__name__)
 
+# Languages the tree-sitter parser has real symbol extractors for. Files in other
+# languages are still scanned/searchable but don't get graph symbols+edges. Keep
+# in sync with TreeSitterParser._parse_with_tree_sitter.
+_KG_LANGUAGES = frozenset(
+    {"python", "javascript", "typescript", "go", "rust", "java", "php"}
+)
+
 
 class ProjectIndexer:
     """Builds project intelligence manifests from filesystem state."""
@@ -64,7 +71,7 @@ class ProjectIndexer:
             batch_size = 50
             batch_count = 0
             for scanned_file in scanned_files:
-                if scanned_file.language not in ("python", "php"):
+                if scanned_file.language not in _KG_LANGUAGES:
                     continue
                 if scanned_file.relative_path in done_paths:
                     kg_stats["files_indexed"] += 1
