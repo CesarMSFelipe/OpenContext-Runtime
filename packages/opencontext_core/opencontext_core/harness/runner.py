@@ -551,6 +551,26 @@ class HarnessRunner:
                 final_status = GateStatus.FAILED
                 break
 
+        # ACON-lite feedback: record this run's retrieval omissions against its
+        # outcome so the token optimizer can widen the "context_pack" budget when
+        # omissions correlate with failures (explore consults that same budget).
+        # Best-effort — learning must never block a run.
+        try:
+            from opencontext_core.learning.feedback_collector import FeedbackCollector
+
+            fb = FeedbackCollector(
+                storage_path=state.root / ".storage" / "opencontext" / "learning"
+            )
+            op_id = fb.start_operation("context_pack", task)
+            fb.finish_operation(
+                op_id,
+                success=final_status == GateStatus.PASSED,
+                context_items_omitted=int(getattr(state, "context_omitted", 0) or 0),
+                context_items_selected=len(getattr(state, "context_sources", set()) or set()),
+            )
+        except Exception:
+            pass
+
         run_result = HarnessRunResult(
             run_id=state.run_id,
             workflow=workflow,

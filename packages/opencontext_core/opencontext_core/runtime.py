@@ -415,6 +415,9 @@ class OpenContextRuntime:
             op_id,
             tokens_used=total_tokens,
             context_items_selected=len(state.trace.selected_context_items),
+            # Co-record omissions with the outcome so ACON-lite can widen the budget
+            # for an op type that fails while context was dropped (token_optimizer).
+            context_items_omitted=len(getattr(state, "discarded_context", []) or []),
             success=True,
             metadata={"workflow": workflow_name, "answer_length": len(llm_response_content)},
         )
