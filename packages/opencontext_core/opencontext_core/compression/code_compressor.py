@@ -309,30 +309,35 @@ class CodeCompressor:
         if not replacements:
             return content
 
-        # Apply replacements (only inside function bodies — approximate with indent)
-        result: list[str] = []
-        in_function = False
-        for line in lines:
-            stripped = line.lstrip()
-            if stripped.startswith("def ") or stripped.startswith("async def "):
-                in_function = True
-            elif in_function and not line.startswith((" ", "\t")) and stripped:
-                in_function = False
-            if in_function and stripped:
-                # Apply replacements line by line, avoiding keyword damage
-                tokens = _tokenize_line(stripped)
-                new_tokens: list[str] = []
-                for tok in tokens:
-                    if tok in replacements:
-                        new_tokens.append(replacements[tok])
-                    else:
-                        new_tokens.append(tok)
-                indent = line[: len(line) - len(line.lstrip())]
-                result.append(indent + " ".join(new_tokens))
-            else:
-                result.append(line)
+        # Apply replacements via tokenize so ONLY NAME tokens are renamed — string
+        # and comment contents are never touched — and position-based edits preserve
+        # the original spacing (the old split-and-rejoin corrupted identifiers inside
+        # strings and padded every bracket/operator with spaces).
+        import io
+        import tokenize as _tokenize
 
-        return "\n".join(result)
+        try:
+            toks = list(_tokenize.generate_tokens(io.StringIO(content).readline))
+        except (_tokenize.TokenError, IndentationError, SyntaxError):
+            return content
+
+        edits_by_row: dict[int, list[tuple[int, int, str]]] = {}
+        for tok in toks:
+            if tok.type == _tokenize.NAME and tok.string in replacements:
+                edits_by_row.setdefault(tok.start[0], []).append(
+                    (tok.start[1], tok.end[1], replacements[tok.string])
+                )
+
+        out_lines = content.split("\n")
+        for row, edits in edits_by_row.items():
+            if not 1 <= row <= len(out_lines):
+                continue
+            line = out_lines[row - 1]
+            for start_col, end_col, new in sorted(edits, reverse=True):  # right-to-left
+                line = line[:start_col] + new + line[end_col:]
+            out_lines[row - 1] = line
+
+        return "\n".join(out_lines)
 
 
 def _short_name(name: str, existing: dict[str, str]) -> str:

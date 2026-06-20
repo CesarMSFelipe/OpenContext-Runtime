@@ -55,3 +55,20 @@ def test_act_mode_returns_content_unchanged() -> None:
 def test_empty_input_returns_empty() -> None:
     cc = CodeCompressor()
     assert cc.compress("") == ""
+
+
+def test_shorten_locals_does_not_corrupt_strings_or_spacing() -> None:
+    cc = CodeCompressor()
+    src = (
+        'def greet(username):\n'
+        '    message = "hello username"\n'
+        '    return compute(username, beta_value)\n'
+    )
+    out = cc._shorten_locals(src, language="python")
+    # The identifier inside the string literal is NOT renamed.
+    assert "hello username" in out
+    # Punctuation is not space-padded (the old token-rejoin produced "greet ( u )").
+    assert "greet (" not in out
+    assert "compute (" not in out
+    # The code-level local IS renamed (so compression still does its job).
+    assert "def greet(username)" not in out
