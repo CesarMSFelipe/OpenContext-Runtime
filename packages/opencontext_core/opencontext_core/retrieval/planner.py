@@ -104,12 +104,12 @@ class FTSRetrievalSource:
         db.close()
         items: list[ContextItem] = []
         for rank_idx, row in enumerate(rows):
-            # FTS5 rank is negative (lower = better); normalize to [0,1].
-            # Explicit None check: rank 0.0 is a valid (best) score, not "missing".
-            raw_rank = row.get("rank")
-            if raw_rank is None:
-                raw_rank = -(rank_idx + 1)
-            score = max(0.01, 1.0 / (1.0 - raw_rank))  # monotonic, bounded
+            # search_fts returns rows best-first (ORDER BY bm25 rank). Score by
+            # position so the best lexical hit gets the highest score. The raw bm25
+            # value is unnormalized across queries and the previous 1/(1-rank) formula
+            # was monotonic in the WRONG direction (least-relevant scored highest).
+            score = 1.0 / (1.0 + rank_idx)
+            raw_rank = row.get("rank")  # kept for provenance only, not for scoring
             file_path = row.get("file_path", "")
             symbol_path = f"{file_path}:{row.get('line', 0)}"
             snippet = f"{row.get('kind', '')} {row['name']} in {symbol_path}"

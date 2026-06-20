@@ -56,3 +56,29 @@ def test_search_fts_empty_for_punctuation_only_query(tmp_path: Path) -> None:
         assert db.search_fts("??? ... /// :::") == []
     finally:
         db.close()
+
+
+def test_fts_source_scores_best_match_highest(tmp_path: Path) -> None:
+    # The FTS source must score the best (first) lexical hit highest. A regression
+    # to the old 1/(1-rank) formula inverted this (least-relevant scored highest).
+    from opencontext_core.retrieval.planner import FTSRetrievalSource
+
+    db = GraphDatabase(db_path=str(tmp_path / "g.db"))
+    db.init_schema()
+    db.upsert_nodes(
+        [
+            Node(
+                id=None, name=name, kind="function", file_path=f"src/{name}.py", line=1,
+                column=0, end_line=5, language="python", container=None,
+                docstring="authenticate a user", signature=f"def {name}()", is_exported=True,
+            )
+            for name in ("authenticate", "authenticate_user", "reauthenticate")
+        ]
+    )
+    db.rebuild_fts()
+    db.close()
+
+    items = FTSRetrievalSource(tmp_path / "g.db", tmp_path).retrieve("authenticate", 10)
+    assert len(items) >= 2
+    scores = [item.score for item in items]
+    assert scores == sorted(scores, reverse=True)  # best-first, not inverted
