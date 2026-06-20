@@ -27,6 +27,15 @@ def test_secret_scanner_redacts_common_patterns() -> None:
     assert "safe text remains" in redacted
 
 
+def test_secret_scanner_redacts_full_private_key_body() -> None:
+    # The whole-key finding overlaps the BEGIN-marker finding; redaction must not
+    # leave the key body in the gap between the marker and the END line.
+    pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIabcKEYMATERIAL1234567890\n-----END RSA PRIVATE KEY-----"
+    redacted = SecretScanner().redact(pem)
+    assert "KEYMATERIAL" not in redacted
+    assert "MIIabc" not in redacted
+
+
 def test_secret_scanner_covers_enterprise_patterns_without_raw_findings() -> None:
     _anthropic = "sk-ant-api03-" + "abcdefghijklmnopqrstuvwxyz123456"
     _slack = "xoxb" + "-123456789012-mock-slack-token-12345"

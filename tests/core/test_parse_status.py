@@ -65,3 +65,18 @@ def test_index_file_supported_language_not_degraded(tmp_path: Path) -> None:
         assert stats.get("degraded") is False
     finally:
         kg.close()
+
+
+def test_python_docstrings_are_extracted() -> None:
+    parser = TreeSitterParser()
+    if "python" not in parser._languages:
+        pytest.skip("tree-sitter python grammar not installed")
+    src = (
+        'def greet(name):\n    """Say hi."""\n    return name\n\n'
+        'class Greeter:\n    """A greeter."""\n    pass\n'
+    )
+    result = parser.parse_file_status("a.py", src)
+    docs = {symbol.name: symbol.docstring for symbol in result.symbols}
+    # Before the fix every docstring was None (the scan never descended into the body).
+    assert docs.get("greet") == "Say hi."
+    assert docs.get("Greeter") == "A greeter."
