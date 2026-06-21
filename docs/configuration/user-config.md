@@ -60,8 +60,8 @@ opencontext config reconfigure agents
 opencontext config reconfigure plugins      # Interactive plugin browser
 
 # Set or get individual values
-opencontext config set token_budget 15000
-opencontext config get token_budget
+opencontext config set default_token_budget 15000
+opencontext config get default_token_budget
 ```
 
 ---

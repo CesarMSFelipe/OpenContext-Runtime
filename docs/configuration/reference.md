@@ -24,6 +24,25 @@ This reference documents the top-level OpenContext configuration fields. The run
 | `provider_cache` | Provider cache planning | explicit disabled | local planning only | provider cache without policy | Scaffolded | `opencontext cache plan` |
 | `token_budgets` | Workflow input/output budgets | ask/plan/review/audit defaults | workflow-specific caps | no output cap | Scaffolded policy | `opencontext report cost` |
 | `latency` | Workflow latency caps | ask 20s, plan 60s, audit 120s | local/cache-first | expensive model first | Scaffolded policy | `opencontext harness run` |
+| `models` | Per-default/per-role/per-phase model routing (via MCP sampling hints) | client's default model | scope models per role/phase | external high-cost model as default | Implemented | `opencontext models show` / `opencontext profile` |
+| `safety` | Secret scanning and prompt-injection detection | both on | `secret_scanning.redact: true` | scanning disabled | Implemented | `opencontext doctor security` |
+| `knowledge_graph` | Code KG indexing and call analysis | enabled | scoped roots | dumping vendored/large trees | Implemented | `opencontext index .` |
+| `sdd` | SDD orchestrator configuration | scaffolded | gated phases | bypassing gates | Implemented/scaffolded | `opencontext init` |
+| `embedding` | Embedding provider/model for semantic retrieval | local/mock | local embeddings | external embeddings on private code | Implemented | `opencontext pack` |
+| `harness` | Agentic harness governance (TDD / approval pre-gates) | scaffolded | approval-on for writes | writes without approval | Implemented/scaffolded | `opencontext harness run` |
+| `auto_improve` | Opt-in self-tuning controls | off | leave off | unattended self-tuning | Scaffolded | `opencontext config show` |
+| `skills` | Skill registry configuration | scaffolded | first-party skills | untrusted skills | Scaffolded | `opencontext config show` |
+| `testing` | Testing configuration | scaffolded | local-safe | — | Scaffolded | `opencontext config show` |
+| `context_planning` | Context planning configuration | scaffolded | defaults | — | Scaffolded | `opencontext pack` |
+| `context_storage` | Context vector storage configuration | scaffolded | local storage | external storage of private code | Scaffolded | `opencontext config show` |
+| `observability` | Observability/telemetry settings | local | local telemetry | external telemetry | Implemented/scaffolded | `opencontext telemetry show` |
+| `context_packing` | Context pack assembly policy | defaults | section budgets | no budgets | Implemented | `opencontext pack` |
+| `project_index` | Project indexing configuration | enabled | scoped roots | dumping large trees | Implemented | `opencontext index .` |
+| `context_layers` | Named context-layer policies | empty | local-safe layers | layers that bypass policy | Scaffolded | `opencontext config show` |
+| `commands` | Custom command definitions | empty | local-safe commands | shelling out broadly | Scaffolded | `opencontext config show` |
+| `hooks` | Lifecycle hook commands | empty | local-safe hooks | untrusted hook commands | Scaffolded | `opencontext config show` |
+| `ui_language` | UI language (`en` or `es`) | `en` | `en` / `es` | — | Implemented | `opencontext config show` |
+| `project` | Project configuration | required | project metadata | — | Implemented | `opencontext config show` |
 
 Example safe output policy:
 

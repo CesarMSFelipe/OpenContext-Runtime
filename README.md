@@ -208,7 +208,7 @@ Kept out (and why):
   ✗ django/db/models/query.py   29,532 tok — item_exceeds_available_budget
 ```
 
-Pass `--max-tokens 32000` or set `token_budget` in `opencontext.yaml` to include it.
+Pass `--max-tokens 32000` (or raise `context.max_input_tokens` in `opencontext.yaml`) to include it.
 
 </td>
 </tr>

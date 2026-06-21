@@ -8,8 +8,9 @@ First-party profile registry exists in `packages/opencontext_profiles`. CLI temp
 
 ## Related Commands
 ```bash
-opencontext init --template python
-opencontext init --template python
+opencontext init --template node
+opencontext init --template typescript
+opencontext stack
 ```
 
 ## Implemented Code

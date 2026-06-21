@@ -8,10 +8,11 @@ this file with MCP tool documentation and all CLI commands.
 
 ```bash
 opencontext onboard
+opencontext setup codex      # wire MCP into ~/.codex/config.toml
 opencontext agent init --target codex
 ```
 
-This creates `~/.codex/AGENTS.md` with the full OpenContext reference.
+This creates `AGENTS.md` in the project root with the full OpenContext reference.
 
 ## Available Commands
 

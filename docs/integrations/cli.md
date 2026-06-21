@@ -6,25 +6,31 @@ The CLI is the primary user adapter. It stays thin and calls core services.
 
 ## Current Status
 
-The CLI provides a full interactive TUI menu (10 options), setup wizards, knowledge graph tools,
+The CLI provides a full interactive TUI menu (grouped Setup/Configure/Tools selector), setup wizards, knowledge graph tools,
 context pack generation, SDD workflow harness, plugin management, agent integration, and system health checks.
 
 ## Interactive Menu
 
-Running `opencontext` with no subcommand launches an interactive menu:
+Running `opencontext` with no subcommand launches a grouped, label-based selector (no numbers):
 
-| # | Option | Action |
-|---|--------|--------|
-| 1 | Start Installation | Run `opencontext install` with re-run detection |
-| 2 | Upgrade Tools | Upgrade all OpenContext packages (table output) |
-| 3 | Sync Configs | Sync agent configurations |
-| 4 | Upgrade + Sync | Combined flow |
-| 5 | Configure Models | Run configuration wizard with model prompts |
-| 6 | Create your own Agent | Run `opencontext agent init` |
-| 7 | OpenCode Community Plugins | Browse and install plugins |
-| 8 | OpenCode SDD Profiles | Configure SDD profiles interactively |
-| 9 | Manage Backups | Sub-menu: create, list, restore, clean backups |
-| 10 | Managed Uninstall | Run `opencontext clean` |
+**Setup**
+- Install / reconfigure — run `opencontext install` with re-run detection
+- Upgrade all packages — upgrade every OpenContext package, then re-sync
+- Re-sync environment — refresh configs, MCP, and plugin state
+
+**Configure**
+- Providers & models — set default provider and model
+- Agent integrations — configure agent CLIs (opencode, claude-code, ...)
+- Plugins — browse and install plugins
+- SDD & TDD settings — SDD model profile and TDD mode
+- Context memory — list and search memory entries
+
+**Tools**
+- Verified context for a task — build a verified-context result for a query
+- Doctor — health checks
+- Backups — sub-menu: create, list, restore, cleanup
+- Uninstall — managed uninstall (project + global)
+- Quit
 
 ## Commands
 
@@ -83,7 +89,7 @@ opencontext pack . --query "review auth" --copy
 ## Implemented Code
 
 - `packages/opencontext_cli/opencontext_cli/main.py` — Entry point, dispatch, version, config discovery
-- `packages/opencontext_cli/opencontext_cli/commands/menu_cmd.py` — TUI menu (10 options + backup sub-menu)
+- `packages/opencontext_cli/opencontext_cli/commands/menu_cmd.py` — TUI menu (grouped selector + backup sub-menu)
 - `packages/opencontext_cli/opencontext_cli/commands/config_cmd.py` — Config wizard, show, get, set
 - `packages/opencontext_cli/opencontext_cli/commands/update_cmd.py` — Update check and unified upgrade
 - `packages/opencontext_api/opencontext_api/main.py` — API adapter

@@ -5,8 +5,9 @@ Memory policy controls enablement, harvesting, approval, raw storage, classifica
 
 ## Current Status
 Memory config is implemented for local memory enablement, approval requirements, raw-storage
-prevention, default classification, retention, and pruning preferences. Automatic harvesting is off
-by default, approval is required by default, and stored memory is redacted with provenance metadata.
+prevention, default classification, retention, and pruning preferences. Automatic harvesting runs
+after each run by default, but harvested memories require approval before storage, so nothing is
+persisted automatically, and stored memory is redacted with provenance metadata.
 
 ## Related Commands
 ```bash

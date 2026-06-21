@@ -8,18 +8,20 @@ generates MCP config, SDD orchestrator profile, and AGENTS.md instructions.
 
 ```bash
 opencontext onboard
-opencontext agent init --target opencode
-opencontext agent init --target kilo-code
+opencontext setup opencode      # or: opencontext setup opencode --scope global
+opencontext setup kilo-code
 ```
 
-For OpenCode this creates:
+For OpenCode (`--scope global`) this creates:
 - `~/.config/opencode/mcp.json` — MCP server config
-- `~/.config/opencode/agents/sdd-orchestrator.json` — SDD orchestrator profile
-- `~/.config/opencode/AGENTS.md` — Instructions
+- `~/.config/opencode/agents/sdd-orchestrator.json` — SDD orchestrator profile (plus oc-*.md agent profiles)
+- `AGENTS.md` (project root) — Instructions
 
-For Kilo Code:
+For Kilo Code (`--scope global`):
 - `~/.config/kilo/mcp.json` — MCP server config
-- `~/.config/kilo/AGENTS.md` — Instructions
+- `AGENTS.md` (project root) — Instructions
+
+With the default `--scope local`, mcp.json/agents are written under the project instead of `~/.config`; AGENTS.md is always project-root.
 
 ## Available Commands
 
@@ -78,7 +80,7 @@ the full SDD lifecycle via the knowledge graph MCP tools.
 ## Related Commands
 
 ```bash
-opencontext agent init --target opencode
-opencontext agent init --target kilo-code
+opencontext setup opencode
+opencontext setup kilo-code
 opencontext agent-context "Explain auth flow" --target opencode --copy
 ```
