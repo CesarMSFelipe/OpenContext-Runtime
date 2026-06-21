@@ -15,6 +15,7 @@ mypy packages/opencontext_core
 ```
 
 ## Implemented Code
-- `packages/opencontext_core/`
-- `packages/opencontext_cli/`
+- `packages/opencontext_core/opencontext_core/project/profiles.py` — the `TechnologyProfile` Protocol (profiles.py:90) to implement against
+- `packages/opencontext_profiles/opencontext_profiles/markers.py` — author the new profile class (subclass `MarkerTechnologyProfile`)
+- `packages/opencontext_profiles/opencontext_profiles/registry.py` — register it in `first_party_profiles()`
 - `tests/core/`

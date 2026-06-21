@@ -23,3 +23,4 @@ opencontext doctor tokens
 - `packages/opencontext_core/opencontext_core/context/`
 - `packages/opencontext_core/opencontext_core/indexing/`
 - `packages/opencontext_core/opencontext_core/memory_usability/`
+- `packages/opencontext_core/opencontext_core/memory_usability/output_budget.py`

@@ -29,14 +29,14 @@ opencontext git status
 ```
 
 Output:
-```json
-{
-  "available": true,
-  "total_commits": 1523,
-  "contributors": 8,
-  "branches": 12
-}
 ```
+                             Git Repository Stats
+Commits: 1523
+Contributors: 8
+Branches: 12
+```
+
+`--json` is available on `git history`, `git recent`, and `git blame` (not `git status`).
 
 ### File History
 

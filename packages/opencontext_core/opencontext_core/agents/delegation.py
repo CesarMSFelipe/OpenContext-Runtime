@@ -246,11 +246,11 @@ class SubAgentDelegate:
     ) -> SubAgentResult:
         """Delegate to a remote API (e.g., OpenCode sub-agent)."""
 
-        # This would call OpenCode's sub-agent API
-        # For now, return scaffold result
+        # Remote (OpenCode sub-agent) delegation is not wired yet — report it as
+        # skipped, not a synthetic success, so callers don't treat unran work as done.
         return SubAgentResult(
-            status="success",
-            output=f"Remote {phase} execution scaffold",
+            status="skipped",
+            output=f"Remote {phase} delegation not implemented (scaffold)",
             metadata={"mode": "remote", "phase": phase},
         )
 

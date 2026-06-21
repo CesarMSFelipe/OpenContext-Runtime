@@ -104,6 +104,13 @@ class ContextRepository:
         safe_content = SinkGuard().redact(content)[0]
         if SecretScanner().scan(safe_content):
             safe_content = SecretScanner().redact(safe_content)
+        # Dedup auto-stores (e.g. harvest summaries) so near-identical records
+        # don't accrete every run. Explicit id/pin stores are intentional writes
+        # and bypass the gate.
+        if memory_id is None and not pin:
+            duplicate = self._find_near_duplicate(safe_content, collection)
+            if duplicate is not None:
+                return duplicate
         extracted_entities = sorted(
             {
                 normalized
@@ -134,6 +141,31 @@ class ContextRepository:
         )
         self._write_item(item, collection)
         return item
+
+    def _find_near_duplicate(self, content: str, collection: str) -> MemoryItem | None:
+        """Return an existing item in ``collection`` that is ~the same as ``content``.
+
+        Jaccard token overlap >= 0.85 counts as a duplicate, so harvest summaries
+        that differ only in a run id / timestamp do not pile up.
+        """
+        new_tokens = set(content.lower().split())
+        if not new_tokens:
+            return None
+        coll_dir = self.base_path / collection
+        if not coll_dir.exists():
+            return None
+        for path in sorted(coll_dir.glob("*.md")):
+            try:
+                existing = self._read_item(path)
+            except Exception:
+                continue
+            other = set(existing.content.lower().split())
+            if not other:
+                continue
+            union = len(new_tokens | other)
+            if union and len(new_tokens & other) / union >= 0.85:
+                return existing
+        return None
 
     def list_items(self, *, include_archive: bool = False) -> list[MemoryItem]:
         """List stored memory items."""

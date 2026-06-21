@@ -16,7 +16,7 @@ MCP_LABEL = "opencontext"
 MCP_SERVER_ENTRY: dict[str, object] = {
     "type": "stdio",
     "command": "opencontext",
-    "args": ["serve", "--mcp"],
+    "args": ["mcp"],
 }
 
 # Tool names auto-allowed for agents that support a permissions allow-list.
@@ -67,7 +67,7 @@ def agent_home(agent_id: str) -> Path:
 
 
 # Filename of the MCP config inside the agent's config directory.
-# gemini-cli and codex keep MCP config inside an existing settings/config file.
+# Listed agents keep MCP config in a specific named file; anything not listed defaults to mcp.json.
 _MCP_FILENAME: dict[str, str] = {
     "gemini-cli": "settings.json",
     "codex": "config.toml",
@@ -155,6 +155,17 @@ OPENCONTEXT_COMMANDS: tuple[tuple[str, str, str], ...] = (
         "Use the `opencontext_impact` MCP tool to report what changing this symbol "
         "affects (callers, files, tests, risk) before editing.\n\nSymbol: $ARGUMENTS",
     ),
+    (
+        "oc-new",
+        "Start a new SDD change — runs the full flow automatically",
+        "Start a new spec-driven change and drive the whole flow in order, "
+        "switching to each phase's persona and using OpenContext's MCP tools:\n"
+        "explore (Explorer) -> propose/spec/tasks (Orchestrator) -> design "
+        "(Architect) -> approval gate -> apply (Builder, tests first) -> verify "
+        "(Reviewer) -> archive. Build context with `opencontext_context` and check "
+        "`opencontext_impact` before any edit; pause for approval before writing "
+        "code.\n\nChange: $ARGUMENTS",
+    ),
 )
 
 # Agents with a project-scoped Markdown command directory (relative to project root).
@@ -181,8 +192,25 @@ def persona_dir(agent_id: str) -> str | None:
     return _PERSONA_DIR.get(agent_id)
 
 
+# Agents with a global (home-dir-relative) agents directory — persona .md files go here.
+# Key: agent_id → subdir within agent_home(agent_id).
+_GLOBAL_AGENTS_SUBDIR: dict[str, str] = {
+    "opencode": "agents",
+}
+
+
+def global_agents_subdir(agent_id: str) -> str | None:
+    """Subdir within config_dir where global persona files go, or None."""
+
+    return _GLOBAL_AGENTS_SUBDIR.get(agent_id)
+
+
 # Agents whose instructions root is the project tree rather than the agent's
 # home directory (e.g. AGENTS.md / CLAUDE.md live next to the code).
+# Every AGENTS.md-honoring agent is project-scoped (AGENTS.md lives at the project
+# root, not the agent's home dir). Must stay in sync with _HONORS_AGENTS_MD below —
+# previously kiro-ide, pi, and kimi-code honored AGENTS.md but were missing here, so
+# their instructions landed in the home dir instead of the project root.
 PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
     {
         "codex",
@@ -191,6 +219,7 @@ PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
         "windsurf",
         "vscode-copilot",
         "kilo-code",
+        "kiro-ide",
         "kiro",
         "aider",
         "zed",
@@ -200,6 +229,8 @@ PROJECT_SCOPED_INSTRUCTIONS: frozenset[str] = frozenset(
         "goose",
         "copilot-cli",
         "openhands",
+        "pi",
+        "kimi-code",
     }
 )
 

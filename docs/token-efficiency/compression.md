@@ -118,7 +118,7 @@ Within the agentic loop, context passes between agents via `SubAgentDelegate`. B
 
 - Text values longer than 200 characters are compressed
 - Short values and structured data pass through unmodified
-- Result: 60–70% fewer tokens per inter-agent handoff
+- Reduction depends on payload; structured/short values are unaffected
 
 ## Measuring Savings
 
@@ -128,19 +128,24 @@ opencontext benchmark run
 opencontext tokens report .
 ```
 
-The benchmark suite reports:
-- `token_reduction` — % tokens saved vs naive full-project context
-- `tokens_per_successful_task` — average tokens for tasks that passed verify
-- `context_precision` — % included items that were actually needed
-- `context_recall` — % needed items that were included
+`opencontext benchmark run` scores context packs across five dimensions:
+- Completeness — fraction of relevant candidates included
+- Relevance — 1 − (discarded / total) noise ratio
+- Token Efficiency — tokens used vs. budget
+- Safety — clean unless the trace has PII/safety findings
+- Freshness — based on trace age
+
+For retrieval precision/recall against labeled tasks, use a different command:
+`opencontext eval recall <tasks.yaml>`, which reports `recall`, `precision`, tokens, and latency.
 
 ## Configuration
 
 ```yaml
 # opencontext.yaml
 compression:
-  strategy: terse          # default for context packs
-                           # loop defaults to efficient regardless
+  strategy: extractive_head_tail   # default; per-tier routing overrides it
+                                   # (cheap->terse, precise->compact, critical->none)
+                                   # loop output defaults to efficient regardless
 ```
 
 ## Related

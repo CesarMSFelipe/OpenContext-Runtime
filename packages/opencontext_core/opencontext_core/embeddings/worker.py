@@ -8,6 +8,7 @@ items for embedding.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from datetime import datetime
@@ -18,6 +19,8 @@ from opencontext_core.embeddings.generators import create_generator
 from opencontext_core.embeddings.models import EmbeddedItem, EmbeddingStats
 from opencontext_core.embeddings.protocols import EmbeddingGenerator, VectorStore
 from opencontext_core.embeddings.stores import LocalVectorStore
+
+_log = logging.getLogger(__name__)
 
 
 class AsyncEmbeddingWorker:
@@ -138,7 +141,7 @@ class AsyncEmbeddingWorker:
 
             except Exception as exc:
                 # Log error but keep worker alive
-                print(f"Embedding worker error: {exc}", flush=True)
+                _log.error("embedding worker error: %s", exc)
 
         # Final flush
         if batch:
@@ -183,9 +186,16 @@ class AsyncEmbeddingWorker:
                 self._stats.last_activity = datetime.now()
 
         except Exception as exc:
-            print(f"Batch embedding failed: {exc}", flush=True)
+            _log.warning("batch embedding failed: %s", exc)
             with self._lock:
                 self._stats.failed_count += len(batch)
+
+    def _enqueue_one(self, item: EmbeddedItem) -> None:
+        """Put one item on the queue from within the worker loop (drops if full)."""
+        try:
+            self._queue.put_nowait(item)
+        except asyncio.QueueFull:
+            _log.warning("embedding queue full, dropping item")
 
     def enqueue_sync(self, items: list[EmbeddedItem]) -> int:
         """Synchronously enqueue items for embedding.
@@ -202,15 +212,21 @@ class AsyncEmbeddingWorker:
         queued = 0
 
         for item in items:
-            try:
-                if not self._running:
-                    break
-                # Use put_nowait to avoid blocking
-                self._queue.put_nowait(item)
-                queued += 1
-            except asyncio.QueueFull:
-                print(f"Embedding queue full, dropping {len(items) - queued} items", flush=True)
+            if not self._running:
                 break
+            loop = self._loop
+            if loop is not None and loop.is_running():
+                # asyncio.Queue is not thread-safe to mutate from the producer
+                # thread — schedule the put on the worker's own event loop.
+                loop.call_soon_threadsafe(self._enqueue_one, item)
+                queued += 1
+            else:
+                try:
+                    self._queue.put_nowait(item)
+                    queued += 1
+                except asyncio.QueueFull:
+                    _log.warning("embedding queue full, dropping %d items", len(items) - queued)
+                    break
 
         with self._lock:
             self._stats.pending_count = self._queue.qsize()
@@ -219,7 +235,7 @@ class AsyncEmbeddingWorker:
         # Verify we're under 150ms
         elapsed = (time.time() - start) * 1000
         if elapsed > 150:
-            print(f"Warning: enqueue took {elapsed:.1f}ms, exceeds 150ms guarantee", flush=True)
+            _log.warning("enqueue took %.1fms, exceeds 150ms guarantee", elapsed)
 
         return queued
 
@@ -258,7 +274,9 @@ class NullAsyncEmbeddingWorker(AsyncEmbeddingWorker):
     """No-op worker for when embeddings are disabled."""
 
     def __init__(self) -> None:
-        pass
+        # Set the inherited state the no-op overrides don't, so is_running() (which
+        # reads self._running) doesn't raise AttributeError.
+        self._running = False
 
     def start(self) -> None:
         pass

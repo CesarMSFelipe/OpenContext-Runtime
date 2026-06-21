@@ -679,21 +679,42 @@ class TreeSitterParser:
             return None
 
     def _extract_docstring(self, node: Any, content: str) -> str | None:
-        """Extract docstring from a node."""
+        """Extract the docstring of a Python function/class node, if any.
 
-        # Look for string literal or comment after the node
-        for child in node.children:
-            if child.type in ("string", "expression_statement"):
-                text = str(child.text.decode("utf-8")).strip()
-                if text.startswith('"""') or text.startswith("'''"):
-                    return text.strip('"').strip("'")
-                # Expression statement might contain a string
-                if child.type == "expression_statement":
-                    for sub in child.children:
-                        if sub.type == "string":
-                            text = str(sub.text.decode("utf-8")).strip()
-                            return text.strip('"').strip("'")
+        The docstring is the first statement of the body, nested as
+        ``def/class -> block -> expression_statement -> string`` — it is NOT a
+        direct child of ``node``, so a child-scan finds nothing.
+        """
 
+        body = node.child_by_field_name("body")
+        if body is None:
+            for child in node.children:
+                if child.type == "block":
+                    body = child
+                    break
+        if body is None:
+            return None
+
+        for stmt in body.children:
+            if not getattr(stmt, "is_named", True) or stmt.type == "comment":
+                continue
+            # Only the first real statement can be a docstring.
+            if stmt.type != "expression_statement":
+                return None
+            for sub in stmt.children:
+                if sub.type == "string":
+                    # Prefer the string_content child (no quote delimiters) over
+                    # stripping quote chars, which over-strips interior quotes.
+                    for piece in sub.children:
+                        if piece.type == "string_content":
+                            return str(piece.text.decode("utf-8", errors="replace"))
+                    raw = str(sub.text.decode("utf-8", errors="replace")).strip()
+                    for quote in ('"""', "'''", '"', "'"):
+                        q = len(quote)
+                        if raw.startswith(quote) and raw.endswith(quote) and len(raw) >= 2 * q:
+                            return raw[q:-q]
+                    return raw
+            return None
         return None
 
     def _extract_signature(self, node: Any, content: str) -> str | None:

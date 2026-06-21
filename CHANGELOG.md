@@ -5,6 +5,64 @@ All notable changes to OpenContext Runtime will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-21
+
+### Added
+
+- **Per-persona model routing**: `opencontext models set-persona <persona> <model>` routes each SDD phase by its persona (Architect → design, Explorer → explore, …), delivered to the agent as an MCP sampling hint. `models show` lists persona → phase → model. Per-role routing remains a separate axis for functional operations.
+- **Install model preset**: the install wizard asks one model-routing question (`default` / `cheap` / `hybrid` / `premium`); `default` keeps the client's own model for every phase — no model is chosen for you. This is now the universal default (was `hybrid`).
+- **Recursive summarization at rehydration**: memory recall over-fetches candidate items and compresses them back to the prompt budget — via the cheap `summarize` role when a model is bound, else a deterministic line-boundary trim — so more signal fits the same rehydration tokens. No-op when recall already fits.
+- **Adaptive retrieval budget (ACON-lite)**: the token optimizer widens the retrieval budget for an operation type when its history shows failures that coincided with omitted context (bounded +50%, clean histories untouched). The harness co-records each run's outcome with its omission count to feed the signal.
+
+### Changed
+
+- Default SDD model profile is now `default` (the client's model for every phase) instead of `hybrid`, across install, onboard, and `OnboardingOptions`.
+
+### Fixed
+
+- **Harness `propose` gate**: the declared `trace_id_created` gate failed on every standalone run because no phase propagated a trace id; explore now records the (already-persisted) retrieval trace, so `propose` passes.
+- **MCP symbol-edit tools fail closed**: `replace_symbol_body` / `insert_*` reject an edit that would leave a `.py` file unparseable (file left intact, with a hint to pass the full definition); `rename_symbol` rejects Python keywords and now also updates `from … import` statements, so a cross-module rename no longer leaves a dangling import.
+- **Tasks scaffold** uses the files explore surfaced for the task instead of hard-coded internal paths.
+- **`benchmark run --format json`** emits pure JSON — the status spinner no longer corrupts machine-readable output.
+
+### Docs
+
+- Documentation professionalization: corrected commands/claims verified against the CLI, folded orphaned pages into the mkdocs nav (175/181), fixed broken in-site links, and added OSS hygiene (SECURITY reporting channel, Code of Conduct, CONTRIBUTING dev-setup, issue/PR templates).
+
+## [1.3.0] - 2026-06-20
+
+### Added
+
+- **Co-resident Engram coexistence**: when an Engram install is present, OpenContext routes the EPISODIC/SEMANTIC memory layers to it (read via its SQLite, write via the `engram` CLI) and keeps the other layers local; with no Engram the local store covers every layer. Auto-detection is suppressed under pytest. Memory still defaults to local — Engram is opt-in.
+- **Real local embeddings**: `OllamaEmbeddingGenerator` produces embeddings from a co-resident Ollama over stdlib HTTP (no new dependency); semantic memory recall is wired when `embedding.enabled`.
+- **Per-role model routing via MCP sampling**: the model each role uses is delivered to the host agent as an MCP `sampling/createMessage` `modelPreferences.hints`, and `opencontext models set-role` writes `models.roles.<role>.model`.
+- **In-process agentic run**: the `opencontext_run` MCP tool drives the SDD harness using the host client's selected model through the sampling transport.
+- **`uninstall --purge`**: removes managed blocks and clears install state, with a dry-run preview.
+- **Plugin permissions manifest**: a deny-by-default permissions manifest is enforced at plugin load.
+
+### Changed
+
+- `standard` workflow track now includes `propose` — `spec`/`design` require the proposal artifact, so the track is runnable end to end.
+- Non-interactive `install --yes` wires the agents actually detected on the machine instead of defaulting to a single client.
+- Documentation and CLI help corrected to match shipped behavior (14 MCP tools, seven personas, the `oc-onboard` skill, the real `explore → … → verify → review → archive` phase flow). No unverified claims.
+
+### Fixed
+
+- **Secret redaction**: the full body of a PEM private key is now redacted (the body after the header was leaking).
+- **FTS scoring**: relevance is position-based (the previous score was inverted).
+- **Docstring extraction**: tree-sitter docstrings are extracted correctly (were always empty).
+- **Code compression**: comment/docstring stripping is string-aware — a `#` or `//` inside a string literal no longer truncates the line, and triple-quoted *data* strings are preserved.
+- **Profile detection**: node/react/next/rust/drupal require a real manifest, so a generic `src/` layout is no longer mislabeled (e.g. a Python project tagged "node").
+- **`opencontext update`**: tolerates PEP 440 pre-release versions (it was crashing and silently hiding every update) and no longer reports a stale cached version that contradicts `--version`.
+- **Dependency graph**: Python relative imports (`from .x import y`) now resolve to internal edges.
+- **Context export**: redact-and-continue at the export sink — every REDACT-policy finding is removed, not just the first.
+- **`verify`**: honest exit code; tests are scoped to changed files instead of running the whole suite for a verify report.
+- **Model routing**: per-role/per-phase routing reaches the executor by routing onto a copy, without mutating the caller's request.
+
+### Security
+
+- Credit-card detection is gated by the Luhn checksum; the context firewall honors the REDACT policy for secrets and prompt-injection; the firewall proxy no longer echoes secrets on a blocked POST.
+
 ## [1.2.0] - 2026-06-18
 
 ### Performance
@@ -22,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-phase model config**: `ModelConfigMap.phases` dict allows per-phase model overrides (explore, spec, design, tasks, apply, verify, review, archive, judgment).
 - **Judgment-day phase**: Adversarial review phase (`judgment`) with BLOCKER/SHOULD_FIX/APPROVED verdicts; GGA rules enforcement; `clarify` command.
 - **Quality workflow tracks**: `quick`, `standard`, `full`, `full+judgment`, `full+gga` harness tracks.
-- **Skill registry v2**: `.skill.md` scanner alongside legacy `SKILL.md`/frontmatter format; built-in skills (fix, prd, work-unit-commits, sdd-onboard).
+- **Skill registry v2**: `.skill.md` scanner alongside legacy `SKILL.md`/frontmatter format; built-in skills (fix, prd, work-unit-commits, oc-onboard).
 - **Trae/Hermes agent support**: Detected and configured by `AgentInstaller`.
 - **`verify --json` `ok` field**: Each check entry now includes `"ok": bool` for CI consumers.
 - **`security scan --json` `files_scanned`**: Field now populated with the actual count.

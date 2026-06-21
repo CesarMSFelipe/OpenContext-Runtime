@@ -1,106 +1,102 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" width="720" height="400" role="img" aria-label="opencontext install wizard: detects stack, configures editor and LLM provider, builds knowledge graph">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 700" width="720" height="700" role="img" aria-label="opencontext install wizard: 4 steps — configuration template, security mode, TDD mode, and AI coding agents selection">
 
-  <rect width="720" height="400" rx="10" fill="#0B0F14"/>
+  <rect width="720" height="700" rx="10" fill="#0B0F14"/>
 
-  <!-- Title bar -->
+  <!-- Title bar — plain terminal style -->
   <rect width="720" height="40" rx="10" fill="#111821"/>
   <rect y="30" width="720" height="10" fill="#111821"/>
-  <circle cx="24" cy="20" r="6.5" fill="#FF7B72"/>
-  <circle cx="46" cy="20" r="6.5" fill="#E3B341"/>
-  <circle cx="68" cy="20" r="6.5" fill="#00C9A7"/>
+  <text x="20" y="25" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="12" fill="#2DC4A4">❯</text>
   <text x="360" y="25" text-anchor="middle"
-        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        font-size="12" fill="#3D4450">opencontext — ~/projects/my-app</text>
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif"
+        font-size="12" fill="#606978">opencontext — ~/projects/my-app</text>
 
-  <g font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace"
-     font-size="13" xml:space="preserve">
+  <g font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" xml:space="preserve">
 
     <!-- Shell prompt -->
-    <text x="20" y="62">
-      <tspan fill="#00C9A7">~/projects/my-app</tspan>
-      <tspan fill="#3D4450">  on </tspan>
-      <tspan fill="#00A8E8"> main</tspan>
-      <tspan fill="#00C9A7"> ✓</tspan>
-    </text>
-    <text x="20" y="80">
-      <tspan fill="#00A8E8">❯</tspan>
-      <tspan fill="#E6EDF3"> opencontext install</tspan>
-    </text>
+    <text x="20" y="62"><tspan fill="#2DC4A4">~/my-app</tspan><tspan fill="#606978"> on </tspan><tspan fill="#35ADE5">main</tspan><tspan fill="#2DC4A4"> ✓</tspan></text>
+    <text x="20" y="80"><tspan fill="#35ADE5">❯</tspan><tspan fill="#E6EDF3"> opencontext install</tspan></text>
 
     <!-- Detected stack -->
     <text x="20" y="104">
-      <tspan fill="#3D4450">  Detected  </tspan>
-      <tspan fill="#00C9A7">Python 3.12</tspan>
-      <tspan fill="#3D4450">  ·  </tspan>
-      <tspan fill="#00C9A7">FastAPI</tspan>
-      <tspan fill="#3D4450">  ·  </tspan>
-      <tspan fill="#00C9A7">pytest</tspan>
-      <tspan fill="#3D4450">  ·  </tspan>
-      <tspan fill="#00C9A7">git</tspan>
+      <tspan fill="#606978">  Detected  </tspan>
+      <tspan fill="#2DC4A4">Python 3.12</tspan>
+      <tspan fill="#606978"> · </tspan>
+      <tspan fill="#2DC4A4">FastAPI</tspan>
+      <tspan fill="#606978"> · </tspan>
+      <tspan fill="#2DC4A4">pytest</tspan>
+      <tspan fill="#606978"> · </tspan>
+      <tspan fill="#2DC4A4">git</tspan>
     </text>
 
   </g>
 
-  <!-- Divider -->
   <line x1="20" y1="116" x2="700" y2="116" stroke="#21262D" stroke-width="1"/>
 
-  <!-- Question 1: editor -->
-  <g font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
-    <text x="20" y="136">
-      <tspan fill="#00A8E8">?</tspan>
-      <tspan fill="#E6EDF3"> Which editor do you use?</tspan>
-    </text>
+  <!-- ── STEP 1 / 4 — Configuration Template ── -->
+  <text x="20" y="136" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5">── Step 1 / 4 — Configuration Template ──────────────────────────────</text>
+  <text x="20" y="158" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Choose a configuration template</tspan>
+  </text>
+  <!-- selected option -->
+  <rect x="20" y="166" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1"/>
+  <text x="28" y="180" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#E6EDF3">Generic (default)  </tspan><tspan fill="#606978">— Standard project, recommended for most users</tspan>
+  </text>
+  <text x="28" y="200" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">  Enterprise         — Strict security, all external providers blocked</text>
+  <text x="28" y="218" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">  Air-gapped         — No external access, no semantic cache, max isolation</text>
 
-    <rect x="20" y="144" width="260" height="22" rx="3" fill="#0D1117" stroke="rgba(0,168,232,0.25)" stroke-width="1"/>
-    <text x="28" y="159">
-      <tspan fill="#00A8E8">❯ </tspan>
-      <tspan fill="#E6EDF3">Claude Code</tspan>
-    </text>
+  <line x1="20" y1="230" x2="700" y2="230" stroke="#21262D" stroke-width="1"/>
 
-    <text x="28" y="181" fill="#3D4450">  Cursor</text>
-    <text x="28" y="199" fill="#3D4450">  VS Code + Copilot</text>
-    <text x="28" y="217" fill="#3D4450">  Other</text>
-  </g>
+  <!-- ── STEP 2 / 4 — Security Mode ── -->
+  <text x="20" y="248" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5">── Step 2 / 4 — Security Mode ───────────────────────────────────────</text>
+  <text x="20" y="268" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Choose security mode</tspan>
+  </text>
+  <!-- selected option -->
+  <rect x="20" y="276" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1"/>
+  <text x="28" y="290" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#E6EDF3">private_project  </tspan><tspan fill="#606978">— Redaction on, external providers off (recommended)</tspan>
+  </text>
+  <text x="28" y="310" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">  developer        — Local dev posture, fewest restrictions</text>
+  <text x="28" y="328" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">  enterprise       — Team sharing with governance</text>
+  <text x="28" y="346" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">  air_gapped       — Completely offline, no external access</text>
 
-  <!-- Divider -->
-  <line x1="20" y1="228" x2="700" y2="228" stroke="#21262D" stroke-width="1"/>
+  <line x1="20" y1="358" x2="700" y2="358" stroke="#21262D" stroke-width="1"/>
 
-  <!-- Question 2: LLM provider -->
-  <g font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
-    <text x="20" y="248">
-      <tspan fill="#00A8E8">?</tspan>
-      <tspan fill="#E6EDF3"> Configure an LLM provider?</tspan>
-      <tspan fill="#3D4450">  (loop and harness require one)</tspan>
-    </text>
+  <!-- ── STEP 3 / 4 — TDD Mode ── -->
+  <text x="20" y="376" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5">── Step 3 / 4 — TDD Mode ────────────────────────────────────────────</text>
+  <text x="20" y="396" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Choose TDD mode</tspan>
+  </text>
+  <!-- selected option -->
+  <rect x="20" y="404" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1"/>
+  <text x="28" y="418" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#E6EDF3">Ask me   </tspan><tspan fill="#606978">— Prompt before each TDD decision (default)</tspan>
+  </text>
+  <text x="28" y="438" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">  Strict   — Always require a failing test before production code</text>
+  <text x="28" y="456" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">  Off      — No TDD enforcement, code-first workflow</text>
 
-    <rect x="20" y="256" width="300" height="22" rx="3" fill="#0D1117" stroke="rgba(0,168,232,0.25)" stroke-width="1"/>
-    <text x="28" y="271">
-      <tspan fill="#00A8E8">❯ </tspan>
-      <tspan fill="#E6EDF3">Anthropic (Claude)</tspan>
-    </text>
+  <line x1="20" y1="468" x2="700" y2="468" stroke="#21262D" stroke-width="1"/>
 
-    <text x="28" y="293" fill="#3D4450">  OpenAI</text>
-    <text x="28" y="311" fill="#3D4450">  OpenRouter</text>
-    <text x="28" y="329" fill="#3D4450">  Skip for now</text>
-  </g>
-
-  <!-- Divider -->
-  <line x1="20" y1="340" x2="700" y2="340" stroke="#21262D" stroke-width="1"/>
-
-  <!-- Results -->
-  <g font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
-    <text x="20" y="360" xml:space="preserve">
-      <tspan fill="#3D4450">  Building knowledge graph </tspan><tspan fill="#8B949E">... </tspan><tspan fill="#00C9A7"> done  </tspan><tspan fill="#8B949E">1,247 symbols indexed</tspan>
-    </text>
-    <text x="20" y="378" xml:space="preserve">
-      <tspan fill="#3D4450">  Wiring Claude Code MCP   </tspan><tspan fill="#8B949E">... </tspan><tspan fill="#00C9A7"> done</tspan>
-    </text>
-    <text x="20" y="396">
-      <tspan fill="#00C9A7">  Ready. </tspan>
-      <tspan fill="#E6EDF3"> Run </tspan>
-      <tspan fill="#00A8E8">opencontext demo</tspan>
-      <tspan fill="#E6EDF3"> to see it in action.</tspan>
-    </text>
-  </g>
+  <!-- ── STEP 4 / 4 — AI Coding Agents ── -->
+  <text x="20" y="486" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="11" fill="#35ADE5">── Step 4 / 4 — AI Coding Agents ────────────────────────────────────</text>
+  <text x="20" y="506" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">?</tspan><tspan fill="#E6EDF3"> Select agents to configure  </tspan><tspan fill="#606978">(Space to select/deselect, Enter to confirm.)</tspan>
+  </text>
+  <!-- selected option (checkbox) -->
+  <rect x="20" y="514" width="680" height="20" rx="2" fill="#0D1A28" stroke="rgba(53,173,229,0.30)" stroke-width="1"/>
+  <text x="28" y="528" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13">
+    <tspan fill="#35ADE5">❯ </tspan><tspan fill="#2DC4A4">◉ </tspan><tspan fill="#E6EDF3">OpenCode      </tspan><tspan fill="#606978">— opencode.ai (Tab personas, MCP)</tspan>
+  </text>
+  <text x="28" y="546" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Claude Code   — Anthropic CLI (.claude/agents)</text>
+  <text x="28" y="562" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Cursor        — .cursor/mcp.json</text>
+  <text x="28" y="578" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Windsurf      — .windsurf/mcp.json</text>
+  <text x="28" y="594" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Kilo Code     — VS Code extension</text>
+  <text x="28" y="610" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Gemini CLI    — Google AI CLI</text>
+  <text x="28" y="626" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Codex         — OpenAI Codex CLI</text>
+  <text x="28" y="642" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Aider         — aider.chat CLI</text>
+  <text x="28" y="658" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Cline         — VS Code Cline extension</text>
+  <text x="28" y="674" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Roo           — Roo-Code extension</text>
+  <text x="28" y="690" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,monospace" font-size="13" fill="#606978">    ◯ Continue      — continue.dev extension</text>
 
 </svg>

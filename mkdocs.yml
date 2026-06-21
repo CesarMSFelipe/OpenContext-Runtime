@@ -1,5 +1,5 @@
 site_name: OpenContext Runtime
-site_description: Context engineering runtime for AI coding agents. Up to 96% token reduction.
+site_description: Context engineering runtime for AI coding agents.
 site_url: https://CesarMSFelipe.github.io/OpenContext-Runtime
 site_author: OpenContext Runtime maintainers
 
@@ -77,6 +77,14 @@ nav:
   - Concepts:
     - concepts/index.md
     - concepts/what-is-context-engineering.md
+    - concepts/architecture.md
+    - concepts/context-packs.md
+    - concepts/repo-map.md
+    - concepts/token-budgets.md
+    - concepts/output-budgets.md
+    - concepts/memory.md
+    - concepts/technology-profiles.md
+    - concepts/controlled-agentic-harness.md
   - Configuration:
     - configuration/index.md
     - configuration/overview.md
@@ -88,6 +96,7 @@ nav:
     - configuration/plugins.md
     - configuration/templates.md
     - configuration/reference.md
+    - configuration/user-config.md
     - configuration/workflow-config.md
     - configuration/output-policy.md
     - configuration/cache-policy.md
@@ -100,7 +109,7 @@ nav:
     - workflows/orchestrate-mode.md
     - workflows/validation-mode.md
     - workflows/patch-proposals.md
-    - workflows/sdd-implementation-summary.md
+    - workflows/workflow-packs.md
   - Integrations:
     - integrations/index.md
     - integrations/opencode-kilo-code.md
@@ -111,6 +120,7 @@ nav:
     - integrations/python-sdk.md
     - integrations/api.md
     - integrations/cli.md
+    - integrations/github-action.md
   - Development:
     - development/index.md
     - development/architecture-boundaries.md
@@ -147,8 +157,12 @@ nav:
     - operations/hooks.md
     - operations/approvals.md
     - operations/ai-team-operating-model.md
+    - operations/policy-diff.md
+    - operations/run-receipts.md
+    - operations/shared-commands.md
   - Enterprise:
     - enterprise/index.md
+    - enterprise/overview.md
     - enterprise/evidence-packs.md
     - enterprise/team-policies.md
     - enterprise/org-baselines.md
@@ -157,10 +171,44 @@ nav:
     - enterprise/air-gapped.md
   - Governance:
     - governance/index.md
+    - governance/eu-ai-act-notes.md
   - Memory:
     - memory/index.md
+    - memory/overview.md
+    - memory/progressive-disclosure.md
+    - memory/session-harvesting.md
+    - memory/temporal-memory.md
+    - memory/novelty-gate.md
+    - memory/pinned-memory.md
+    - memory/memory-garbage-collection.md
+    - memory/context-repository.md
+    - memory/context-dag.md
   - Security:
     - security/index.md
+    - security/threat-model.md
+    - security/secret-scanning.md
+    - security/redaction-and-dlp.md
+    - security/prompt-injection.md
+    - security/source-trust-boundaries.md
+    - security/data-classification.md
+    - security/provider-policies.md
+    - security/egress-policy.md
+    - security/mcp-and-tool-security.md
+    - security/tool-security.md
+    - security/secure-tracing.md
+    - security/prompt-context-sbom.md
+    - security/release-artifact-audit.md
+    - security/air-gapped-mode.md
+    - security/secure-deployment-modes.md
+    - security/cache-and-memory-isolation.md
+    - security/output-exfiltration-scanning.md
+    - security/taint-tracking.md
+    - security/ai-leak-and-prompt-security.md
+    - security/prompt-public-assumption.md
+    - security/owasp-llm-controls.md
+    - security/nist-ai-rmf-mapping.md
+    - security/iso-42001-notes.md
+    - security/soc2-control-mapping.md
   - Architecture:
     - architecture/index.md
     - architecture/overview.md
@@ -176,14 +224,28 @@ nav:
     - architecture/compression.md
     - architecture/context-pack-builder.md
     - architecture/technology-profiles.md
+    - architecture/implementation-matrix.md
     - architecture/openclaw-boundary.md
   - Guides:
     - guides/index.md
+    - guides/five-minute-setup.md
+    - guides/agent-hints.md
+    - guides/agent-orchestration.md
+    - guides/git-context.md
+    - guides/ci-checks.md
     - guides/pypi-publishing.md
   - Token Efficiency:
     - token-efficiency/index.md
+    - token-efficiency/overview.md
     - token-efficiency/repo-map-first.md
+    - token-efficiency/context-packing.md
+    - token-efficiency/content-router.md
+    - token-efficiency/compression.md
     - token-efficiency/toon-and-compact-serialization.md
+    - token-efficiency/output-token-control.md
+    - token-efficiency/prompt-caching.md
+    - token-efficiency/memory-token-savings.md
+    - token-efficiency/measuring-savings.md
   - Profiles:
     - profiles/index.md
     - profiles/overview.md

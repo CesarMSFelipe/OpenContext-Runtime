@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" width="720" height="300" role="img" aria-label="OpenContext benchmark results: average score 91.9 across 7 scenarios">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 316" width="720" height="316" role="img" aria-label="OpenContext benchmark results: average score 91.9 across 7 scenarios">
 
-  <rect width="720" height="300" rx="8" fill="#1e1e2e"/>
+  <rect width="720" height="316" rx="8" fill="#1e1e2e"/>
 
   <!-- Title -->
   <text x="36" y="36" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"

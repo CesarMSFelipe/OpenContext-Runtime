@@ -9,8 +9,10 @@ Extensible plugin architecture:
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import logging
 import shutil
 import tempfile
 import zipfile
@@ -23,6 +25,8 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 # ── Constants ──────────────────────────────────────────────────────────────
+
+_log = logging.getLogger(__name__)
 
 DEFAULT_REGISTRY_URL = (
     "https://raw.githubusercontent.com/opencontext/plugin-registry/main/registry.json"
@@ -657,6 +661,9 @@ class PluginInstaller:
                 except (json.JSONDecodeError, OSError):
                     pass
 
+            # Stamp integrity (checksum + permissions) so load() can verify it.
+            stamp_plugin_integrity(plugin_dir)
+
             # Remove backup on success
             backup_dir = plugin_dir.parent / f".{name}.bak"
             if backup_dir.exists():
@@ -748,6 +755,7 @@ class PluginInstaller:
             encoding="utf-8",
         )
 
+        stamp_plugin_integrity(plugin_dir)
         _track_plugin_in_state(name, version, install_source, repository)
 
         return InstallResult(
@@ -931,6 +939,8 @@ class PluginRegistry:
         self._plugins: dict[str, Plugin] = {}
         self._commands: dict[str, Callable[..., Any]] = {}
         self._hooks: dict[str, list[Callable[..., Any]]] = {}
+        # Declared, validated permissions per loaded plugin (deny-by-default).
+        self._permissions: dict[str, Any] = {}
 
     def discover(self) -> list[PluginInfo]:
         """Discover available plugins."""
@@ -973,11 +983,51 @@ class PluginRegistry:
             if not info.get("enabled", True):
                 return None
 
+            # Deny-by-default permissions contract: the plugin declares what it may
+            # touch. An absent manifest = nothing declared (flagged as unmanaged);
+            # a malformed one refuses the load. (In-process IO sandboxing of the
+            # exec'd code itself needs a process sandbox — out of scope here.)
+            from opencontext_core.plugins.manifest import PluginPermissions
+
+            raw_perms = info.get("permissions")
+            try:
+                perms = (
+                    PluginPermissions.model_validate(raw_perms)
+                    if raw_perms is not None
+                    else PluginPermissions()
+                )
+            except Exception as exc:
+                _log.error(
+                    "Refusing to load plugin %r: invalid permissions manifest: %s", name, exc
+                )
+                return None
+            if raw_perms is None:
+                _log.warning(
+                    "Plugin %r declares no permissions manifest — unmanaged (deny-by-default).",
+                    name,
+                )
+            self._permissions[name] = perms
+
             entry_point = info.get("entry_point", "plugin.py")
             module_path = plugin_dir / entry_point
 
             if not module_path.exists():
                 return None
+
+            # Tamper check: if the plugin declares an entry-point checksum, the file
+            # on disk must match it before we execute it. Refuse on mismatch.
+            declared = info.get("entry_checksum", "")
+            if declared.startswith("sha256:"):
+                actual = hashlib.sha256(module_path.read_bytes()).hexdigest()
+                if actual != declared[len("sha256:") :]:
+                    _log.error(
+                        "Refusing to load plugin %r: entry-point checksum mismatch "
+                        "(declared %s, actual sha256:%s)",
+                        name,
+                        declared,
+                        actual,
+                    )
+                    return None
 
             spec = importlib.util.spec_from_file_location(
                 f"opencontext_plugin_{name}", str(module_path)
@@ -985,6 +1035,14 @@ class PluginRegistry:
             if spec is None or spec.loader is None:
                 return None
 
+            # Executing third-party plugin code is a security-relevant action — make
+            # it visible. (Full capability sandboxing is not yet implemented.)
+            _log.info(
+                "Executing plugin %r from %s%s",
+                name,
+                module_path,
+                "" if declared else " (no entry_checksum declared — integrity unverified)",
+            )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
@@ -998,6 +1056,28 @@ class PluginRegistry:
 
         except Exception:
             return None
+
+    def declared_permissions(self, name: str) -> Any:
+        """The validated PluginPermissions a loaded plugin declared, or None."""
+        return self._permissions.get(name)
+
+    def is_allowed(self, name: str, capability: str, value: str) -> bool:
+        """Deny-by-default check against a plugin's declared allowlist.
+
+        capability: one of "read"/"write"/"network"/"mcp". Returns False when the
+        plugin is unknown/unmanaged or the value is not in its declared allowlist —
+        callers that broker a capability to a plugin gate on this.
+        """
+        perms = self._permissions.get(name)
+        if perms is None:
+            return False
+        allow = {
+            "read": perms.read_paths,
+            "write": perms.write_paths,
+            "network": perms.network_hosts,
+            "mcp": perms.mcp_servers,
+        }.get(capability, [])
+        return value in allow
 
     def enable(self, name: str) -> bool:
         """Enable a plugin."""
@@ -1134,6 +1214,32 @@ def _get_top_level_dir(members: list[str]) -> str | None:
     if "/" in first:
         return first.split("/")[0]
     return None
+
+
+def stamp_plugin_integrity(plugin_dir: Path) -> None:
+    """Stamp a freshly-installed plugin's manifest with integrity metadata.
+
+    Writes an ``entry_checksum`` (so ``load()``'s tamper-check actually verifies
+    instead of always taking the "unverified" branch) and ensures a
+    ``permissions`` block exists (so the plugin is managed under the
+    deny-by-default contract rather than flagged unmanaged). Best-effort: a
+    missing or unreadable manifest is left untouched.
+    """
+    manifest_path = plugin_dir / "plugin.json"
+    if not manifest_path.exists():
+        return
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    entry = plugin_dir / manifest.get("entry_point", "plugin.py")
+    if entry.exists():
+        manifest["entry_checksum"] = f"sha256:{hashlib.sha256(entry.read_bytes()).hexdigest()}"
+    manifest.setdefault("permissions", {})
+    try:
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    except OSError:
+        return
 
 
 def _track_plugin_in_state(

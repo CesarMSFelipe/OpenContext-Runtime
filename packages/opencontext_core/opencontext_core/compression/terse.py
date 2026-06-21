@@ -485,7 +485,10 @@ class TerseCompressor:
         """Initialize compressor.
 
         Args:
-            intensity: Compression level - 'lite', 'full', or 'ultra'
+            intensity: 'lite', 'full', or 'ultra'. 'lite' and 'full' both apply the
+                standard compression dictionary; 'ultra' additionally strips hedging
+                words. (lite/full are intentionally equivalent today — the finer split
+                is reserved, not silently doing something different.)
         """
         self.intensity = intensity
         self._protected_ranges: list[tuple[int, int]] = []
@@ -509,7 +512,7 @@ class TerseCompressor:
 
         result = self._restore_technical_content(compressed, placeholder_map)
 
-        # Step 4: Clean up spacing
+        # Normalize whitespace/punctuation left behind by word-level substitutions
         result = self._cleanup_spacing(result)
 
         return result

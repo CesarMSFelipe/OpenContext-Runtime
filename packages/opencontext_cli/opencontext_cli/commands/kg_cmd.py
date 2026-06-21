@@ -186,11 +186,11 @@ def handle_kg(args: Any) -> None:
                 ],
             )
     elif command == "trace":
-        console.header(f"Trace: {symbol} -> ...")
         source_name = getattr(args, "source", "")
         target_name = getattr(args, "target", "")
         max_depth = getattr(args, "max_depth", 10)
         json_output = getattr(args, "json", False)
+        console.header(f"Trace: {source_name} -> {target_name}")
 
         from opencontext_core.indexing.call_graph import CallGraphAnalyzer
 
@@ -518,7 +518,10 @@ setTimeout(zoomFit, 80);
 </script>
 </body>
 </html>"""
-                html_path = os.path.join(os.getcwd(), "opencontext-kg-view.html")
+                # Write into the managed (gitignored) workspace dir, not the repo root.
+                html_dir = os.path.join(os.getcwd(), ".opencontext")
+                os.makedirs(html_dir, exist_ok=True)
+                html_path = os.path.join(html_dir, "kg-view.html")
                 with open(html_path, "w") as f:
                     f.write(html)
                 console.print()

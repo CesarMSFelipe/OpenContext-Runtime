@@ -360,6 +360,7 @@ class TestMCPTools:
             "opencontext_insert_before_symbol",
             "opencontext_insert_after_symbol",
             "opencontext_rename_symbol",
+            "opencontext_run",
         }
     )
 

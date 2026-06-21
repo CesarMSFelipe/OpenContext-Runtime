@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from opencontext_api.schemas import (
     AgentContextRequest,
@@ -31,6 +32,7 @@ from opencontext_core.actions import ActionRequest, ActionType, evaluate_action
 from opencontext_core.doctor.checks import run_doctor
 from opencontext_core.dx.security_reports import scan_project
 from opencontext_core.dx.tokens import build_token_report
+from opencontext_core.errors import MemoryStoreError
 from opencontext_core.project.profiles import TechnologyProfile
 from opencontext_core.retrieval.contracts import RetrievalSurface, VerifiedContextRequest
 from opencontext_core.runtime import OpenContextRuntime
@@ -49,6 +51,12 @@ app = FastAPI(title="OpenContext Runtime API", version="0.1.0")
 
 def _runtime() -> OpenContextRuntime:
     return OpenContextRuntime(technology_profiles=first_party_profiles())
+
+
+@app.exception_handler(MemoryStoreError)
+def _memory_store_error(request: Request, exc: MemoryStoreError) -> JSONResponse:
+    # A missing trace/manifest is a 404, not an opaque 500.
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
 @app.post("/v1/index", response_model=IndexResponse)
@@ -195,7 +203,10 @@ def doctor() -> dict[str, object]:
 
 @app.get("/v1/tokens/report")
 def tokens_report() -> dict[str, object]:
-    return build_token_report(Path(".")).model_dump()
+    # Use the configured project root for parity with the other routes (was the
+    # server CWD, which differs from where the project is actually indexed).
+    runtime = _runtime()
+    return build_token_report(Path(runtime.config.project_index.root)).model_dump()
 
 
 @app.post("/v1/orchestrate", response_model=ScaffoldResponse)
@@ -310,8 +321,6 @@ def sdd_flow(request: PreparedContextRequest) -> ScaffoldResponse:
     )
 
     # Verify - security scan
-    from opencontext_core.dx.security_reports import scan_project
-
     scan = scan_project(request.root)
 
     # Review - check for high-risk patterns

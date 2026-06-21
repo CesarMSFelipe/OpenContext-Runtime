@@ -48,9 +48,11 @@ class TestExplorePhaseWithNullMemory:
         )
         state = _FakeState(tmp_path, task="test task for explore")
         result = phase.run(state)
-        # Should not raise; status may be PASSED, WARNING, or FAILED depending on env
         assert result.phase == "explore"
-        assert result.status in (GateStatus.PASSED, GateStatus.WARNING, GateStatus.FAILED)
+        # Real effect: explore produced the verified context pack on disk.
+        pack_file = tmp_path / ".opencontext" / "runs" / state.run_id / "context-pack.json"
+        assert pack_file.exists()
+        assert result.status is not GateStatus.FAILED
 
     def test_explore_produces_artifacts(self, tmp_path: Path) -> None:
         """ExplorePhase produces at least one artifact (or skips gracefully)."""
@@ -92,7 +94,32 @@ class TestArchivePhaseWithNullMemory:
         state = _FakeState(tmp_path)
         result = phase.run(state)
         assert result.phase == "archive"
-        assert result.status in (GateStatus.PASSED, GateStatus.WARNING, GateStatus.FAILED)
+        # Real effect: archive wrote its report and deltas.
+        run_dir = tmp_path / ".opencontext" / "runs" / state.run_id
+        assert (run_dir / "archive-report.json").exists()
+        assert (run_dir / "memory_delta.json").exists()
+        assert result.status is not GateStatus.FAILED
+
+    def test_archive_self_persists_run_json_so_gate_passes(self, tmp_path: Path) -> None:
+        """Archive runs before the runner persists run.json; it must write its own.
+
+        Regression: the runner persists run.json only AFTER all phases, so the
+        archive phase's artifact_persisted gate failed on every real run. Archive
+        now writes a preliminary run.json itself.
+        """
+        run_dir = tmp_path / ".opencontext" / "runs" / "test-run-abc123"
+        # Deliberately do NOT pre-create run.json — the phase must create it.
+
+        phase = ArchivePhase(
+            config=PhaseConfig(budget_tokens=2000, gates=[]),
+            budget_mode=BudgetMode.WARN,
+            memory_store=NullAgentMemoryStore(),
+        )
+        result = phase.run(_FakeState(tmp_path))
+
+        assert (run_dir / "run.json").exists()
+        persisted = [g for g in result.gates if g.id == "artifact_persisted"]
+        assert persisted and all(g.status == GateStatus.PASSED for g in persisted)
 
 
 class TestVerifyPhaseNoMutation:

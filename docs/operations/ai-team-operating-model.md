@@ -30,7 +30,7 @@ router = ModelRoleRouter(roles={"generate": {"provider": "openai", "model": "gpt
 
 # Route will prefer local for simple tasks
 result = router.route_with_budget("generate", task_complexity="summarize")
-# Returns {"provider": "ollama", "model": "gpt-4"} to save quota
+# Returns {"provider": "ollama", "model": "llama3"} to save quota
 ```
 
 ## Related Commands

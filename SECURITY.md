@@ -4,7 +4,9 @@
 - Current main branch only.
 
 ## Reporting
-Please report vulnerabilities privately to maintainers before public disclosure.
+Report privately via GitHub Security Advisories:
+https://github.com/CesarMSFelipe/OpenContext-Runtime/security/advisories/new —
+do not open a public issue. Disclose publicly only after a fix is available.
 
 ## Security Defaults
 - `security.mode` defaults to `private_project`.

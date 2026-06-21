@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Any
 
 from opencontext_core.context.budgeting import estimate_tokens
 from opencontext_core.context.prompt_cache import PromptPrefixCachePlanner
 from opencontext_core.models.context import (
     AssembledPrompt,
+    CacheAlignment,
     ContextItem,
     ContextPriority,
     PromptSection,
@@ -21,9 +23,14 @@ from opencontext_core.safety.redaction import SinkGuard
 if TYPE_CHECKING:
     from opencontext_core.rules.loader import ResolvedRules
 
+_log = logging.getLogger(__name__)
+
 
 class PromptAssembler:
     """Builds a deterministic prompt from request and selected context."""
+
+    def __init__(self, cache_aligner: Any | None = None) -> None:
+        self._cache_aligner = cache_aligner
 
     def assemble(
         self,
@@ -186,10 +193,27 @@ class PromptAssembler:
             f"## {section.name.replace('_', ' ').title()}\n{section.content}"
             for section in measured_sections
         )
+        cache_alignment: CacheAlignment | None = None
+        if self._cache_aligner is not None:
+            try:
+                system_section = next((s for s in measured_sections if s.name == "system"), None)
+                system_text = system_section.content if system_section else ""
+                aligned = self._cache_aligner.align(system_text, prompt)
+                cache_alignment = CacheAlignment(
+                    stable_prefix=aligned.stable_prefix,
+                    compressible_payload=aligned.compressible_payload,
+                    prefix_hash=aligned.prefix_hash,
+                    prefix_tokens_estimate=aligned.prefix_tokens_estimate,
+                    is_cacheable=aligned.is_cacheable,
+                )
+            except Exception as exc:
+                _log.warning("CacheAligner alignment failed: %s", exc)
+
         return AssembledPrompt(
             content=prompt,
             sections=measured_sections,
             total_tokens=estimate_tokens(prompt),
+            cache_alignment=cache_alignment,
         )
 
 

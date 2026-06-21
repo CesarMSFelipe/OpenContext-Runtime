@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from opencontext_core.context.budgeting import estimate_tokens
+from opencontext_core.harness.budget import TokenBudgetEnforcer
 from opencontext_core.harness.checkpoint import CheckpointStore
 from opencontext_core.harness.config import PhaseConfig
 from opencontext_core.harness.gates import (
@@ -57,6 +59,21 @@ class HarnessPhase:
         """Execute the phase. Override in subclasses."""
         raise NotImplementedError
 
+    def _token_ledger(self, phase: str, used_tokens: int) -> PhaseLedger:
+        """Build a PhaseLedger with its status computed by the budget enforcer.
+
+        Phases used to construct PhaseLedger directly, leaving status at its
+        default PASSED — so the TokenBudgetGate was a no-op even when a phase blew
+        its budget. Route through the enforcer so an over-budget phase actually
+        WARNs (or FAILs in strict mode).
+        """
+        return TokenBudgetEnforcer().evaluate(
+            phase=phase,
+            used_tokens=used_tokens,
+            budget_tokens=self.config.budget_tokens,
+            mode=self.budget_mode,
+        )
+
 
 class ExplorePhase(HarnessPhase):
     """Explore phase: index project, build context pack, evaluate gates."""
@@ -82,13 +99,22 @@ class ExplorePhase(HarnessPhase):
             storage_path=state.root / ".storage" / "opencontext",
         )
         manifest = runtime.index_project(state.root)
-        pack = runtime.build_context_pack(state.task, state.max_tokens or self.config.budget_tokens)
+        pack, pack_trace_id = runtime.build_context_pack_with_trace(
+            state.task, state.max_tokens or self.config.budget_tokens
+        )
 
         # Persist context pack to run directory
         run_dir = state.root / ".opencontext" / "runs" / state.run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         pack_path = run_dir / "context-pack.json"
         pack_path.write_text(pack.model_dump_json(indent=2), encoding="utf-8")
+
+        # Make the verified context available to later work phases' executor prompts
+        # (spec/design/tasks) so the model works from retrieved evidence, not the
+        # bare task. Rendered compactly as "source\ncontent" blocks.
+        state.context_pack = "\n\n".join(
+            f"### {item.source}\n{item.content}" for item in pack.included
+        )
 
         # KG wiring: run impact analysis if task is provided
         impact_affected_files: list[str] = []
@@ -98,20 +124,24 @@ class ExplorePhase(HarnessPhase):
         try:
             from opencontext_core.indexing.impact_analysis import ImpactAnalyzer
 
-            db_path = state.root / ".storage" / "opencontext" / "graph.db"
+            db_path = state.root / ".storage" / "opencontext" / "context_graph.db"
             if db_path.exists():
                 from opencontext_core.indexing.graph_db import GraphDatabase
 
                 db = GraphDatabase(db_path)
-                analyzer = ImpactAnalyzer(db)
-                impact_results = analyzer.analyze_by_name(state.task, depth=2)
-                kg_available = True
-                for ir in impact_results:
-                    impact_affected_files.extend(ir.affected_files)
-                    impact_affected_tests.extend(ir.affected_tests)
-                db.close()
+                try:
+                    analyzer = ImpactAnalyzer(db)
+                    impact_results = analyzer.analyze_by_name(state.task, depth=2)
+                    kg_available = True
+                    for ir in impact_results:
+                        impact_affected_files.extend(ir.affected_files)
+                        impact_affected_tests.extend(ir.affected_tests)
+                finally:
+                    # Always close — a present-but-broken graph raises in analyze_by_name
+                    # and would otherwise leak the sqlite/WAL handles.
+                    db.close()
             else:
-                kg_error = "graph.db not found — run `opencontext index` first"
+                kg_error = "context_graph.db not found — run `opencontext index` first"
         except Exception as exc:
             kg_error = str(exc)
             # KG wiring is best-effort — don't fail the phase if KG is unavailable
@@ -120,12 +150,7 @@ class ExplorePhase(HarnessPhase):
             ProjectIndexExistsGate().evaluate(state.root),
             ContextPackCreatedGate().evaluate(len(pack.included)),
         ]
-        ledger = PhaseLedger(
-            phase="explore",
-            used_tokens=pack.used_tokens,
-            budget_tokens=self.config.budget_tokens,
-            budget_mode=self.budget_mode,
-        )
+        ledger = self._token_ledger("explore", pack.used_tokens)
         gates.append(TokenBudgetGate().evaluate(ledger))
 
         status = (
@@ -179,12 +204,19 @@ class ExplorePhase(HarnessPhase):
         except Exception:
             pass  # contract building is additive, never block explore
 
+        # Record context provenance for the propose phase's provenance gates.
+        state.context_sources = {item.source for item in pack.included}
+        state.context_required_sources = list(dict.fromkeys(impact_affected_files))
+        state.context_omitted = len(pack.omitted)
+        state.context_omissions_recorded = len(pack.omissions)
+
         return PhaseResult(
             phase="explore",
             status=status,
             ledger=ledger,
             gates=gates,
             artifacts=explore_artifacts,
+            trace_id=pack_trace_id,
             metadata={
                 "included": len(pack.included),
                 "omitted": len(pack.omitted),
@@ -221,6 +253,24 @@ class ArchivePhase(HarnessPhase):
     def run(self, state: Any) -> PhaseResult:
         run_dir = state.root / ".opencontext" / "runs" / state.run_id
         run_dir.mkdir(parents=True, exist_ok=True)
+
+        # run.json is finalized by the runner's persist_run() AFTER all phases,
+        # so it does not exist yet at archive time. Write a preliminary copy here
+        # so the phase is self-contained and its persistence gate is meaningful;
+        # persist_run() overwrites it with the final status afterward.
+        run_json_path = run_dir / "run.json"
+        if not run_json_path.exists():
+            run_json_path.write_text(
+                json.dumps(
+                    {
+                        "run_id": state.run_id,
+                        "task": state.task,
+                        "status": "archiving",
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
 
         # Produce memory_delta.json
         memory_delta = self._build_memory_delta(state)
@@ -468,12 +518,7 @@ class ProposePhase(HarnessPhase):
             ArtifactPersistedGate().evaluate(proposal_path),
         ]
 
-        ledger = PhaseLedger(
-            phase="propose",
-            used_tokens=0,
-            budget_tokens=self.config.budget_tokens,
-            budget_mode=self.budget_mode,
-        )
+        ledger = self._token_ledger("propose", 0)
         gates.append(TokenBudgetGate().evaluate(ledger))
 
         status = (
@@ -570,6 +615,8 @@ def run_phase_executor(state: Any, phase: str) -> ExecutorOutcome:
         "phase": phase,
         "run_id": getattr(state, "run_id", ""),
         "root": str(getattr(state, "root", "")),
+        # Verified context pack rendered by the explore phase (empty if unavailable).
+        "context": getattr(state, "context_pack", ""),
     }
     try:
         result = delegate.delegate(phase, context)
@@ -626,6 +673,29 @@ def _write_phase_manifest(
     return manifest_path
 
 
+def _path_is_forbidden(rel_posix: str, patterns: list[str]) -> bool:
+    """True if a root-relative POSIX path matches any forbidden pattern.
+
+    Patterns are glob-or-literal (``.env``, ``*.pem``, ``secrets/``); a trailing
+    slash forbids the whole subtree. Both the full relative path and the basename
+    are tested so ``.env`` matches at any depth.
+    """
+    from fnmatch import fnmatch
+
+    name = rel_posix.rsplit("/", 1)[-1]
+    for raw in patterns:
+        pat = raw.rstrip("/")
+        if not pat:
+            continue
+        if rel_posix == pat or name == pat:
+            return True
+        if fnmatch(rel_posix, pat) or fnmatch(name, pat):
+            return True
+        if rel_posix.startswith(pat + "/"):
+            return True
+    return False
+
+
 @dataclass
 class FileEdit:
     """A single concrete file edit produced by an executor.
@@ -657,8 +727,9 @@ class CodeEditExecutor:
     the whole batch succeeds.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, forbidden_paths: list[str] | None = None) -> None:
         self.root = Path(root)
+        self.forbidden_paths = list(forbidden_paths or [])
 
     def _resolve(self, raw_path: str) -> Path:
         p = Path(raw_path)
@@ -666,8 +737,28 @@ class CodeEditExecutor:
             p = self.root / p
         return p
 
+    def _check_forbidden(self, edits: list[FileEdit]) -> None:
+        """Raise before any write if an edit targets a forbidden path.
+
+        Enforced here (the single write chokepoint) so the apply loop cannot
+        touch secrets/build output the safety config declares off-limits. Checked
+        for the whole batch up front, so a violation causes ZERO filesystem
+        mutation rather than a write-then-rollback.
+        """
+        if not self.forbidden_paths:
+            return
+        for edit in edits:
+            target = self._resolve(edit.path)
+            try:
+                rel = target.resolve().relative_to(self.root.resolve()).as_posix()
+            except ValueError:
+                rel = target.as_posix()
+            if _path_is_forbidden(rel, self.forbidden_paths):
+                raise PermissionError(f"edit to forbidden path blocked: {edit.path}")
+
     def apply(self, edits: list[FileEdit]) -> list[AppliedChange]:
         """Apply edits atomically with rollback on failure."""
+        self._check_forbidden(edits)
         applied: list[AppliedChange] = []
         # (path, original_bytes_or_None_if_created)
         rollback: list[tuple[Path, bytes | None]] = []
@@ -742,12 +833,16 @@ class ApplyPhase(HarnessPhase):
         budget_mode: BudgetMode = BudgetMode.WARN,
         *,
         verify_after_apply: Callable[[list[dict[str, Any]]], bool] | None = None,
+        forbidden_paths: list[str] | None = None,
     ) -> None:
         super().__init__(config, budget_mode)
         # Optional post-apply check. Returns True to keep the write, False to
         # roll back to the checkpoint (e.g. a post-write gate/approval rejected
         # the change). When None, a successful write is always kept.
         self._verify_after_apply = verify_after_apply
+        # Paths the executor must never write (secrets, build output). Enforced in
+        # the edit executor before any write.
+        self._forbidden_paths = list(forbidden_paths or [])
 
     @staticmethod
     def _collect_edits(state: Any) -> list[FileEdit]:
@@ -783,7 +878,7 @@ class ApplyPhase(HarnessPhase):
             # Snapshot exactly the files about to change BEFORE touching them, so
             # a post-apply rejection (or error) can restore them byte-for-byte.
             checkpoint = CheckpointStore(state.root).create(self._edit_targets(state, edits))
-            executor = CodeEditExecutor(state.root)
+            executor = CodeEditExecutor(state.root, forbidden_paths=self._forbidden_paths)
             try:
                 applied = executor.apply(edits)
                 changes = [
@@ -912,8 +1007,10 @@ class SpecPhase(HarnessPhase):
         else:
             if getattr(state, "delegate", None) is None:
                 state.warnings.append(
-                    "Phase 'SpecPhase' ran without LLM — "
-                    "configure a provider (ANTHROPIC_API_KEY etc.) to generate real artifacts."
+                    "Phase 'SpecPhase': no model bound — emitted a structured plan for your "
+                    "agent's model to complete. Run OpenContext inside your AI agent "
+                    "(Claude Code, Codex, OpenCode, …) to use its selected model, or set a "
+                    "provider for standalone generation."
                 )
             # Static template SCAFFOLD — explicitly NOT a real AI-produced spec.
             spec_content = f"""# Delta Spec: {task}
@@ -956,11 +1053,8 @@ _None._
         gates: list[PhaseGate] = [
             ArtifactPersistedGate().evaluate(spec_path),
         ]
-        ledger = PhaseLedger(
-            phase="spec",
-            used_tokens=0,
-            budget_tokens=self.config.budget_tokens,
-            budget_mode=self.budget_mode,
+        ledger = self._token_ledger(
+            "spec", estimate_tokens(outcome.output or "") if outcome.is_real else 0
         )
         gates.append(TokenBudgetGate().evaluate(ledger))
 
@@ -1024,8 +1118,10 @@ class DesignPhase(HarnessPhase):
         else:
             if getattr(state, "delegate", None) is None:
                 state.warnings.append(
-                    "Phase 'DesignPhase' ran without LLM — "
-                    "configure a provider (ANTHROPIC_API_KEY etc.) to generate real artifacts."
+                    "Phase 'DesignPhase': no model bound — emitted a structured plan for your "
+                    "agent's model to complete. Run OpenContext inside your AI agent "
+                    "(Claude Code, Codex, OpenCode, …) to use its selected model, or set a "
+                    "provider for standalone generation."
                 )
             # Extract requirements from spec content for the scaffold body.
             requirements = []
@@ -1079,11 +1175,8 @@ This section describes the high-level architecture for implementing: {task}.
         gates: list[PhaseGate] = [
             ArtifactPersistedGate().evaluate(design_path),
         ]
-        ledger = PhaseLedger(
-            phase="design",
-            used_tokens=0,
-            budget_tokens=self.config.budget_tokens,
-            budget_mode=self.budget_mode,
+        ledger = self._token_ledger(
+            "design", estimate_tokens(outcome.output or "") if outcome.is_real else 0
         )
         gates.append(TokenBudgetGate().evaluate(ledger))
 
@@ -1144,8 +1237,10 @@ class TasksPhase(HarnessPhase):
         outcome = run_phase_executor(state, "tasks")
         if not outcome.is_real and getattr(state, "delegate", None) is None:
             state.warnings.append(
-                "Phase 'TasksPhase' ran without LLM — "
-                "configure a provider (ANTHROPIC_API_KEY etc.) to generate real artifacts."
+                "Phase 'TasksPhase': no model bound — emitted a structured plan for your "
+                "agent's model to complete. Run OpenContext inside your AI agent "
+                "(Claude Code, Codex, OpenCode, …) to use its selected model, or set a "
+                "provider for standalone generation."
             )
         task_count = 0
         if outcome.is_real:
@@ -1177,12 +1272,21 @@ class TasksPhase(HarnessPhase):
                         }
                     )
             else:
-                # Default task if no files extracted
+                # No files in the design scaffold (e.g. no model filled it). Use the
+                # files the explore phase actually surfaced for THIS task — never a
+                # hard-coded path (which previously leaked OpenContext's own internals
+                # into every project's task plan).
+                candidate_files = list(
+                    dict.fromkeys(getattr(state, "context_required_sources", []) or [])
+                )
+                if not candidate_files:
+                    sources: set[str] = getattr(state, "context_sources", set()) or set()
+                    candidate_files = sorted({str(s).split(":")[0] for s in sources})
                 tasks.append(
                     {
                         "id": "task-1",
                         "description": f"Implement feature: {task}",
-                        "file_paths": ["harness/gates.py", "tests/harness/test_harness_gates.py"],
+                        "file_paths": candidate_files,
                         "complexity": "medium",
                     }
                 )
@@ -1214,11 +1318,8 @@ class TasksPhase(HarnessPhase):
         gates: list[PhaseGate] = [
             ArtifactPersistedGate().evaluate(tasks_path),
         ]
-        ledger = PhaseLedger(
-            phase="tasks",
-            used_tokens=0,
-            budget_tokens=self.config.budget_tokens,
-            budget_mode=self.budget_mode,
+        ledger = self._token_ledger(
+            "tasks", estimate_tokens(outcome.output or "") if outcome.is_real else 0
         )
         gates.append(TokenBudgetGate().evaluate(ledger))
 
@@ -1310,7 +1411,7 @@ class VerifyPhase(HarnessPhase):
         try:
             from opencontext_core.config import load_config_or_defaults
 
-            _cfg = load_config_or_defaults(state.root / "opencontext.yaml")
+            _cfg = load_config_or_defaults(state.root / "opencontext.yaml", auto_detect=False)
             _mut_cfg = getattr(getattr(_cfg, "testing", None), "mutation", None)
             if _mut_cfg is not None and getattr(_mut_cfg, "enabled", False):
                 from opencontext_core.mutation.models import MutationResult  # noqa: F401
@@ -1399,11 +1500,19 @@ class VerifyPhase(HarnessPhase):
     def _run_tests(self, root: Path, changed_files: list[str] | None = None) -> dict[str, Any]:
         """Run pytest scoped to changed files when possible, full suite as fallback."""
         targets = self._resolve_test_targets(root, changed_files or [])
-        args = [sys.executable, "-m", "pytest", "-q", "--tb=short"]
-        if targets:
-            args += targets
-        else:
-            args.append(str(root))
+        if not targets:
+            # No changed file maps to a test file — skip rather than run the whole
+            # suite for a verify-report (slow, and pre-existing unrelated failures
+            # would spuriously WARN the verify gate).
+            return {
+                "exit_code": 0,
+                "passed": 0,
+                "failed": 0,
+                "errors": 0,
+                "output": "no scoped tests for changed files",
+                "error_output": "",
+            }
+        args = [sys.executable, "-m", "pytest", "-q", "--tb=short", *targets]
         try:
             result = subprocess.run(
                 args,
@@ -1744,6 +1853,26 @@ class GGARulesPhase(HarnessPhase):
 
     id = "gga"
 
+    @staticmethod
+    def _changed_source_paths(state: Any) -> list[str]:
+        """Source files the apply phase actually wrote, from its manifest."""
+        paths: list[str] = []
+        for artifact in state.artifacts:
+            if artifact.phase != "apply":
+                continue
+            manifest_path = Path(artifact.path)
+            if manifest_path.name != "apply-manifest.json" or not manifest_path.exists():
+                continue
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            for change in manifest.get("changes", []):
+                path = change.get("path")
+                if path:
+                    paths.append(str(path))
+        return paths
+
     def run(self, state: Any) -> PhaseResult:
         run_dir = state.root / ".opencontext" / "runs" / state.run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -1751,9 +1880,11 @@ class GGARulesPhase(HarnessPhase):
         rules = self._load_rules(state.root)
         violations: list[dict[str, str]] = []
 
-        apply_artifacts = [a for a in state.artifacts if a.phase == "apply"]
-        for artifact in apply_artifacts:
-            p = Path(artifact.path)
+        # Scan the source the apply phase actually wrote (manifest changes[].path),
+        # not the apply-manifest.json artifact itself — whose .json suffix was
+        # always skipped, so every quality rule passed vacuously.
+        for raw_path in self._changed_source_paths(state):
+            p = Path(raw_path)
             if not p.exists() or p.suffix not in (".py", ".ts", ".js", ".go", ".rs"):
                 continue
             try:

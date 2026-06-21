@@ -57,14 +57,18 @@ def handle_demo(runtime: Any, args: Any) -> int:
     pack = runtime.build_context_pack(args.query)
     optimized = pack.used_tokens or 1
     files = list(pack.included)
-    reduction = min(99.9, round(max(0.0, 1 - optimized / naive) * 100, 1)) if naive else 0.0
+    ratio = optimized / naive if naive else 1.0
+    # Don't claim a saving that isn't there: on a tiny project the focused pack can
+    # exceed a whole-project read, and the reduction only shows at real scale.
+    if ratio < 1.0:
+        delta_label = f"[bold]{min(99.9, round((1 - ratio) * 100, 1))}% less[/]"
+    else:
+        delta_label = "[dim]no reduction at this size — the win grows with the codebase[/]"
 
     console.print("\n[bold]Without OpenContext[/] — the agent reads the whole project:")
     console.print(f"   [red]{naive:,} tokens[/]")
     console.print(f"\n[bold]With OpenContext[/] — task: [italic]{args.query}[/]")
-    console.print(
-        f"   [green]{len(files)} files · {optimized:,} tokens[/]  ([bold]{reduction}% less[/])"
-    )
+    console.print(f"   [green]{len(files)} files · {optimized:,} tokens[/]  ({delta_label})")
 
     if files:
         console.print("\n[dim]The files it chose, and why:[/]")
@@ -83,9 +87,9 @@ def handle_demo(runtime: Any, args: Any) -> int:
 
     if sys.stdout.isatty():
         try:
-            from rich.prompt import Confirm
+            from opencontext_core import prompts
 
-            if Confirm.ask("Set up this project now?", default=True):
+            if prompts.confirm("Set up this project now?", default=True):
                 import argparse
 
                 from opencontext_cli.main import _install

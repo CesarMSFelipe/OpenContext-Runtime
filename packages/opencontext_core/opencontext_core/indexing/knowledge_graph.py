@@ -95,8 +95,10 @@ class KnowledgeGraph:
         parsed = self.parser.parse_file_status(file_path, content)
         parsed_symbols, parsed_edges = parsed.symbols, parsed.edges
 
-        # Insert file record. The content hash powers staleness detection (has the
-        # file changed since it was indexed?); it was previously stored empty.
+        # Insert file record. The content hash is the staleness signal (has the file
+        # changed since it was indexed?). last_modified is intentionally 0: index_file
+        # receives content, not an absolute path, so there's no mtime to record — the
+        # hash, not the mtime, drives reindexing.
         self.db.upsert_file(
             FileRecord(
                 id=None,
@@ -267,10 +269,20 @@ class KnowledgeGraph:
 
         self.db.rebuild_fts()
 
-        # Pass 2: resolve cross-file edges using the complete global node map
+        # Pass 2: resolve cross-file edges using the complete global node map.
+        # First prune dangling cross-file edges from any previously deleted nodes
+        # so that INSERT OR IGNORE does not silently keep stale rows.
         cross_edges = self._resolve_cross_file_edges(file_contents)
+        conn = self.db._connect()
+        reindexed_files = {fp for fp, _ in file_contents}
+        if reindexed_files:
+            placeholders = ",".join("?" * len(reindexed_files))
+            conn.execute(
+                f"DELETE FROM edges WHERE call_site_file IN ({placeholders})"
+                " AND target_node_id NOT IN (SELECT id FROM nodes)",
+                list(reindexed_files),
+            )
         if cross_edges:
-            conn = self.db._connect()
             _SQL = "INSERT OR IGNORE INTO edges (source_node_id, target_node_id, kind, call_site_file, call_site_line) VALUES (?, ?, ?, ?, ?)"  # noqa: E501
             conn.executemany(
                 _SQL,
@@ -279,8 +291,8 @@ class KnowledgeGraph:
                     for e in cross_edges
                 ],
             )
-            conn.commit()
             total_edges += sum(1 for e in cross_edges if e.kind == "calls")
+        conn.commit()
 
         return {
             "files_indexed": files_indexed,
@@ -398,16 +410,29 @@ class KnowledgeGraph:
     def _parse_imports(content: str) -> dict[str, str]:
         """Map an imported symbol name to the module path it came from.
 
-        Handles ``from x import a, b`` -> {a: x, b: x} and ``import b`` -> {b: b}.
+        Handles ``from x import a, b`` -> {a: x, b: x}, multi-line
+        ``from x import (\n  a,\n  b\n)``, and ``import b`` -> {b: b}.
         Used only as a disambiguation signal for same-name cross-file targets.
         """
         imports: dict[str, str] = {}
-        for raw in content.splitlines():
-            line = raw.strip()
+        lines = content.splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
             if line.startswith("from ") and " import " in line:
-                mod, _, names = line[len("from ") :].partition(" import ")
+                mod, _, names_part = line[len("from ") :].partition(" import ")
                 mod = mod.strip()
-                for name in names.split(","):
+                # Accumulate multi-line import: from x import (\n  a,\n  b\n)
+                accumulated = names_part
+                if "(" in names_part and ")" not in names_part:
+                    i += 1
+                    while i < len(lines):
+                        continuation = lines[i].strip()
+                        accumulated += " " + continuation
+                        i += 1
+                        if ")" in continuation:
+                            break
+                for name in accumulated.split(","):
                     name = name.split(" as ")[0].strip().strip("()")
                     if name and name != "*":
                         imports[name] = mod
@@ -416,6 +441,7 @@ class KnowledgeGraph:
                     name = name.split(" as ")[0].strip()
                     if name:
                         imports[name.split(".")[-1]] = name
+            i += 1
         return imports
 
     @staticmethod

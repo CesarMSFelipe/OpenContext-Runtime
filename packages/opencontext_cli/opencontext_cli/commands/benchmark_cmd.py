@@ -95,8 +95,13 @@ def _handle_run(args: Any) -> None:
     else:
         case_ids = None
 
-    with console.status("[bold green]Running benchmarks..."):
+    if args.format == "json":
+        # No status spinner: it writes ANSI/cursor control codes to stdout, which
+        # would corrupt the machine-readable JSON before it is printed.
         result = suite.run(case_ids=case_ids)
+    else:
+        with console.status("[bold green]Running benchmarks..."):
+            result = suite.run(case_ids=case_ids)
 
     if args.format == "json":
         # Plain print to avoid Rich line wrapping breaking JSON

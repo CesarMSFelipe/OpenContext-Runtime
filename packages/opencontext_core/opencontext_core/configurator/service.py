@@ -60,6 +60,12 @@ class Configurator:
 
         When ``dry_run`` is true, nothing is written: each agent's result
         describes the planned changes (which files, created vs modified) instead.
+
+        ``scope`` is advisory and echoed in the report; it does NOT move files
+        between the project and the home dir. Each file's location is determined
+        per-agent by the adapter: AGENTS.md-honoring agents get project-root
+        instructions, while MCP config, personas, and CLAUDE.md/GEMINI.md agents
+        always write to the agent's own config dir under home.
         """
 
         results = [self.configure_one(agent_id, scope, dry_run=dry_run) for agent_id in agents]
@@ -117,6 +123,9 @@ class Configurator:
         The inverse of :meth:`configure`: strips the managed instructions block and
         the ``opencontext`` MCP entry (and agent-specific extras) without touching
         anything the developer authored.
+
+        ``scope`` is advisory (see :meth:`configure`): removal targets are the same
+        adapter-determined paths regardless of scope.
         """
 
         results = [self.deconfigure_one(agent_id, scope, dry_run=dry_run) for agent_id in agents]
@@ -202,8 +211,17 @@ class Configurator:
         if adapter.agent_id == "opencode":
             path = adapter.config_dir / "agents" / "sdd-orchestrator.json"
             if path.exists():
-                path.unlink()  # we created this file
+                path.unlink()
                 changed.append(str(path))
+        subdir = constants.global_agents_subdir(adapter.agent_id)
+        if subdir:
+            from opencontext_core.personas import PERSONAS
+
+            for persona in PERSONAS:
+                path = adapter.config_dir / subdir / f"{persona.id}.md"
+                if path.exists():
+                    path.unlink()
+                    changed.append(str(path))
         ignore_name = constants.ignore_filename(adapter.agent_id)
         if ignore_name:
             path = self.project_root / ignore_name
@@ -289,6 +307,8 @@ class Configurator:
             entries.append(self._plan_claude_permissions(adapter))
         if adapter.agent_id == "opencode":
             entries.append(self._plan_opencode_profile(adapter))
+        if constants.global_agents_subdir(adapter.agent_id):
+            entries.extend(self._plan_global_personas(adapter))
         if constants.ignore_filename(adapter.agent_id):
             entries.append(self._plan_ignore(adapter))
         if constants.command_dir(adapter.agent_id):
@@ -344,6 +364,22 @@ class Configurator:
         existing.setdefault("permissions", {})["allow"] = allow
         content = json.dumps(existing, indent=2) + "\n"
         return path, _content_if_changed(path, content)
+
+    def _plan_global_personas(self, adapter: Adapter) -> list[PlanEntry]:
+        """Write OC personas to the agent's global agents dir (e.g. ~/.config/opencode/agents/)."""
+        from opencontext_core.personas import PERSONAS
+
+        subdir = constants.global_agents_subdir(adapter.agent_id)
+        agents_dir = adapter.config_dir / str(subdir)
+        entries: list[PlanEntry] = []
+        for persona in PERSONAS:
+            path = agents_dir / f"{persona.id}.md"
+            content = (
+                f"---\nname: {persona.name}\ndescription: {persona.description}\n---\n\n"
+                f"{persona.system_prompt}\n"
+            )
+            entries.append((path, _content_if_changed(path, content)))
+        return entries
 
     def _plan_opencode_profile(self, adapter: Adapter) -> PlanEntry:
         profile = {
@@ -418,7 +454,7 @@ _SDD_SECTION = """## SDD Workflow
 This project supports Spec-Driven Development.
 
 - Run `opencontext init` to initialize SDD if not done
-- Use `/sdd-new <change>` to start a new change
+- Use `/oc-new <change>` to start a new change
 - The orchestrator runs: explore -> propose -> spec -> design -> tasks -> apply -> verify -> archive
 """
 

@@ -18,7 +18,7 @@ from opencontext_core.onboarding.service import (
 def test_onboarding_options_defaults() -> None:
     opts = OnboardingOptions(root=Path("/tmp/test"))
     assert opts.tdd_mode == "ask"
-    assert opts.sdd_model_profile == "hybrid"
+    assert opts.sdd_model_profile == "default"
     assert opts.orchestrator_profile == "multi-phase"
     assert opts.active_clients == ["opencode"]
     assert opts.token_budget_per_phase is None
@@ -58,6 +58,24 @@ def test_onboarding_service_run_creates_workspace(tmp_path: Path) -> None:
     result = service.run(OnboardingOptions(root=tmp_path, force_agent_files=True))
     assert (tmp_path / ".opencontext").exists()
     assert result.root == str(tmp_path.resolve())
+
+
+def test_onboarding_writes_gitignore_storage_block(tmp_path: Path) -> None:
+    """M9: install/onboard (not just setup) must keep the local index out of git."""
+    OnboardingService().run(OnboardingOptions(root=tmp_path))
+    gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert ".storage/" in gitignore
+    assert ".opencontext/" in gitignore
+
+
+def test_onboarding_bridges_runtime_prefs_into_yaml(tmp_path: Path) -> None:
+    """M6: prefs the runtime reads from yaml (e.g. security mode) must be synced
+    during onboarding, not just saved to the prefs store."""
+    service = OnboardingService()
+    service.run(OnboardingOptions(root=tmp_path, security_mode="air_gapped"))
+
+    config = yaml.safe_load((tmp_path / "opencontext.yaml").read_text(encoding="utf-8"))
+    assert config["security"]["mode"] == "air_gapped"
 
 
 def test_onboarding_service_creates_config(tmp_path: Path) -> None:
@@ -160,6 +178,27 @@ def test_onboarding_service_saves_preferences(tmp_path: Path, monkeypatch: Any) 
     assert prefs["sdd"]["sdd_model_profile"] == "premium"
     assert prefs["sdd"]["orchestrator_profile"] == "solo-compact"
     assert prefs["agents"]["active_clients"] == ["opencode", "cursor"]
+
+
+def test_onboarding_merges_existing_instructions_and_uninstall_reverses(tmp_path: Path) -> None:
+    """Install MERGES a managed block into an existing AGENTS.md (no silent skip),
+    and `uninstall` removes exactly that block, leaving the user's content."""
+    from opencontext_core.configurator.service import Configurator
+
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text("# My project rules\nDo the thing.\n", encoding="utf-8")
+
+    # No force_agent_files: the old generator skipped existing files; Configurator merges.
+    OnboardingService().run(OnboardingOptions(root=tmp_path, active_clients=["opencode"]))
+
+    merged = agents_md.read_text(encoding="utf-8")
+    assert "# My project rules" in merged  # user content preserved
+    assert "<!-- opencontext:instructions:start -->" in merged  # OC block added, not skipped
+
+    Configurator(tmp_path).deconfigure_one("opencode")
+    after = agents_md.read_text(encoding="utf-8")
+    assert "# My project rules" in after  # user content survives uninstall
+    assert "opencontext:instructions" not in after  # OC block fully reversed
 
 
 def test_onboarding_service_harness_yaml_enterprise(tmp_path: Path) -> None:

@@ -63,3 +63,13 @@ def test_every_known_agent_has_an_adapter() -> None:
         "roo",
     }
     assert expected <= ids
+
+
+def test_agents_md_honoring_agents_are_project_scoped() -> None:
+    # An AGENTS.md-honoring agent must place its instructions at the project root,
+    # not the home dir. The two sets must not drift (kiro-ide/pi/kimi-code regressed).
+    from opencontext_core.configurator import constants
+
+    assert constants.PROJECT_SCOPED_INSTRUCTIONS == constants._HONORS_AGENTS_MD
+    for agent in ("kiro-ide", "pi", "kimi-code"):
+        assert get_adapter(agent).instructions_project_scoped is True

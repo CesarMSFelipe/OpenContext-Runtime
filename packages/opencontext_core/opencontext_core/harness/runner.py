@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, ClassVar
@@ -17,10 +18,15 @@ from opencontext_core.harness.gates import (
     ApprovalRequiredForWritesGate,
     ConfidenceGate,
     FailingTestExistsGate,
+    IncludedSourcesPresentGate,
     NoHighRiskExportsGate,
+    NoSecretLeakageGate,
+    OmissionsRecordedGate,
     PrivacyGate,
     ProviderPolicyPassedGate,
+    ReviewArtifactCreatedGate,
     SecurityScanPassedGate,
+    TraceIdCreatedGate,
 )
 from opencontext_core.harness.models import (
     BudgetMode,
@@ -50,6 +56,8 @@ from opencontext_core.harness.phases import (
 )
 from opencontext_core.models.trace import RunEvent
 
+_log = logging.getLogger(__name__)
+
 
 class HarnessState:
     """Mutable state accumulated during a harness run."""
@@ -65,6 +73,9 @@ class HarnessState:
         self.decisions: list[HarnessDecision] = []
         self.trace_ids: list[str] = []
         self.warnings: list[str] = []
+        # Verified context pack rendered by the explore phase, fed to later phases'
+        # executor prompts so the model works from retrieved evidence.
+        self.context_pack: str = ""
         # Concrete file edits produced by the executor for ApplyPhase to write.
         # List of {"path": ..., "content": ...} dicts (or FileEdit instances).
         self.apply_edits: list[Any] = []
@@ -74,9 +85,12 @@ class HarnessState:
         # run via run_phase_executor. None when no real LLM is configured, in
         # which case those phases report honest planned/executor-absent results.
         self.delegate: Any = None
-        # Per-phase model override resolved by HarnessRunner before each phase.
-        # None means "use the configured default".
-        self.current_phase_model: Any = None
+        # Context provenance recorded by ExplorePhase, consumed by the propose
+        # phase's provenance gates (included_sources_present / omissions_recorded).
+        self.context_sources: set[str] = set()
+        self.context_required_sources: list[str] = []
+        self.context_omitted: int = 0
+        self.context_omissions_recorded: int = 0
 
 
 class HarnessRunner:
@@ -103,14 +117,20 @@ class HarnessRunner:
         # back to no executor (honest planned/executor-absent) for mock/local.
         self._llm_gateway = llm_gateway
 
-        # v2: inject memory store (additive, never breaks existing usage)
+        # Agent memory store. This MUST resolve to the same DB (path + provider)
+        # the runtime's recall path reads, or every harvested memory lands in a
+        # store recall never opens (write-only memory). The runtime recalls from
+        # .storage/opencontext honoring memory.provider; resolve the same way
+        # here from the project config instead of a hardcoded-local store under
+        # .opencontext.
         try:
             from opencontext_core.backends.factory import BackendFactory
+            from opencontext_core.config import load_config_or_defaults
 
-            storage_path = self.root / ".opencontext"
+            oc_config = load_config_or_defaults(self.root / "opencontext.yaml", auto_detect=False)
+            storage_path = self.root / ".storage" / "opencontext"
             storage_path.mkdir(parents=True, exist_ok=True)
-            _memory_config = type("MemConfig", (), {"enabled": True, "provider": "local"})()
-            self._memory_store = BackendFactory.create_memory_store(_memory_config, storage_path)
+            self._memory_store = BackendFactory.create_memory_store(oc_config, storage_path)
         except Exception:
             from opencontext_core.memory.agent import NullAgentMemoryStore
 
@@ -157,6 +177,25 @@ class HarnessRunner:
             # planned/executor-absent reporting.
             return None
 
+    def _generate_apply_edits(self, state: HarnessState) -> list[Any]:
+        """Produce concrete file edits for the apply phase via the live gateway.
+
+        Returns ``[]`` (apply stays planned) when no real model resolves or the
+        model returns nothing parseable. Never raises — codegen failure degrades
+        to planned, it does not break the run.
+        """
+        try:
+            from opencontext_core.agents.executor import generate_apply_edits
+
+            gateway, provider, model = self._resolve_gateway()
+            if gateway is None or provider == "mock":
+                return []
+            context = {"task": state.task, "context": state.context_pack}
+            return list(generate_apply_edits(gateway, context, provider=provider, model=model))
+        except Exception as exc:
+            state.warnings.append(f"apply: codegen failed, planned only: {exc}")
+            return []
+
     def _phase_model_map(self) -> dict[str, str]:
         """Per-phase model overrides from the active SDD profile (empty if none).
 
@@ -165,27 +204,51 @@ class HarnessRunner:
         only real overrides reach the executor. Best-effort: any failure yields no
         overrides, leaving every phase on the configured default model.
         """
+        phase_map: dict[str, str] = {}
         try:
             import json
 
             context = self.root / ".opencontext" / "sdd" / "context.json"
-            if not context.exists():
-                return {}
-            name = json.loads(context.read_text(encoding="utf-8")).get("sdd_model_profile")
-            if not name:
-                return {}
-            from opencontext_core.sdd_profiles import SDDProfileManager
+            name = (
+                json.loads(context.read_text(encoding="utf-8")).get("sdd_model_profile")
+                if context.exists()
+                else None
+            )
+            if name:
+                from opencontext_core.sdd_profiles import SDDProfileManager
 
-            profile = SDDProfileManager().get_profile(name)
-            if profile is None:
-                return {}
-            return {
-                phase: model
-                for phase, model in profile.model_assignments.items()
-                if model and model != "default"
-            }
+                profile = SDDProfileManager().get_profile(name)
+                if profile is not None:
+                    phase_map = {
+                        phase: model
+                        for phase, model in profile.model_assignments.items()
+                        if model and model != "default"
+                    }
         except Exception:
-            return {}
+            phase_map = {}
+
+        # Overlay per-persona model overrides (a persona override wins over the
+        # phase's profile model) — e.g. Orchestrator=opus, Explorer=sonnet.
+        try:
+            from opencontext_core.config import load_config_or_defaults
+            from opencontext_core.personas import PHASE_PERSONAS
+
+            cfg = load_config_or_defaults(self.root / "opencontext.yaml", auto_detect=False)
+            persona_models = getattr(cfg.sdd, "persona_models", {}) or {}
+            for phase, persona_id in PHASE_PERSONAS.items():
+                model = persona_models.get(persona_id)
+                if model and model != "default":
+                    phase_map[phase] = model
+            # Explicit per-phase overrides in models.phases win (top-level config).
+            # Previously these were read into state.current_phase_model and never
+            # applied — so per-phase routing was dead. Route them through here.
+            for phase, model_cfg in (getattr(cfg.models, "phases", {}) or {}).items():
+                model = getattr(model_cfg, "model", None)
+                if model and model != "default":
+                    phase_map[phase] = model
+        except Exception:
+            pass
+        return phase_map
 
     def _resolve_gateway(self) -> tuple[Any, str, str]:
         """Resolve (gateway, provider, model) for the work-producing executor.
@@ -210,6 +273,17 @@ class HarnessRunner:
             # An injected gateway overrides a mock config so the executor runs.
             effective_provider = provider if provider != "mock" else "injected"
             return self._llm_gateway, effective_provider, model
+
+        # Prefer the host agent's selected model (MCP sampling) when available —
+        # this is the zero-config path, so it overrides even a mock provider.
+        from opencontext_core.config import SecurityMode
+
+        if cfg.security.mode is not SecurityMode.AIR_GAPPED:
+            from opencontext_core.llm.sampling_gateway import SamplingGateway, get_host_sampler
+
+            sampler = get_host_sampler()
+            if sampler is not None:
+                return SamplingGateway(sampler, model=model), "host", model
 
         if provider == "mock":
             return None, provider, model
@@ -420,13 +494,16 @@ class HarnessRunner:
                     # Do NOT build/run ApplyPhase — no filesystem mutation occurs.
                     continue
 
+            # Apply codegen: when a real executor is wired (host model / provider)
+            # and no edits were supplied by a caller, ask the model to produce the
+            # concrete file edits so ApplyPhase writes real source instead of a
+            # scaffold. forbidden_paths + rollback in ApplyPhase guard the write.
+            if phase_id == "apply" and not state.apply_edits and state.delegate is not None:
+                state.apply_edits = self._generate_apply_edits(state)
+
             phase_obj = self._build_phase(phase_id, budget_mode)
             if phase_obj is None:
                 continue
-
-            phase_model = self._model_for_phase(phase_id)
-            if phase_model is not None:
-                state.current_phase_model = phase_model
 
             try:
                 result = phase_obj.run(state)
@@ -474,6 +551,26 @@ class HarnessRunner:
                 final_status = GateStatus.FAILED
                 break
 
+        # ACON-lite feedback: record this run's retrieval omissions against its
+        # outcome so the token optimizer can widen the "context_pack" budget when
+        # omissions correlate with failures (explore consults that same budget).
+        # Best-effort — learning must never block a run.
+        try:
+            from opencontext_core.learning.feedback_collector import FeedbackCollector
+
+            fb = FeedbackCollector(
+                storage_path=state.root / ".storage" / "opencontext" / "learning"
+            )
+            op_id = fb.start_operation("context_pack", task)
+            fb.finish_operation(
+                op_id,
+                success=final_status == GateStatus.PASSED,
+                context_items_omitted=int(getattr(state, "context_omitted", 0) or 0),
+                context_items_selected=len(getattr(state, "context_sources", set()) or set()),
+            )
+        except Exception:
+            pass
+
         run_result = HarnessRunResult(
             run_id=state.run_id,
             workflow=workflow,
@@ -493,52 +590,69 @@ class HarnessRunner:
         return run_result
 
     def _post_run_update(self, state: HarnessState) -> None:
-        """Auto-collect memory candidates and re-index changed files after every run."""
+        """Re-index changed files after a run.
+
+        Memory harvesting is handled by ArchivePhase (MemoryHarvester); the old
+        harvest block here referenced a non-existent module and never ran.
+        """
         changed = [
             e["path"] if isinstance(e, dict) else getattr(e, "path", str(e))
             for e in (state.apply_edits or [])
         ]
-        # Memory harvest — auto-approve low-stakes candidates
-        try:
-            from opencontext_core.memory.collector import (  # type: ignore[import-not-found]
-                MemoryCandidateExtractor,
-            )
-            from opencontext_core.memory_usability.context_repository import ContextRepository
-            from opencontext_core.memory_usability.memory_gc import (
-                MemoryGarbageCollector,  # noqa: F401
-            )
-
-            repo = ContextRepository(state.root / ".storage" / "opencontext" / "memory")
-            extractor = MemoryCandidateExtractor()
-            candidates = extractor.extract_from_run(state.run_id, state.root)
-            for candidate in candidates:
-                if getattr(candidate, "auto_approve", False):
-                    repo.save(candidate)  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        # The model often writes through the host agent (no apply_edits recorded),
+        # so fall back to the working tree's actual changes — the KG must reflect
+        # what the task touched, whoever wrote it.
+        if not changed:
+            changed = self._git_changed_files(state.root)
 
         # Graph re-index of changed files only
         if changed:
             try:
-                from opencontext_core.indexing.graph_db import GraphDatabase
                 from opencontext_core.indexing.knowledge_graph import KnowledgeGraph
+                from opencontext_core.indexing.project_indexer import _KG_EXTENSIONS
 
-                db_path = state.root / ".storage" / "opencontext" / "knowledge_graph.db"
-                if db_path.exists():
-                    db = GraphDatabase(db_path)
-                    kg = KnowledgeGraph(db)  # type: ignore[arg-type]
-                    for path in changed:
-                        full = state.root / path
-                        if full.exists() and full.suffix == ".py":
-                            try:
-                                kg.index_file(
-                                    path, full.read_text(encoding="utf-8", errors="ignore")
-                                )
-                            except Exception:
-                                pass
-                    db.close()
+                # Canonical KG db name — same as runtime/explore (context_graph.db).
+                db_path = state.root / ".storage" / "opencontext" / "context_graph.db"
+                kg_changed = {p for p in changed if (state.root / p).suffix in _KG_EXTENSIONS}
+                if db_path.exists() and kg_changed:
+                    kg = KnowledgeGraph(db_path=db_path)
+                    try:
+                        # reindex_files re-parses, rebuilds FTS, AND finalizes
+                        # cross-file edges — the manual per-file loop skipped the
+                        # last step, leaving call edges (which power graph ranking)
+                        # stale after every task. Covers every KG language (not just
+                        # .py) so JS/TS/Go/Rust/Java/PHP edits also refresh the graph.
+                        kg.reindex_files(kg_changed, state.root)
+                    except Exception as exc:
+                        _log.warning("post-run re-index failed: %s", exc)
+                    kg.close()
             except Exception:
                 pass
+
+    @staticmethod
+    def _git_changed_files(root: Path) -> list[str]:
+        """Working-tree changes (modified + untracked), relative paths. Best-effort."""
+        import subprocess
+
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except Exception:
+            return []
+        if out.returncode != 0:
+            return []
+        paths: list[str] = []
+        for line in out.stdout.splitlines():
+            entry = line[3:].strip()  # strip the "XY " status prefix
+            if " -> " in entry:  # rename: keep the new path
+                entry = entry.split(" -> ", 1)[1]
+            if entry:
+                paths.append(entry)
+        return paths
 
     @staticmethod
     def _inputs_summary(state: HarnessState) -> str:
@@ -594,7 +708,7 @@ class HarnessRunner:
             try:
                 from opencontext_core.config import load_config_or_defaults
 
-                cfg = load_config_or_defaults(self.root / "opencontext.yaml")
+                cfg = load_config_or_defaults(self.root / "opencontext.yaml", auto_detect=False)
                 harness_cfg = getattr(cfg, "harness", None)
                 if harness_cfg is not None:
                     if tdd_mode == "ask":
@@ -722,8 +836,38 @@ class HarnessRunner:
             return ProviderPolicyPassedGate().evaluate(
                 provider=provider, is_external=is_external, items_count=items_count
             )
+        if gate_id == "no_secret_leakage":
+            return NoSecretLeakageGate().evaluate(self._artifact_text(result))
+        if gate_id == "trace_id_created":
+            return TraceIdCreatedGate().evaluate(state.trace_ids[-1] if state.trace_ids else None)
+        if gate_id == "included_sources_present":
+            return IncludedSourcesPresentGate().evaluate(
+                getattr(state, "context_required_sources", []),
+                getattr(state, "context_sources", set()),
+            )
+        if gate_id == "omissions_recorded":
+            return OmissionsRecordedGate().evaluate(
+                getattr(state, "context_omitted", 0),
+                getattr(state, "context_omissions_recorded", 0),
+            )
+        if gate_id == "review_artifact_created":
+            run_dir = state.root / self.config.artifact_root / state.run_id
+            return ReviewArtifactCreatedGate().evaluate(run_dir)
         # Unknown / unbound declared gate: do not fabricate a result.
         return None
+
+    @staticmethod
+    def _artifact_text(result: PhaseResult) -> str:
+        """Concatenate this phase's artifact file contents for secret scanning."""
+        chunks: list[str] = []
+        for artifact in result.artifacts:
+            path = Path(artifact.path)
+            try:
+                if path.exists() and path.is_file() and path.stat().st_size < 200_000:
+                    chunks.append(path.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                continue
+        return "\n".join(chunks)
 
     @staticmethod
     def _scan_phase_artifacts(state: HarnessState, result: PhaseResult) -> list[str]:
@@ -763,7 +907,9 @@ class HarnessRunner:
         if phase_id == "tasks":
             return TasksPhase(phase_config, budget_mode)
         if phase_id == "apply":
-            return ApplyPhase(phase_config, budget_mode)
+            return ApplyPhase(
+                phase_config, budget_mode, forbidden_paths=self.config.forbidden_paths
+            )
         if phase_id == "verify":
             return VerifyPhase(phase_config, budget_mode)
         if phase_id == "review":
@@ -856,22 +1002,6 @@ class HarnessRunner:
             "data_classification": "internal",
         }
         return phase_ops.get(phase_id, default_op)
-
-    def _model_for_phase(self, phase_id: str) -> Any:
-        """Return the per-phase ModelProviderConfig override, or None if not set.
-
-        Looks up ``config.models.phases[phase_id]`` from the top-level
-        ``opencontext.yaml``. Returns ``None`` when no override is configured so
-        callers can fall back to the default model cleanly.
-        """
-        try:
-            from opencontext_core.config import load_config_or_defaults
-
-            cfg = load_config_or_defaults(self.root / "opencontext.yaml", auto_detect=False)
-            phases = getattr(cfg.models, "phases", {}) or {}
-            return phases.get(phase_id)
-        except Exception:
-            return None
 
     def _warn_if_kg_not_indexed(self, state: HarnessState) -> None:
         """Add a warning if the knowledge graph has no indexed content.

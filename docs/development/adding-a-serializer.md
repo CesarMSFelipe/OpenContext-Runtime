@@ -15,6 +15,5 @@ mypy packages/opencontext_core
 ```
 
 ## Implemented Code
-- `packages/opencontext_core/`
-- `packages/opencontext_cli/`
+- `packages/opencontext_core/opencontext_core/memory_usability/serializers.py` — `ContextSerializer` / `SerializationFormat`, the serializer surface to extend
 - `tests/core/`

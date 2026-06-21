@@ -6,13 +6,14 @@ CI usage is scaffolded through safe configs and release/prompt/security audit co
 ## Current Status
 CLI/API/local SDK paths are implemented. Agent-specific integrations are documented patterns unless a command explicitly exists.
 
-## Related Commands
+## Setup
 ```bash
-opencontext agent-context "Review access control" --target codex --copy
-opencontext pack . --query "review auth" --copy
+# Initialize checks + generate the GitHub Actions workflow
+opencontext ci-check init
+# Or generate the workflow only
+opencontext ci-check github-actions   # [--force] overwrites existing
 ```
+This creates `.github/workflows/opencontext-contextbench.yml`, which runs
+`opencontext ci-check run --json` on every push/pull request and uploads the report as an artifact.
 
-## Implemented Code
-- `packages/opencontext_cli/opencontext_cli/main.py`
-- `packages/opencontext_api/opencontext_api/main.py`
-- `packages/opencontext_core/opencontext_core/runtime.py`
+See [CI Checks](../guides/ci-checks.md) for defining check rules.

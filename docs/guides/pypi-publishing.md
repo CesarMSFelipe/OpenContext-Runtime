@@ -164,15 +164,13 @@ Several subdirectories in `opencontext-core` lack `__init__.py`:
 
 | Directory | Status | .py Files |
 |-----------|--------|-----------|
-| `adapters/` | ⚠️ No __init__.py | 2 files |
-| `compression/` | ⚠️ No __init__.py | 1 file |
-| `doctor/` | ⚠️ No __init__.py | 2 files |
+| `doctor/` | ⚠️ No __init__.py | 3 files |
 | `dx/` | ⚠️ No __init__.py | 7 files |
 | `plugins/` | ⚠️ No __init__.py | 1 file |
-| `providers/` | ⚠️ No __init__.py | 1 file |
+| `providers/` | ⚠️ No __init__.py | 2 files |
 | `quality/` | ⚠️ No __init__.py | 1 file |
-| `skills/` | ⚠️ No __init__.py | 3 files |
-| `workflow_packs/` | ⚠️ No __init__.py | 2 files |
+| `skills/` | ⚠️ No __init__.py | 4 files |
+| `workflow_packs/` | ⚠️ No __init__.py | 1 file |
 | `workspace/` | ⚠️ No __init__.py | 1 file |
 
 These work as **implicit namespace packages** (PEP 420) in Python 3.12+ and

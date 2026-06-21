@@ -7,8 +7,11 @@ Supports JSON-RPC 2.0 style communication.
 from __future__ import annotations
 
 import json
+import os
 import re
+import select
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -84,6 +87,56 @@ def _join_lines(lines: list[str], trailing_newline: bool) -> str:
     return text
 
 
+_IMPORT_LINE_RE = re.compile(r"^\s*(?:from\s+\S+\s+import|import)\b")
+
+
+def _python_syntax_error(file_path: str, text: str) -> str | None:
+    """For a ``.py`` file, return a message if ``text`` is not parseable, else None.
+
+    The symbol-edit tools fail closed: an edit that would leave the file
+    syntactically broken is rejected rather than written, so an agent can't
+    silently corrupt source (e.g. replacing a whole def with only its body).
+    """
+
+    if not file_path.endswith(".py"):
+        return None
+    import ast
+
+    try:
+        ast.parse(text)
+    except SyntaxError as exc:
+        return f"invalid Python after edit: {exc.msg} (line {exc.lineno})"
+    return None
+
+
+def _to_tool_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Wrap a tool's domain dict in the MCP ``tools/call`` content envelope.
+
+    Spec-strict hosts (Claude Code, VS Code) require a ``content`` array; a raw
+    domain dict placed directly in the JSON-RPC ``result`` reads as an empty tool
+    response. The structured payload is preserved under ``structuredContent`` for
+    clients that consume it, and a handler ``error`` maps to ``isError``.
+    """
+
+    from opencontext_core.safety.secrets import SecretScanner
+
+    is_error = "error" in result
+    # Redact secrets before anything crosses to the host — the "redaction is
+    # automatic" guarantee. Redact the serialized form and re-parse so the
+    # structured payload is scrubbed too; fall back to the raw dict if the
+    # redacted text no longer parses.
+    text = SecretScanner().redact(json.dumps(result, indent=2))
+    try:
+        structured = json.loads(text)
+    except json.JSONDecodeError:
+        structured = result
+    return {
+        "content": [{"type": "text", "text": text}],
+        "isError": is_error,
+        "structuredContent": structured,
+    }
+
+
 class MCPServer:
     """MCP server implementing stdio transport.
 
@@ -117,6 +170,9 @@ class MCPServer:
         self.policy: ToolPermissionPolicy = policy or ToolPermissionPolicy(
             allowed_tools=set(self._default_tool_names())
         )
+        # Raw stdin line buffer (see _next_line): we manage line splitting ourselves
+        # so select() can't strand a buffered line on a batched write.
+        self._inbuf: str = ""
 
         # Tool definitions
         self.tools: dict[str, dict[str, Any]] = {
@@ -222,25 +278,93 @@ class MCPServer:
                     "file": {"type": "string", "description": "File path (optional)"},
                 },
             },
+            "opencontext_run": {
+                "description": (
+                    "Drive the SDD agentic loop in-process using THIS host's selected "
+                    "model via MCP sampling (zero provider config). Runs the workflow "
+                    "phases (explore -> ... -> apply -> verify) and applies code edits."
+                ),
+                "parameters": {
+                    "task": {"type": "string", "description": "Task / change to implement"},
+                    "workflow": {
+                        "type": "string",
+                        "description": "Workflow track (sdd/standard/quick/...)",
+                        "default": "sdd",
+                    },
+                },
+            },
         }
 
     def run(self) -> None:
         """Run the MCP server, reading from stdin and writing to stdout."""
 
-        self._send_notification("server/initialized", {"tools": list(self.tools.keys())})
+        while True:
+            message = self._read_message()
+            if message is None:  # EOF
+                break
+            self._handle_request(message)
 
-        for line in sys.stdin:
+    def _next_line(self, timeout: float | None) -> str | None:
+        """Return the next newline-terminated line from stdin (newline stripped),
+        or None on EOF, or — when ``timeout`` is given — None if no line arrives
+        before it.
+
+        Reads raw bytes via the fd and splits lines into ``self._inbuf`` itself, so a
+        host that batches several JSON-RPC messages into one write is never stranded
+        by ``select`` (which reflects the kernel pipe, not Python's text buffer).
+        Falls back to a blocking ``readline`` when stdin has no real fd (e.g. an
+        in-memory test buffer).
+        """
+        while "\n" not in self._inbuf:
+            try:
+                fd = sys.stdin.fileno()
+            except Exception:
+                fd = None
+            if fd is None:
+                chunk = sys.stdin.readline()
+                if not chunk:
+                    break  # EOF
+                self._inbuf += chunk
+                continue
+            if timeout is not None:
+                try:
+                    ready, _, _ = select.select([fd], [], [], timeout)
+                except OSError:
+                    # Windows: select() rejects non-socket fds (pipes/stdin) with
+                    # WinError 10038. Fall back to a blocking read — the deadline is
+                    # best-effort there; the host's sampling reply still arrives.
+                    ready = [fd]
+                if not ready:
+                    return None
+            raw = os.read(fd, 65536)
+            if not raw:
+                break  # EOF
+            self._inbuf += raw.decode("utf-8", errors="replace")
+        if "\n" in self._inbuf:
+            line, _, self._inbuf = self._inbuf.partition("\n")
+            return line
+        if self._inbuf:  # trailing partial line at EOF
+            line, self._inbuf = self._inbuf, ""
+            return line
+        return None
+
+    def _read_message(self) -> dict[str, Any] | None:
+        """Read one JSON-RPC message from stdin; None at EOF.
+
+        Shared by the main loop and the sampling round-trip so server->client
+        requests and incoming client messages read from one place.
+        """
+        while True:
+            line = self._next_line(None)
+            if line is None:
+                return None
             line = line.strip()
             if not line:
                 continue
-
             try:
-                request = json.loads(line)
+                return json.loads(line)  # type: ignore[no-any-return]
             except json.JSONDecodeError:
                 self._send_error(None, -32700, "Parse error")
-                continue
-
-            self._handle_request(request)
 
     def _handle_request(self, request: dict[str, Any]) -> None:
         """Handle a single JSON-RPC request."""
@@ -249,12 +373,30 @@ class MCPServer:
         method = request.get("method", "")
         params = request.get("params", {})
 
+        # Notifications (e.g. notifications/initialized) carry no id and MUST NOT
+        # be answered — replying to one violates JSON-RPC.
+        if method.startswith("notifications/"):
+            return
+
+        if method == "ping":
+            self._send_response(request_id, {})
+            return
+
         if method == "initialize":
+            server_caps: dict[str, Any] = {"tools": {}}
+            client_caps = params.get("capabilities", {})
+            # If the client can sample, route the agentic loop's gateway through
+            # its selected model (MCP sampling) — zero provider config needed.
+            if isinstance(client_caps, dict) and "sampling" in client_caps:
+                from opencontext_core.llm.sampling_gateway import register_host_sampler
+
+                register_host_sampler(self._request_sampling)
+                server_caps["sampling"] = {}
             self._send_response(
                 request_id,
                 {
                     "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
+                    "capabilities": server_caps,
                     "serverInfo": {
                         "name": "opencontext-mcp",
                         "version": "0.1.0",
@@ -282,7 +424,7 @@ class MCPServer:
             tool_name = params.get("name", "")
             tool_params = params.get("arguments", {})
             result = self._call_tool(tool_name, tool_params)
-            self._send_response(request_id, result)
+            self._send_response(request_id, _to_tool_result(result))
             return
 
         self._send_error(request_id, -32601, f"Method not found: {method}")
@@ -338,6 +480,7 @@ class MCPServer:
             "opencontext_insert_before_symbol": self._handle_insert_before_symbol,
             "opencontext_insert_after_symbol": self._handle_insert_after_symbol,
             "opencontext_rename_symbol": self._handle_rename_symbol,
+            "opencontext_run": self._handle_run,
         }
 
     def _default_tool_names(self) -> list[str]:
@@ -358,7 +501,41 @@ class MCPServer:
             "opencontext_insert_before_symbol",
             "opencontext_insert_after_symbol",
             "opencontext_rename_symbol",
+            "opencontext_run",
         ]
+
+    def _handle_run(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Drive the agentic harness in-process using the host's model.
+
+        This is the in-process LLM consumer that makes MCP sampling reachable: the
+        harness runs in THIS process, where the host sampler was registered during
+        ``initialize`` (the standalone ``opencontext loop`` runs in a separate
+        process where the sampler is absent). The runner resolves a
+        ``SamplingGateway`` from the live sampler, so spec/design/tasks and apply
+        codegen use the host's selected model with zero provider config.
+        """
+        from pathlib import Path
+
+        from opencontext_core.harness.runner import HarnessRunner
+
+        task = str(params.get("task", "")).strip()
+        if not task:
+            return {"error": "task is required"}
+        workflow = str(params.get("workflow", "sdd")) or "sdd"
+
+        from opencontext_core.llm.sampling_gateway import get_host_sampler
+
+        runner = HarnessRunner(root=Path.cwd())
+        result = runner.run(workflow, task)
+        return {
+            "run_id": result.run_id,
+            "workflow": workflow,
+            "status": getattr(result.status, "value", str(result.status)),
+            "host_model_used": get_host_sampler() is not None,
+            "artifacts": len(getattr(result, "artifacts", [])),
+            "gates": len(getattr(result, "gates", [])),
+            "warnings": list(getattr(result, "warnings", []))[:10],
+        }
 
     def _handle_search(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle search tool."""
@@ -404,15 +581,15 @@ class MCPServer:
         if self.runtime is not None:
             return self._verified_context(task)
 
-        max_nodes = params.get("max_nodes", 20)
+        max_nodes = params.get("max_nodes")
         format = params.get("format", "markdown")
 
-        # Adaptive scaling: when caller uses default (20), scale from stats
-        if max_nodes == 20:
+        # Adaptive scaling only when the caller OMITS max_nodes — an explicit value
+        # (even 20) is honored, not overridden by the stats-derived default.
+        if max_nodes is None:
             try:
                 stats = self.db.get_stats()
-                file_count = stats.get("files", 0)
-                max_nodes = _compute_max_nodes(file_count)
+                max_nodes = _compute_max_nodes(stats.get("files", 0))
             except Exception:
                 max_nodes = _MAX_NODES_FALLBACK
 
@@ -671,6 +848,14 @@ class MCPServer:
 
         replacement = _split_lines(body)[0]
         new_lines = lines[:start] + replacement + lines[end:]
+        syntax_err = _python_syntax_error(node.file_path, _join_lines(new_lines, trailing))
+        if syntax_err:
+            return {
+                "error": syntax_err,
+                "applied": False,
+                "symbol": symbol,
+                "hint": "pass the full definition (signature + body), not just the body",
+            }
         applied = self._write_file_lines(node.file_path, new_lines, trailing)
         return {
             "tool": "opencontext_replace_symbol_body",
@@ -713,6 +898,9 @@ class MCPServer:
         insert_at = max(0, min(insert_at, len(lines)))
         block = _split_lines(content)[0]
         new_lines = lines[:insert_at] + block + lines[insert_at:]
+        syntax_err = _python_syntax_error(node.file_path, _join_lines(new_lines, trailing))
+        if syntax_err:
+            return {"error": syntax_err, "applied": False, "symbol": symbol}
         applied = self._write_file_lines(node.file_path, new_lines, trailing)
         return {
             "tool": tool,
@@ -744,12 +932,16 @@ class MCPServer:
             return {"error": "Missing 'new_name'", "applied": False}
         if not new_name.isidentifier():
             return {"error": f"Invalid identifier: {new_name}", "applied": False}
+        import keyword
+
+        if keyword.iskeyword(new_name) or keyword.issoftkeyword(new_name):
+            return {"error": f"'{new_name}' is a Python keyword", "applied": False}
 
         node = self._resolve_symbol(symbol, file)
         if node is None or node.id is None:
             return {"error": f"Symbol not found: {symbol}", "applied": False}
 
-        # definition line, then add each known call site from the graph.
+        # Collect rename targets: start with the definition line, then add each call site.
         targets: dict[str, set[int]] = {node.file_path: {node.line}}
         for site_file, site_line in self._reference_sites(node.id):
             targets.setdefault(site_file, set()).add(site_line)
@@ -762,6 +954,7 @@ class MCPServer:
             except OSError:
                 continue
             file_hits = 0
+            rewritten_idxs: set[int] = set()
             for line_no in line_numbers:
                 idx = line_no - 1
                 if 0 <= idx < len(lines):
@@ -769,7 +962,20 @@ class MCPServer:
                     if hits:
                         lines[idx] = rewritten
                         file_hits += hits
+                        rewritten_idxs.add(idx)
                         updated.append({"file": rel_path, "line": line_no, "occurrences": hits})
+            # Also fix `from m import <symbol>` lines in this file: a rename that
+            # touches the call sites but not the import leaves a dangling import that
+            # no longer resolves. Restricted to import lines so unrelated same-named
+            # tokens elsewhere are not rewritten.
+            for idx, line in enumerate(lines):
+                if idx in rewritten_idxs or not _IMPORT_LINE_RE.match(line):
+                    continue
+                rewritten, hits = _replace_identifier(line, symbol, new_name)
+                if hits:
+                    lines[idx] = rewritten
+                    file_hits += hits
+                    updated.append({"file": rel_path, "line": idx + 1, "occurrences": hits})
             if file_hits and self._write_file_lines(rel_path, lines, trailing):
                 files_touched += 1
 
@@ -870,11 +1076,82 @@ class MCPServer:
         }
         self._write_json(response)
 
-    def _send_notification(self, method: str, params: dict[str, Any]) -> None:
-        """Send a JSON-RPC notification."""
+    def _send_request(self, request_id: Any, method: str, params: dict[str, Any]) -> None:
+        """Send a server->client JSON-RPC request (e.g. sampling/createMessage)."""
 
-        notification = {"jsonrpc": "2.0", "method": method, "params": params}
-        self._write_json(notification)
+        self._write_json({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+
+    def _request_sampling(
+        self,
+        system_prompt: str,
+        prompt: str,
+        max_tokens: int,
+        model: str | None = None,
+        *,
+        timeout: float = 60.0,
+    ) -> str:
+        """Host sampler: run a generation on the client's selected model via MCP
+        sampling. Sends ``sampling/createMessage`` and waits for the matching
+        response, handling any client requests that interleave the round-trip.
+
+        Bounded by ``timeout``: a host that advertises ``sampling`` but never
+        answers would otherwise deadlock the server forever on ``readline()``.
+        Returns ``""`` on timeout, disconnect, or an error response.
+        """
+        from opencontext_core.safety.secrets import SecretScanner
+
+        self._sampling_seq = getattr(self, "_sampling_seq", 0) + 1
+        req_id = f"oc-sampling-{self._sampling_seq}"
+        # Scrub secrets from the prompt before it reaches the host's model.
+        scanner = SecretScanner()
+        params: dict[str, Any] = {
+            "messages": [
+                {"role": "user", "content": {"type": "text", "text": scanner.redact(prompt)}}
+            ],
+            "maxTokens": max_tokens,
+        }
+        if system_prompt:
+            params["systemPrompt"] = scanner.redact(system_prompt)
+        # Per-role/per-phase model → MCP modelPreferences hint, so the client picks
+        # the matching model (opus/sonnet/haiku, codex 5.4-mini/5.5, …) for this unit
+        # of work. A placeholder ("mock"/"host-selected") means "use whatever model
+        # the user already selected in their agent" — we send no hint.
+        if model and model not in ("host-selected", "mock", "mock-llm"):
+            params["modelPreferences"] = {"hints": [{"name": model}]}
+        self._send_request(req_id, "sampling/createMessage", params)
+        deadline = time.monotonic() + timeout
+        while True:
+            msg = self._read_message_before(deadline)
+            if msg is None:
+                return ""  # timed out or client disconnected mid-request
+            if msg.get("id") == req_id:
+                if "error" in msg:
+                    return ""  # client refused/failed the sampling request
+                content = (msg.get("result") or {}).get("content", {})
+                return str(content.get("text", "")) if isinstance(content, dict) else str(content)
+            if "method" in msg:  # interleaved client request — service it
+                self._handle_request(msg)
+
+    def _read_message_before(self, deadline: float) -> dict[str, Any] | None:
+        """Read one JSON-RPC message, or None if ``deadline`` passes first.
+
+        Goes through ``_next_line`` (shared buffer) so a silent host cannot block
+        forever AND a host that batches messages into one write is not stranded.
+        """
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            line = self._next_line(remaining)
+            if line is None:
+                return None  # EOF or timed out
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                return json.loads(line)  # type: ignore[no-any-return]
+            except json.JSONDecodeError:
+                self._send_error(None, -32700, "Parse error")
 
     @staticmethod
     def _write_json(data: dict[str, Any]) -> None:

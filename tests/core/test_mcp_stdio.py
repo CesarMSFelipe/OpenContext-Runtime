@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
-from opencontext_core.mcp_stdio import MCPServer, _compute_max_nodes
+from opencontext_core.mcp_stdio import MCPServer, _compute_max_nodes, _to_tool_result
+
+
+def test_tool_result_envelope_redacts_secrets() -> None:
+    secret = "AKIAIOSFODNN7EXAMPLE"  # canonical AWS access-key shape
+    envelope = _to_tool_result({"results": [{"snippet": f"aws_key = {secret}"}]})
+    assert secret not in envelope["content"][0]["text"]
+    assert secret not in json.dumps(envelope["structuredContent"])
+    assert envelope["isError"] is False
 
 
 class TestAdaptiveScaling:
@@ -78,7 +87,7 @@ class TestMCPServer:
         """Server initializes with correct tools."""
 
         server = MCPServer(db_path=tmp_path / "test.db")
-        assert len(server.tools) == 13
+        assert len(server.tools) == 14
         assert "opencontext_search" in server.tools
         assert "opencontext_context" in server.tools
         assert "opencontext_callers" in server.tools
@@ -116,7 +125,7 @@ class TestMCPServer:
             server._handle_request(request)
             mock_send.assert_called_once()
             result = mock_send.call_args[0][1]
-            assert len(result["tools"]) == 13
+            assert len(result["tools"]) == 14
             assert all("name" in t for t in result["tools"])
             assert all("description" in t for t in result["tools"])
         server.close()
@@ -150,6 +159,22 @@ class TestMCPServer:
         assert result["edges"] == 0
         server.close()
 
+    def test_explicit_max_nodes_is_honored(self, tmp_path: Path) -> None:
+        """An explicit max_nodes (even 20) must not be overridden by adaptive scaling."""
+        server = MCPServer(db_path=tmp_path / "test.db")
+        server.runtime = None  # force the adaptive (non-verified) context path
+        captured: dict[str, object] = {}
+
+        def _fake_build(**kwargs: object) -> object:
+            captured.update(kwargs)
+            return object()
+
+        server.context_builder.build_context = _fake_build  # type: ignore[method-assign]
+        server.context_builder.render = lambda context: "x"  # type: ignore[method-assign]
+        server._call_tool("opencontext_context", {"task": "t", "max_nodes": 20})
+        assert captured["max_nodes"] == 20
+        server.close()
+
     def test_tools_call_method(self, tmp_path: Path) -> None:
         """Handle tools/call request."""
 
@@ -166,7 +191,34 @@ class TestMCPServer:
             server._handle_request(request)
             mock_send.assert_called_once()
             result = mock_send.call_args[0][1]
-            assert "indexed" in result
+            # MCP tools/call envelope: a content array plus structured payload.
+            assert result["content"][0]["type"] == "text"
+            assert result["isError"] is False
+            assert "indexed" in result["structuredContent"]
+        server.close()
+
+    def test_notifications_initialized_gets_no_response(self, tmp_path: Path) -> None:
+        """A JSON-RPC notification must never be answered."""
+
+        server = MCPServer(db_path=tmp_path / "test.db")
+        request = {"method": "notifications/initialized"}
+        with (
+            patch.object(server, "_send_response") as resp,
+            patch.object(server, "_send_error") as err,
+        ):
+            server._handle_request(request)
+            resp.assert_not_called()
+            err.assert_not_called()
+        server.close()
+
+    def test_ping_returns_empty_result(self, tmp_path: Path) -> None:
+        server = MCPServer(db_path=tmp_path / "test.db")
+        request = {"id": 7, "method": "ping", "params": {}}
+        with patch.object(server, "_send_response") as resp:
+            server._handle_request(request)
+            resp.assert_called_once()
+            assert resp.call_args[0][0] == 7
+            assert resp.call_args[0][1] == {}
         server.close()
 
 

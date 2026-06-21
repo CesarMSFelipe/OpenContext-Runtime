@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-OPENCONTEXT_VERSION="0.3.0"
+OPENCONTEXT_VERSION="1.2.0"
 REPO_URL="https://github.com/CesarMSFelipe/OpenContext-Runtime"
 VENV_DIR="${HOME}/.opencontext/venv"
 BIN_DIR="${HOME}/.local/bin"
@@ -164,14 +164,15 @@ detect_pipx() {
 
 install_via_pipx() {
     echo "  Installing via pipx..."
-    pipx install opencontext-cli || return 1
+    pipx install "opencontext-cli==${OPENCONTEXT_VERSION}" || \
+        pipx upgrade opencontext-cli || return 1
     return 0
 }
 
 install_via_pip() {
     local pip_cmd="$1"
     echo "  Installing via pip..."
-    $pip_cmd install --upgrade opencontext-cli --quiet 2>/dev/null || return 1
+    $pip_cmd install --upgrade --upgrade-strategy eager "opencontext-cli==${OPENCONTEXT_VERSION}" --quiet || return 1
     return 0
 }
 
@@ -201,9 +202,19 @@ install_from_source() {
 }
 
 verify_install() {
-    if command -v opencontext &>/dev/null; then
+    # Prefer venv binary over whatever is in PATH (avoids reporting a stale system install)
+    local oc_bin=""
+    if [ -f "$VENV_DIR/bin/opencontext" ]; then
+        oc_bin="$VENV_DIR/bin/opencontext"
+    elif [ -f "$VENV_DIR/Scripts/opencontext.exe" ]; then
+        oc_bin="$VENV_DIR/Scripts/opencontext.exe"
+    elif command -v opencontext &>/dev/null; then
+        oc_bin="opencontext"
+    fi
+
+    if [ -n "$oc_bin" ]; then
         local version
-        version=$(opencontext --version 2>/dev/null || true)
+        version=$("$oc_bin" --version 2>/dev/null || true)
         echo "✓ Verified: $version"
     else
         echo "⚠ 'opencontext' not found in PATH."
@@ -309,7 +320,15 @@ install_opencontext() {
         fi
 
         if [ -n "$VENV_BIN" ] && [ -f "$VENV_BIN/opencontext" ]; then
-            _add_venv_to_path "$VENV_BIN"
+            # If ~/.local/bin is already on PATH, link there so 'opencontext' works
+            # immediately in the current shell — no reload needed. Otherwise edit rc.
+            if echo ":$PATH:" | grep -q ":$HOME/.local/bin:"; then
+                mkdir -p "$HOME/.local/bin"
+                ln -sf "$VENV_BIN/opencontext" "$HOME/.local/bin/opencontext"
+                echo "✓ Linked opencontext into ~/.local/bin (on PATH — no reload needed)"
+            else
+                _add_venv_to_path "$VENV_BIN"
+            fi
         fi
     fi
 

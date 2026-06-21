@@ -105,6 +105,7 @@ class InstallationManager:
         backup: bool = True,
         yes: bool = False,
         root: Path | str | None = None,
+        force_global: bool = False,
     ) -> dict[str, Any]:
         """Install OpenContext integration.
 
@@ -122,7 +123,13 @@ class InstallationManager:
 
         project_root = Path(root).resolve() if root is not None else Path.cwd()
 
-        if backup and self._is_installed():
+        # Global integration (MCP, agent configs, model profiles) is a once-per-
+        # machine concern. If OpenContext is already installed globally, skip it and
+        # do only the per-project setup (config + skills). `force_global` re-runs it.
+        already_global = self._is_installed()
+        do_global = force_global or not already_global
+
+        if backup and already_global:
             self.backup_manager.create_backup(name="pre-install")
 
         # Write a loadable opencontext.yaml so the project is runnable.
@@ -134,11 +141,11 @@ class InstallationManager:
 
         results = []
 
-        if "mcp" in to_install:
+        if "mcp" in to_install and do_global:
             mcp_result = self._install_mcp()
             results.append(mcp_result)
 
-        if "agents" in to_install and agents:
+        if "agents" in to_install and agents and do_global:
             agent_targets = [AgentTarget(a) for a in agents]
             agent_result = self.installer.install(
                 targets=agent_targets,
@@ -151,7 +158,7 @@ class InstallationManager:
             skills_result = self._install_skills(project_root)
             results.append(skills_result)
 
-        if "profiles" in to_install:
+        if "profiles" in to_install and do_global:
             profiles_result = self._install_profiles()
             results.append(profiles_result)
 
@@ -180,6 +187,9 @@ class InstallationManager:
             "components": list(to_install),
             "agents": agents,
             "results": results,
+            # True when global integration was already present and left untouched
+            # (this run only did per-project setup). Install global once.
+            "global_skipped": not do_global,
         }
 
     def update(
@@ -375,6 +385,19 @@ class InstallationManager:
         """Check if OpenContext is installed."""
         return self.state_path.exists()
 
+    def clear_state(self) -> bool:
+        """Remove the install-state ledger.
+
+        ``opencontext install`` skips global setup when this ledger exists, so a
+        full uninstall must clear it — otherwise a later reinstall silently skips
+        re-wiring the global MCP/agent integration. Returns True if a file was
+        removed.
+        """
+        if self.state_path.exists():
+            self.state_path.unlink()
+            return True
+        return False
+
     def _load_state(self) -> InstallState | None:
         """Load installation state."""
         if not self.state_path.exists():
@@ -504,12 +527,17 @@ class InstallationManager:
         dest_root = project_root / ".opencontext" / "skills"
         dest_root.mkdir(parents=True, exist_ok=True)
 
-        # Skills the developer drives, plus the agent lifecycle skill.
+        # Skills the developer drives (one per SDD phase), plus the agent skill.
         required_skills = (
-            "sdd-new",
-            "sdd-apply",
-            "sdd-verify",
-            "sdd-archive",
+            "oc-new",
+            "oc-explore",
+            "oc-propose",
+            "oc-spec",
+            "oc-design",
+            "oc-tasks",
+            "oc-apply",
+            "oc-verify",
+            "oc-archive",
             "opencontext-agent",
         )
 

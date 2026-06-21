@@ -9,16 +9,13 @@ import argparse
 import sys
 from typing import Any
 
-from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
-from rich.table import Table
-
 from opencontext_cli.commands.update_cmd import handle_upgrade
 from opencontext_cli.commands.verified_context_view import (
     gather_kg_status,
     render_kg_header,
     render_verified_context,
 )
+from opencontext_core import prompts
 from opencontext_core.dx.console_styles import console
 from opencontext_core.update import EcosystemUpdateChecker, UpdateChecker
 
@@ -78,6 +75,13 @@ def _action_header(title: str) -> None:
 def run_main_menu() -> None:
     """Show the main OpenContext menu and delegate to the selected command."""
 
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        console.print(
+            "[yellow]The interactive menu needs a terminal.[/] "
+            "Run a subcommand instead, e.g. [cyan]opencontext --help[/]."
+        )
+        return
+
     while True:
         try:
             console.clear()
@@ -89,100 +93,55 @@ def run_main_menu() -> None:
         _print_kg_header()
         console.print()
 
-        grid = Table.grid(expand=True, padding=(0, 1))
-        grid.add_column(ratio=1)
-        grid.add_column(ratio=1)
-        grid.add_column(ratio=1)
-
-        grid.add_row(
-            Panel(
-                "\n".join(
-                    [
-                        " [bold #00C9A7]1[/]  Install / reconfigure",
-                        " [bold #00C9A7]2[/]  Upgrade all packages",
-                        " [bold #00C9A7]3[/]  Re-sync environment",
-                    ]
-                ),
-                title="[dim]Setup[/]",
-                border_style="#00C9A7",
-                padding=(0, 1),
-            ),
-            Panel(
-                "\n".join(
-                    [
-                        " [bold #00A8E8]4[/]  Providers & models",
-                        " [bold #00A8E8]5[/]  Agent integrations",
-                        " [bold #00A8E8]6[/]  Plugins",
-                        " [bold #00A8E8]7[/]  SDD & TDD settings",
-                        " [bold #00A8E8]8[/]  Context memory",
-                    ]
-                ),
-                title="[dim]Configure[/]",
-                border_style="#00A8E8",
-                padding=(0, 1),
-            ),
-            Panel(
-                "\n".join(
-                    [
-                        " [bold #00C9A7]12[/]  [bold]Verified context for a task[/]",
-                        " [bold #845EC2] 9[/]  Doctor",
-                        " [bold #845EC2]10[/]  Backups",
-                        " [bold #845EC2]11[/]  Uninstall",
-                        "",
-                        "  [dim]q[/]   Quit",
-                    ]
-                ),
-                title="[dim]Tools[/]",
-                border_style="#845EC2",
-                padding=(0, 1),
-            ),
-        )
-
-        console.print(grid)
-        console.print()
         _print_update_banner()
-        console.print("[dim]  Enter a number or q[/]")
         console.print()
 
-        choice = Prompt.ask(
-            "Select option",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "q"],
-            default="q",
+        choice = prompts.select(
+            "Main menu",
+            [
+                (None, "Setup"),
+                ("install", "Install / reconfigure"),
+                ("upgrade", "Upgrade all packages"),
+                ("sync", "Re-sync environment"),
+                (None, "Configure"),
+                ("models", "Providers & models"),
+                ("agents", "Agent integrations"),
+                ("plugins", "Plugins"),
+                ("sdd", "SDD & TDD settings"),
+                ("memory", "Context memory"),
+                (None, "Tools"),
+                ("verified", "Verified context for a task"),
+                ("doctor", "Doctor"),
+                ("backups", "Backups"),
+                ("uninstall", "Uninstall"),
+                ("quit", "Quit"),
+            ],
+            default="install",
         )
 
-        if choice == "1":
-            _run_install()
-        elif choice == "2":
-            _run_upgrade()
-        elif choice == "3":
-            _run_sync()
-        elif choice == "4":
-            _run_configure_models()
-        elif choice == "5":
-            _run_agent_integrations()
-        elif choice == "6":
-            _run_plugins()
-        elif choice == "7":
-            _run_sdd_profiles()
-        elif choice == "8":
-            _run_memory_tools()
-        elif choice == "9":
-            _run_doctor()
-        elif choice == "10":
-            _run_backups()
-        elif choice == "11":
-            _run_uninstall()
-        elif choice == "12":
-            _run_verified_context()
-        elif choice == "q":
+        if choice == "quit":
             console.print("[dim]Goodbye.[/]")
             break
 
-        console.print("\n[dim]Press Enter to return to menu...[/]")
-        try:
-            input()
-        except (EOFError, KeyboardInterrupt):
-            break
+        actions = {
+            "install": _run_install,
+            "upgrade": _run_upgrade,
+            "sync": _run_sync,
+            "models": _run_configure_models,
+            "agents": _run_agent_integrations,
+            "plugins": _run_plugins,
+            "sdd": _run_sdd_profiles,
+            "memory": _run_memory_tools,
+            "doctor": _run_doctor,
+            "backups": _run_backups,
+            "uninstall": _run_uninstall,
+            "verified": _run_verified_context,
+        }
+        action = actions.get(choice)
+        if action is not None:
+            action()
+
+        prompts.pause("Press Enter to return to menu")
 
 
 def _print_update_banner() -> None:
@@ -204,7 +163,8 @@ def _print_update_banner() -> None:
     if notices:
         joined = ", ".join(notices)
         console.print(
-            f"  [bold yellow]Updates available:[/] {joined}  [dim](option 2 to upgrade)[/]"
+            f"  [bold yellow]Updates available:[/] {joined}  "
+            "[dim](choose “Upgrade all packages”)[/]"
         )
         console.print()
 
@@ -227,12 +187,6 @@ def _run_install() -> None:
     _action_header("Install / Reconfigure")
     try:
         from opencontext_cli.main import _install
-
-        class _InstallArgs:
-            root: str = "."
-            yes: bool = False
-
-        import argparse
 
         _install(argparse.Namespace(root=".", yes=False))
     except Exception as exc:
@@ -265,33 +219,51 @@ def _run_sync() -> None:
 
 
 def _run_configure_models() -> None:
-    """Configure providers and models — opencontext config wizard."""
+    """Configure the default provider and model (this menu entry's actual job)."""
     _action_header("Providers & models")
-    try:
-        from opencontext_core.wizard import run_wizard_menu
-
-        run_wizard_menu()
-        return
-    except Exception:
-        pass
 
     from opencontext_core.user_prefs import UserConfigStore
 
     store = UserConfigStore()
     prefs = store.load()
 
-    from rich.prompt import Prompt as RPrompt
-
     console.print("[bold]Current model configuration:[/]")
     console.print(f"  Default provider: {prefs.default_provider or '[dim]not set[/dim]'}")
     console.print(f"  Default model:    {prefs.default_model or '[dim]not set[/dim]'}")
     console.print()
 
-    provider = RPrompt.ask("Default provider", default=prefs.default_provider or "mock")
-    model = RPrompt.ask("Default model", default=prefs.default_model or "mock-llm")
+    known_providers = ["anthropic", "openai", "mock"]
+    known_models = {
+        "anthropic": ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5-20251001"],
+        "openai": ["gpt-4o", "gpt-4o-mini", "o1"],
+        "mock": ["mock-llm"],
+    }
+
+    provider = prompts.select(
+        "Default provider",
+        known_providers,
+        default=prefs.default_provider or "anthropic",
+    )
+    model_choices = known_models.get(provider, [])
+    if model_choices:
+        model = prompts.select(
+            "Default model",
+            model_choices,
+            default=prefs.default_model
+            if prefs.default_model in model_choices
+            else model_choices[0],
+        )
+    else:
+        model = prompts.text("Default model", default=prefs.default_model or "")
+
     prefs.default_provider = provider
     prefs.default_model = model
     store.save(prefs)
+    # Bridge to opencontext.yaml — the runtime reads models.default from yaml, so
+    # without this the chosen provider/model silently no-op at runtime.
+    from opencontext_core.config_sync import sync_runtime_prefs_to_yaml
+
+    sync_runtime_prefs_to_yaml(prefs)
     console.print("[green]✓ Model configuration saved[/]")
 
 
@@ -299,7 +271,9 @@ def _run_agent_integrations() -> None:
     """Configure agent integrations — show current state, offer regeneration."""
     _action_header("Agent integrations")
 
-    from opencontext_core.adapters.agent_manifest import AgentIntegrationGenerator, AgentTarget
+    from pathlib import Path
+
+    from opencontext_core.configurator import KNOWN_AGENTS, Configurator
     from opencontext_core.user_prefs import UserConfigStore
 
     store = UserConfigStore()
@@ -315,34 +289,27 @@ def _run_agent_integrations() -> None:
         console.print("  [dim]None configured yet[/]")
     console.print()
 
-    supported = [t.value for t in AgentTarget]
-    console.print(f"[bold]Available agents:[/] {', '.join(supported)}")
-    console.print()
-
-    from rich.prompt import Prompt as RPrompt
-
-    target_raw = RPrompt.ask(
-        "Regenerate integration files for which agent?",
+    supported = list(KNOWN_AGENTS)
+    target = prompts.select(
+        "Configure which agent?",
+        supported,
         default="opencode",
     )
-    target = target_raw.strip()
+
     if not target:
         return
 
     try:
-        from pathlib import Path
-
-        generator = AgentIntegrationGenerator()
-        files = generator.generate(Path("."), target=AgentTarget(target), force=True)
-        console.print(f"[green]✓ Generated {len(files)} file(s) for {target}[/]")
+        # Single engine: merges a managed block into existing files and writes the
+        # MCP entry, reversible by `opencontext uninstall`.
+        report = Configurator(Path(".")).configure_one(target, "local")
+        files = report.get("files", [])
+        console.print(f"[green]✓ Configured {len(files)} file(s) for {target}[/]")
         for f in files:
             console.print(f"  [dim]{f}[/]")
 
         prefs.agent_integrations[target] = True
         store.save(prefs)
-    except ValueError:
-        console.print(f"[red]Unknown agent target: {target}[/]")
-        console.print(f"  Supported: {', '.join(supported)}")
     except Exception as exc:
         console.print(f"[red]Failed: {exc}[/]")
 
@@ -394,7 +361,6 @@ def _run_sdd_profiles() -> None:
 
         store = UserConfigStore()
         prefs = store.load()
-        from rich.prompt import Prompt as RPrompt
 
         console.print("[bold]Current settings:[/]")
         console.print(f"  SDD model profile: [cyan]{prefs.sdd.sdd_model_profile or 'default'}[/]")
@@ -402,14 +368,14 @@ def _run_sdd_profiles() -> None:
         console.print(f"  Token budget/phase: [cyan]{getattr(prefs, 'sdd_token_budget', 3000)}[/]")
         console.print()
 
-        profile = RPrompt.ask(
+        profile = prompts.select(
             "SDD model profile",
-            choices=["default", "cheap", "hybrid", "premium"],
+            ["default", "cheap", "hybrid", "premium"],
             default=prefs.sdd.sdd_model_profile or "hybrid",
         )
-        tdd = RPrompt.ask(
+        tdd = prompts.select(
             "TDD mode",
-            choices=["ask", "strict", "off"],
+            ["ask", "strict", "off"],
             default=prefs.sdd.tdd_mode or "ask",
         )
         prefs.sdd.sdd_model_profile = profile
@@ -426,10 +392,6 @@ def _run_memory_tools() -> None:
     _action_header("Context memory")
     try:
         from opencontext_cli.main import _memory
-
-        class _MemoryArgs:
-            memory_command: str = "list"
-            config: str = "opencontext.yaml"
 
         _memory(argparse.Namespace(memory_command="list", config="opencontext.yaml"))
     except Exception as exc:
@@ -491,14 +453,12 @@ def _run_verified_context() -> None:
     console.print()
     if not status.indexed:
         console.print(
-            "[yellow]No index found.[/] Run [bold]option 1[/] (Install) or "
-            "[bold]opencontext index .[/] first, then retry."
+            "[yellow]No index found.[/] Choose [bold]Install / reconfigure[/] from the "
+            "menu or run [bold]opencontext index .[/] first, then retry."
         )
         return
 
-    from rich.prompt import Prompt as RPrompt
-
-    query = RPrompt.ask("Describe the task or question").strip()
+    query = prompts.text("Describe the task or question").strip()
     if not query:
         console.print("[dim]Cancelled — no task entered.[/]")
         return
@@ -526,54 +486,32 @@ def _run_verified_context() -> None:
 def _run_backups() -> None:
     """Manage backups — opencontext config backup/restore/backups."""
     while True:
-        try:
-            console.clear()
-        except Exception:
-            pass
-        console.print(
-            Panel(
-                "\n".join(
-                    [
-                        "[bold]Backup Management[/]",
-                        "",
-                        "  [cyan]1[/]  Create backup",
-                        "  [cyan]2[/]  List backups",
-                        "  [cyan]3[/]  Restore backup",
-                        "  [cyan]4[/]  Cleanup old backups",
-                        "  [cyan]b[/]  Back to main menu",
-                        "  [cyan]q[/]  Quit",
-                    ]
-                ),
-                border_style="yellow",
-                padding=(1, 2),
-            )
-        )
-        console.print()
-        choice = Prompt.ask(
-            "Select option",
-            choices=["1", "2", "3", "4", "b", "q"],
-            default="b",
+        _action_header("Backup Management")
+        choice = prompts.select(
+            "Backups",
+            [
+                ("create", "Create backup"),
+                ("list", "List backups"),
+                ("restore", "Restore backup"),
+                ("cleanup", "Cleanup old backups"),
+                ("back", "Back to main menu"),
+            ],
+            default="list",
         )
 
-        if choice == "1":
-            _create_backup()
-        elif choice == "2":
-            _list_backups()
-        elif choice == "3":
-            _restore_backup()
-        elif choice == "4":
-            _cleanup_backups()
-        elif choice == "b":
+        if choice == "back":
             break
-        elif choice == "q":
-            console.print("[dim]Goodbye.[/]")
-            sys.exit(0)
 
-        console.print("\n[dim]Press Enter to continue...[/]")
-        try:
-            input()
-        except (EOFError, KeyboardInterrupt):
-            break
+        action = {
+            "create": _create_backup,
+            "list": _list_backups,
+            "restore": _restore_backup,
+            "cleanup": _cleanup_backups,
+        }.get(choice)
+        if action is not None:
+            action()
+
+        prompts.pause("Press Enter to continue")
 
 
 def _create_backup() -> None:
@@ -614,16 +552,11 @@ def _restore_backup() -> None:
             console.print("[yellow]No backups to restore.[/]")
             return
 
-        from rich.prompt import Prompt as RPrompt
-
-        console.print("\n[bold]Available backups:[/]")
-        for i, b in enumerate(backups, 1):
-            console.print(f"  {i}. {b.id}  ({b.timestamp})")
-        idx = RPrompt.ask(
+        backup_id = prompts.select(
             "Select backup to restore",
-            choices=[str(i) for i in range(1, len(backups) + 1)],
+            [(b.id, f"{b.id}  ({b.timestamp})  —  {b.description}") for b in backups],
+            default=backups[0].id,
         )
-        backup_id = backups[int(idx) - 1].id
         if ConfigBackupManager.restore_backup(backup_id):
             console.print(f"[green]✓ Restored from: {backup_id}[/]")
         else:
@@ -634,27 +567,14 @@ def _restore_backup() -> None:
 
 def _cleanup_backups() -> None:
     """Clean up old backups."""
-    import shutil
-    from datetime import datetime, timedelta
-
-    from rich.prompt import IntPrompt
-
+    from opencontext_core import prompts
     from opencontext_core.state import ConfigBackupManager
 
-    days = IntPrompt.ask("Keep backups newer than (days)", default=30)
-    backups = ConfigBackupManager.list_backups()
-    cutoff = datetime.now() - timedelta(days=days)
-    removed = 0
-    for b in backups:
-        try:
-            ts = datetime.strptime(b.timestamp, "%Y%m%dT%H%M%S")
-            if ts < cutoff:
-                backup_dir = ConfigBackupManager.BACKUP_DIR / b.id
-                if backup_dir.exists():
-                    shutil.rmtree(backup_dir)
-                removed += 1
-        except (ValueError, OSError):
-            continue
+    try:
+        days = int(prompts.text("Keep backups newer than (days)", default="30"))
+    except (TypeError, ValueError):
+        days = 30
+    removed, _ = ConfigBackupManager.cleanup(days)
     console.print(f"[green]✓ Removed {removed} backup(s) older than {days} days[/]")
 
 
@@ -662,7 +582,9 @@ def _run_uninstall() -> None:
     """Managed uninstall — removes project files AND global config."""
     _action_header("Uninstall OpenContext")
 
-    if not Confirm.ask("Remove all OpenContext configuration (project + global)?", default=False):
+    if not prompts.confirm(
+        "Remove all OpenContext configuration (project + global)?", default=False
+    ):
         console.print("[yellow]Uninstall cancelled.[/]")
         return
 
@@ -687,10 +609,14 @@ def _run_uninstall() -> None:
     global_items: list[Any] = []
     with console.status("[cyan]Removing global installation state...[/]", spinner="dots"):
         try:
-            from opencontext_core.install_manager import InstallationManager
+            from opencontext_core.configurator import KNOWN_AGENTS, Configurator
 
-            result = InstallationManager().uninstall(keep_backups=False, yes=True)
-            global_items = result.get("removed", [])
+            # Surgically strip our managed block + MCP entry from each agent's
+            # config — never unlink the whole CLAUDE.md / mcp.json, which would
+            # wipe user-authored content and any other MCP server they configured.
+            report = Configurator().deconfigure(list(KNOWN_AGENTS), scope="global")
+            for result in report.get("results", []):
+                global_items.extend(result.get("files", []))
             global_ok = True
         except Exception as exc:
             global_ok = False
@@ -703,9 +629,12 @@ def _run_uninstall() -> None:
         console.print("[green]✓ Global installation state removed[/]")
 
     import shutil
-    from pathlib import Path
 
-    config_dir = Path.home() / ".config" / "opencontext"
+    from opencontext_core.user_prefs import UserConfigStore
+
+    # Canonical config dir (honors XDG_CONFIG_HOME / %APPDATA%), not a hardcode —
+    # otherwise an XDG/Windows install leaves the real config dir behind.
+    config_dir = UserConfigStore.CONFIG_DIR
     if config_dir.exists():
         shutil.rmtree(config_dir, ignore_errors=True)
         console.print(f"[green]✓ Config directory removed: {config_dir}[/]")

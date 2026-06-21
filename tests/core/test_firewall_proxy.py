@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from opencontext_core.context.budgeting import estimate_tokens as _estimate_tokens
 from opencontext_core.safety.proxy import (
     AuditEntry,
     ContextFirewall,
     ProxyAction,
     ProxyPolicy,
     SimpleProxyServer,
-    _estimate_tokens,
     _generate_trace_id,
     _scan_pii_simple,
     _scan_prompt_injection_simple,
@@ -134,7 +134,7 @@ class TestContextFirewall:
     def test_stats(self) -> None:
         fw = ContextFirewall()
         fw.scan_context("clean", provider="a")
-        fw.scan_context("sk-secret", provider="b")
+        fw.scan_context("sk-abc123def456ghi789jklmno", provider="b")
         fw.scan_context("email@test.com", provider="a")
         stats = fw.get_stats()
         assert stats["total_requests"] == 3
@@ -198,7 +198,7 @@ class TestHelpers:
     """Helper function tests."""
 
     def test_estimate_tokens(self) -> None:
-        assert _estimate_tokens("hello world") == 2  # 11/4 = 2
+        assert _estimate_tokens("hello world") == 3  # ceil(11/4) = 3
         assert _estimate_tokens("x" * 100) == 25
 
     def test_trace_id(self) -> None:
@@ -219,3 +219,23 @@ class TestHelpers:
         assert d["action_on_pii"] == "redact"
         assert d["action_on_secrets"] == "block"
         assert "redact_placeholder" in d
+
+
+class TestRedactPolicies:
+    def test_secret_redact_policy_is_honored(self) -> None:
+        # action_on_secrets=REDACT must actually redact the secret, not log it raw.
+        fw = ContextFirewall(ProxyPolicy(action_on_secrets=ProxyAction.REDACT))
+        secret = "sk-abc123def456ghi789jklmno"
+        decision = fw.scan_context(f"key {secret} here", provider="openai")
+        assert decision.action == ProxyAction.REDACT
+        assert decision.redacted_text is not None
+        assert secret not in decision.redacted_text
+
+
+def test_basic_pii_scanner_gates_card_numbers_with_luhn() -> None:
+    from opencontext_core.safety.pii import BasicPiiScanner
+
+    scanner = BasicPiiScanner()
+    # A Luhn-valid card number is flagged; a long non-card digit run is not.
+    assert any(f.kind == "credit_card_like" for f in scanner.scan("pay 4111 1111 1111 1111"))
+    assert not any(f.kind == "credit_card_like" for f in scanner.scan("build 20240101120000"))
