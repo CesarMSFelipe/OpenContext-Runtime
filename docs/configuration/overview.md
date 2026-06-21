@@ -23,8 +23,8 @@ Quick commands:
 
 ```bash
 opencontext config show              # View current config
-opencontext config set token_budget 15000   # Set a value
-opencontext config get token_budget         # Get a value
+opencontext config set default_token_budget 15000   # Set a value
+opencontext config get default_token_budget         # Get a value
 opencontext config reconfigure security     # Reconfigure one section
 ```
 

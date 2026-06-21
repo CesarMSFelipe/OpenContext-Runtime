@@ -30,16 +30,12 @@ There are two independent axes (both fall back to `default` = the client's model
 ## Purpose
 ModelRoleRouter maps classifier, retriever, compressor, generator, critic, and verifier roles to provider/model aliases.
 
-## Current Status
-Implemented as local deterministic scaffolds; provider-specific cache and cost integrations are future adapters outside core.
-
 ## Related Commands
 ```bash
-opencontext cache plan --query "review auth"
-opencontext cache warm --workflow code-review
-opencontext report cost
-opencontext harness run --workflow explore-only --task "security audit"
+opencontext models set-persona architect opus   # per-persona (SDD phases)
+opencontext models set-role generate sonnet      # per-role (functional ops)
+opencontext models set-default sonnet
+opencontext models show
 ```
 
-## Implemented Code
-- `packages/opencontext_core/opencontext_core/operating_model/performance.py`
+See [Performance](index.md) for shared status and implementation.

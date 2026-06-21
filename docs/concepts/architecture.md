@@ -14,13 +14,11 @@ not belong in core.
 
 ## Related Commands
 ```bash
-opencontext index .
-opencontext inspect repomap
-opencontext pack . --query "review auth"
-opencontext doctor tokens
+opencontext doctor runtime
+opencontext doctor deep
 ```
 
 ## Implemented Code
-- `packages/opencontext_core/opencontext_core/context/`
-- `packages/opencontext_core/opencontext_core/indexing/`
-- `packages/opencontext_core/opencontext_core/memory_usability/`
+- `packages/opencontext_core/opencontext_core/` (domain logic and deterministic local runtime)
+- `packages/opencontext_core/opencontext_core/adapters/` (provider-neutral interfaces)
+- `packages/{opencontext_api,opencontext_cli,opencontext_providers,opencontext_profiles}/` (adapters above core)

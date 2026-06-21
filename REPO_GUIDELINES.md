@@ -14,8 +14,9 @@ independent from FastAPI, CLI frameworks, provider SDKs, and storage-specific
 assumptions. `packages/opencontext_api` may depend on core and exposes thin
 FastAPI endpoints. `packages/opencontext_cli` may depend on core and provides
 command-line entry points. Cache, safety, tools, and evaluation modules are core
-interfaces only unless explicitly implemented. Tests live in `tests/core`; docs
-and architecture notes live under `docs/`.
+interfaces only unless explicitly implemented. Tests live under `tests/` (core
+domain in `tests/core`; `tests/{api,cli,harness,configurator,onboarding,agents,behavioral,smoke}`
+cover their respective layers); docs and architecture notes live under `docs/`.
 
 ## Build, Test, and Development Commands
 Install for local development with:

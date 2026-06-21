@@ -28,6 +28,7 @@ opencontext pack . --query "How does auth work?" --copy
 | Preset | Description | Agents |
 |--------|-------------|--------|
 | `context-first` | KG + retrieval + git. No agents. Offline. | No |
+| `context-essential` | Just the basics — KG and git integration. | No |
 | `full` | KG, learning, governance, MCP, plugins. | Yes |
 | `enterprise` | Governance, audit, team policies. | No |
 | `air-gapped` | Completely offline. | No |

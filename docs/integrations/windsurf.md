@@ -1,8 +1,8 @@
 # Windsurf
 
 ## Purpose
-Windsurf uses workflows for task automation. OpenContext generates
-a workflow file with plan/code mode instructions.
+Windsurf reads project rules from `.windsurf/rules/`. OpenContext generates
+a rules file with plan/code mode instructions.
 
 ## Setup
 
@@ -11,7 +11,9 @@ opencontext install
 opencontext agent init --target windsurf
 ```
 
-This creates `~/.windsurf/workflows/opencontext.md`.
+This creates project-local `.windsurf/rules/opencontext.md`.
+
+Run `opencontext setup windsurf` to write Windsurf's MCP config (`mcpServers`).
 
 ## Available Commands
 

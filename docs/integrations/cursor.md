@@ -11,7 +11,7 @@ opencontext onboard
 opencontext agent init --target cursor
 ```
 
-This creates `~/.cursor/rules/opencontext.mdc`.
+This creates the project-local `.cursor/rules/opencontext.mdc`.
 
 ## Available Commands (via Terminal)
 
@@ -38,8 +38,9 @@ opencontext config reconfigure plugins
 
 ## MCP Tools
 
-Cursor supports MCP via its config. Run `opencontext onboard . --setup-mcp`
-to configure, then use the 14 MCP tools directly.
+Cursor supports MCP via its config. Run `opencontext setup cursor` to write
+`~/.cursor/mcp.json` (plus project `AGENTS.md` and `.cursorignore`), then use
+the 14 MCP tools directly. (`--setup-mcp` on `onboard` is OpenCode-specific.)
 
 ## Related Commands
 

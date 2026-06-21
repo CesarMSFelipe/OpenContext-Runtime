@@ -57,7 +57,7 @@ navigation layer.
 - [Workflows](workflows/overview.md)
 - [Quality](quality/context-quality-evaluation.md)
 - [Performance](performance/context-layers.md)
-- [Operations](operations/run-receipts.md)
+- [Operations](operations/ai-team-operating-model.md)
 
 ## Configuration
 
@@ -89,7 +89,7 @@ navigation layer.
 - [Secure tracing](security/secure-tracing.md)
 - [Prompt/context SBOM](security/prompt-context-sbom.md)
 - [Release artifact audit](security/release-artifact-audit.md)
-- [Air-gapped mode](security/air-gapped-mode.md)
+- [Air-gapped mode](enterprise/air-gapped.md)
 
 ## Integrations
 

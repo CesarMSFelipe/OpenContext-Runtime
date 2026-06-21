@@ -72,12 +72,11 @@ opencontext memory gc                   # prune stale records
 ## CLI
 
 ```bash
-opencontext memory search --query "auth middleware failures"
-opencontext memory search --query "..." --layer failure
+opencontext memory search "auth middleware failures"
 opencontext memory harvest
 opencontext memory gc --dry-run
 opencontext memory list
-opencontext memory facts
+opencontext memory show <id>
 ```
 
 ## Storage
