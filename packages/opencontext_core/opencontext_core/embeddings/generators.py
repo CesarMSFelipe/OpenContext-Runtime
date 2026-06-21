@@ -13,7 +13,7 @@ from opencontext_core.embeddings.protocols import EmbeddingGenerator
 class DeterministicEmbeddingGenerator(EmbeddingGenerator):
     """Deterministic embedding generator using seeded random from text hash.
 
-    Produces consistent vectors without external API calls.uitable for
+    Produces consistent vectors without external API calls. Suitable for
     development, testing, and air-gapped deployments.
 
     The vector is derived from SHA256 hash of the text, expanded to the
@@ -28,8 +28,7 @@ class DeterministicEmbeddingGenerator(EmbeddingGenerator):
         """Generate deterministic embeddings for texts."""
         import asyncio
 
-        # Simulate some async I/O delay for realistic batching behavior
-        await asyncio.sleep(0)  # yield to event loop
+        await asyncio.sleep(0)  # yield to event loop so concurrent embeds interleave
 
         vectors = []
         for text in texts:
@@ -73,6 +72,72 @@ def deterministic_rng(seed: int) -> Any:
     return next_float
 
 
+class OllamaEmbeddingGenerator(EmbeddingGenerator):
+    """Real local embeddings via a co-resident Ollama daemon (no external API).
+
+    Calls ``POST {host}/api/embeddings`` once per text with the configured model
+    (e.g. ``nomic-embed-text``). The host defaults to ``$OLLAMA_HOST`` or
+    ``http://localhost:11434``. ``dimensions()`` reflects the model's real vector
+    width once the first embedding is seen, falling back to the configured value.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        *,
+        dimensions: int = 768,
+        host: str | None = None,
+        timeout: float = 8.0,
+    ) -> None:
+        import os
+
+        self._model = model
+        self._dimensions = dimensions
+        self._host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
+        self._timeout = timeout
+        self._unreachable = False  # negative-cache: stop retrying once the daemon is down
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        import asyncio
+
+        return [await asyncio.to_thread(self._embed_one, text) for text in texts]
+
+    def _embed_one(self, text: str) -> list[float]:
+        import json
+        import urllib.error
+        import urllib.request
+
+        # Once the daemon is confirmed down, skip the network round-trip entirely so
+        # retrieval/indexing degrade gracefully instead of paying one timeout per
+        # text when running without local models.
+        if self._unreachable:
+            return []
+
+        payload = json.dumps({"model": self._model, "prompt": text}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self._host}/api/embeddings",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                vector = json.loads(resp.read()).get("embedding") or []
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError):
+            # Ollama unreachable/slow/garbage: fail fast and let callers treat this
+            # as "no semantic vector" (planner skips, worker stores nothing).
+            self._unreachable = True
+            return []
+        if vector:
+            self._dimensions = len(vector)
+        return [float(v) for v in vector]
+
+    def dimensions(self) -> int:
+        return self._dimensions
+
+    def model_name(self) -> str:
+        return f"ollama-{self._model}"
+
+
 class MockEmbeddingGenerator(EmbeddingGenerator):
     """Mock generator that returns zero vectors (for unit tests)."""
 
@@ -99,6 +164,9 @@ def create_generator(config: OpenContextConfig) -> EmbeddingGenerator:
         return DeterministicEmbeddingGenerator(dimensions=dimensions)
     elif provider == "mock":
         return MockEmbeddingGenerator(dimensions=dimensions)
+    elif provider == "ollama":
+        model = getattr(config.embedding, "model", "nomic-embed-text")
+        return OllamaEmbeddingGenerator(model=model, dimensions=dimensions)
     else:
         # External providers require adapter packages outside core.
         raise ValueError(

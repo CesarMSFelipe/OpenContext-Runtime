@@ -1,11 +1,11 @@
 # Specification-Driven Development (SDD) Workflow
 
-SDD is OpenContext's default workflow for non-trivial changes. Eight phases. Full traceability. Quality gates at every step. Works offline with any agent.
+SDD is OpenContext's default workflow for non-trivial changes. Nine phases. Full traceability. Quality gates at every step. Works offline with any agent.
 
 ## Overview
 
 ```
-explore → propose → spec → design → tasks → apply → verify → archive
+explore → propose → spec → design → tasks → apply → verify → review → archive
 ```
 
 The harness runner executes phases in sequence (or in parallel where dependencies allow), persists artifacts, evaluates gates, and builds memory from outcomes. The agent does the work; the harness ensures nothing ships without passing verification.
@@ -43,7 +43,7 @@ opencontext harness run --workflow sdd --task "Add OAuth2 login"
 opencontext harness run --workflow sdd --task "..." --json    # CI-friendly
 ```
 
-## The Eight Phases
+## The Nine Phases
 
 ### explore
 
@@ -113,6 +113,14 @@ opencontext harness run --workflow sdd --task "..." --json    # CI-friendly
 **Outputs:** `verify-report.json`  
 **Gates:** All 15 (see [Quality Gates](../quality/quality-gates.md))
 
+### review
+
+**What happens:**
+- Aggregate all run artifacts, ledgers, and gate outcomes into a human- and machine-readable review of what was produced
+
+**Outputs:** `review.json`  
+**Gates:** `review_artifact_created`
+
 ### archive
 
 **What happens:**
@@ -132,8 +140,8 @@ opencontext harness run --workflow sdd --task "..." --json    # CI-friendly
 |-------|--------|-------------|---------|
 | `quick` | explore → apply → verify | Tier-based | Simple fixes, renames, trivial changes |
 | `standard` | explore → spec+design → apply → verify | Tier-based | Features, refactors |
-| `full` | All 8 phases | Tier-based | Architecture, security, migrations |
-| `autonomous` | All 8, no prompts | Tier-based | CI/CD, scripts |
+| `full` | All 9 phases | Tier-based | Architecture, security, migrations |
+| `autonomous` | All 9, no prompts | Tier-based | CI/CD, scripts |
 
 ## Risk Tiers
 
@@ -188,7 +196,8 @@ explore
                  └─ tasks
                       └─ apply
                            └─ verify
-                                └─ archive
+                                └─ review
+                                     └─ archive
 ```
 
 spec and design run in parallel (both depend only on propose).
@@ -206,6 +215,7 @@ All artifacts written to `.opencontext/runs/<run_id>/`:
 | `tasks.yaml` | Ordered implementation checklist |
 | `apply-manifest.json` | What changed |
 | `verify-report.json` | Tests, mutation score, all 15 gate results |
+| `review.json` | Aggregated artifacts, ledgers, and gate outcomes |
 | `memory-harvest.json` | Memory records created at archive |
 | `run.json` | Run metadata, phase summaries, final status |
 
@@ -220,7 +230,8 @@ PHASE_DEPENDENCIES = {
     "tasks": ["spec", "design"],
     "apply": ["tasks"],
     "verify": ["apply"],
-    "archive": ["verify"],
+    "review": ["verify"],
+    "archive": ["review"],
 }
 ```
 

@@ -6,6 +6,11 @@ propose -> spec -> design -> tasks -> apply -> verify -> archive
 
 from __future__ import annotations
 
+import json
+import logging
+from datetime import UTC, datetime
+from pathlib import Path
+
 from opencontext_core.agents.artifact_store import (
     ArtifactStore,
     EngramStore,
@@ -23,6 +28,8 @@ from opencontext_core.config import (
     ArtifactStoreMode,
     SDDConfig,
 )
+
+_log = logging.getLogger(__name__)
 
 PHASE_ORDER = [
     "explore",
@@ -60,11 +67,15 @@ WORKFLOW_TRACKS: dict[str, dict[str, object]] = {
         },
     },
     "standard": {
-        "phases": ["explore", "spec", "design", "apply", "verify"],
+        # propose is required: SpecPhase/DesignPhase read proposal.json, which only
+        # ProposePhase writes. Omitting it made spec+design fail their preconditions
+        # (and never reach the executor, so per-phase model routing never fired).
+        "phases": ["explore", "propose", "spec", "design", "apply", "verify"],
         "deps": {
             "explore": [],
-            "spec": ["explore"],
-            "design": ["explore"],
+            "propose": ["explore"],
+            "spec": ["propose"],
+            "design": ["propose"],
             "apply": ["spec", "design"],
             "verify": ["apply"],
         },
@@ -226,6 +237,8 @@ class SDDOrchestrator:
         self.state.mark_completed(phase)
         self.state.mark_artifact_saved(phase)
 
+        self._write_checkpoint(self.state.change, phase, content, artifact_ref)
+
         return PhaseResult(
             status="success",
             executive_summary=f"Phase '{phase}' completed for '{self.state.change}'.",
@@ -307,3 +320,30 @@ class SDDOrchestrator:
             return False
 
         return all(self.state.is_phase_completed(phase) for phase in self._get_track_phases())
+
+    def _write_checkpoint(self, change: str, phase: str, content: str, artifact_ref: str) -> None:
+        """Persist a phase checkpoint JSON under .opencontext/sdd/checkpoints/."""
+        try:
+            openspec_root = Path(self.config.artifact_store.openspec.path)
+            # .opencontext sits next to the openspec root (e.g. openspec/../.opencontext)
+            checkpoint_dir = (
+                openspec_root / ".." / ".opencontext" / "sdd" / "checkpoints" / change
+            ).resolve()
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
+            checkpoint_path = checkpoint_dir / f"{phase}_{ts}.json"
+            checkpoint_path.write_text(
+                json.dumps(
+                    {
+                        "change": change,
+                        "phase": phase,
+                        "timestamp": ts,
+                        "artifact_ref": artifact_ref,
+                        "content_length": len(content),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            _log.warning("SDD checkpoint write failed (phase=%s): %s", phase, exc)

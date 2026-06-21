@@ -7,7 +7,7 @@ The harness is OpenContext's execution backbone. Every agent action, phase trans
 The harness wraps every phase of the SDD workflow with:
 
 - **Token budget enforcement** — each phase has a hard cap; overage warns or fails
-- **Quality gates** — 15 gates evaluated at verify (tests, lint, security, secrets, omissions...)
+- **Quality gates** — quality gates (15) evaluated across phases (tests, lint, security, secrets, omissions...)
 - **Artifact persistence** — every phase writes auditable YAML/JSON to `.opencontext/runs/`
 - **Memory integration** — ExplorePhase builds a ContextContract; ArchivePhase harvests memory
 - **Permission model** — writes require explicit approval; network calls are denied by default
@@ -28,10 +28,10 @@ Local agents run pure Python — no LLM, no API key. The `code-review` agent doe
 
 ## Phases
 
-Eight phases, each producing artifacts and passing through gates:
+Nine phases, each producing artifacts and passing through gates:
 
 ```
-explore → propose → spec → design → tasks → apply → verify → archive
+explore → propose → spec → design → tasks → apply → verify → review → archive
 ```
 
 | Phase | Key Actions | Artifacts |
@@ -43,6 +43,7 @@ explore → propose → spec → design → tasks → apply → verify → archi
 | tasks | Break into ordered implementation checklist | `tasks.yaml` |
 | apply | Execute changes with agent | `apply-manifest.json` |
 | verify | Tests + lint + type-check + mutation + 15 gates | `verify-report.json` |
+| review | Aggregate phase artifacts, ledgers, and gate outcomes | review.json |
 | archive | Harvest memory, link failure graph, finalize | `run.json`, memory records |
 
 ## ContextContract
@@ -70,19 +71,18 @@ Risk tiers map to token budgets:
 - `precise` → 16,000 tokens (features, refactors)
 - `critical` → 28,000 tokens (security, migrations, breaking changes)
 
-## Quality Gates (15)
+## Quality Gates
 
-All gates run at verify. Status: `passed` / `warning` / `failed`.
+Gates run at the phase they apply to — e.g. project-index-exists/context-pack-created at explore, trace-id/omissions at propose, approval/failing-test at apply, security-scan at verify, review-artifact at review, artifact-persisted at archive; token-budget runs at every phase. Status: `passed` / `warning` / `failed`.
 
 | Gate | What it checks |
 |------|---------------|
 | `project-index-exists` | Knowledge graph indexed |
 | `context-pack-created` | Context delivered to agent |
 | `token-budget` | Pack within tier budget |
-| `run-tests` | Test suite passes |
-| `lint` | Zero lint errors |
-| `type-check` | Zero type errors |
-| `security-scan` | No secret patterns |
+| `trace-id-created` | Trace ID generated for the run |
+| `failing-test-exists` | A failing test exists before apply — Strict TDD |
+| `security-scan-passed` | No secret patterns |
 | `no-secret-leakage` | Context pack clean |
 | `included-sources-present` | Required symbols in pack |
 | `omissions-recorded` | Omissions documented |
@@ -90,7 +90,10 @@ All gates run at verify. Status: `passed` / `warning` / `failed`.
 | `approval-required-for-writes` | Writes confirmed |
 | `no-high-risk-exports` | No confidential data to external providers |
 | `review-artifact-created` | Review trail exists |
+| `review-warnings` | Warnings surfaced at review |
 | `artifact-persisted` | Artifacts saved to disk |
+
+Note: `run-tests`, `lint`, and `type-check` are ContextContract `must_verify` items per risk tier (contract.py TIER_GATES), not harness PhaseGates.
 
 ## Budget Modes
 
@@ -107,7 +110,7 @@ opencontext harness run --workflow sdd --task "..." --budget-mode strict
 ## Invoking the Harness
 
 ```bash
-# Full 8-phase workflow
+# Full 9-phase workflow
 opencontext harness run --workflow sdd --task "Add rate limiting"
 
 # Via the interactive loop
@@ -129,9 +132,10 @@ run.json              # Run metadata and summary
 contract.yaml         # ContextContract from explore
 proposal.json         # Change proposal
 apply-manifest.json   # What was changed and why
-verify-report.json    # Tests, mutation score, gate results
+verify-report.json    # Test results and summary
 review.json           # Aggregated phase data
-memory-harvest.json   # Memory records created at archive
+gates.json            # Per-phase gate results (incl. mutation-tests when enabled)
+memory_delta.json     # Memory records created at archive
 ```
 
 ## Permission Model

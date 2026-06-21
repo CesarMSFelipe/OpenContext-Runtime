@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from collections import defaultdict
 from collections.abc import Sequence
@@ -15,6 +16,7 @@ from opencontext_core.context.planning.expansion import ContextItem as Expansion
 from opencontext_core.context.planning.expansion import ProgressiveExpander
 from opencontext_core.graph.unified import UnifiedGraph
 from opencontext_core.indexing.context_builder import ContextBuilder, ContextNode
+from opencontext_core.memory.fusion import reciprocal_rank_fusion
 from opencontext_core.models.context import ContextItem, ContextPriority
 from opencontext_core.models.project import ProjectManifest
 from opencontext_core.retrieval.contracts import (
@@ -34,6 +36,8 @@ from opencontext_core.retrieval.scoring import (
     personalized_pagerank,
 )
 from opencontext_core.safety.redaction import SinkGuard
+
+_log = logging.getLogger(__name__)
 
 
 class RetrievalSource(Protocol):
@@ -67,20 +71,18 @@ def _rrf_fuse(
     *,
     k: int = 60,
 ) -> list[ContextItem]:
-    """Reciprocal Rank Fusion across N ranked lists.
+    """Reciprocal Rank Fusion across N ranked lists using shared fusion.reciprocal_rank_fusion.
 
-    RRF(d) = sum_r( 1 / (k + rank_r(d)) ) — higher is better.
-    Items not present in a list get no contribution from that list.
-    Preserves the highest score seen across sources on the merged item.
+    Preserves the highest-scoring ContextItem copy seen across sources.
     """
-    scores: dict[str, float] = {}
     best_items: dict[str, ContextItem] = {}
     for ranked in ranked_lists:
-        for rank, item in enumerate(ranked, start=1):
-            scores[item.id] = scores.get(item.id, 0.0) + 1.0 / (k + rank)
+        for item in ranked:
             if item.id not in best_items or item.score > best_items[item.id].score:
                 best_items[item.id] = item
-    return sorted(best_items.values(), key=lambda i: -scores[i.id])
+    id_lists = [[item.id for item in ranked] for ranked in ranked_lists]
+    ranked_ids = reciprocal_rank_fusion(id_lists, k=k)
+    return [best_items[id_] for id_ in ranked_ids if id_ in best_items]
 
 
 class FTSRetrievalSource:
@@ -102,9 +104,12 @@ class FTSRetrievalSource:
         db.close()
         items: list[ContextItem] = []
         for rank_idx, row in enumerate(rows):
-            # FTS5 rank is negative (lower = better); normalize to [0,1]
-            raw_rank = row.get("rank") or -(rank_idx + 1)
-            score = max(0.01, 1.0 / (1.0 - raw_rank))  # monotonic, bounded
+            # search_fts returns rows best-first (ORDER BY bm25 rank). Score by
+            # position so the best lexical hit gets the highest score. The raw bm25
+            # value is unnormalized across queries and the previous 1/(1-rank) formula
+            # was monotonic in the WRONG direction (least-relevant scored highest).
+            score = 1.0 / (1.0 + rank_idx)
+            raw_rank = row.get("rank")  # kept for provenance only, not for scoring
             file_path = row.get("file_path", "")
             symbol_path = f"{file_path}:{row.get('line', 0)}"
             snippet = f"{row.get('kind', '')} {row['name']} in {symbol_path}"
@@ -202,18 +207,18 @@ class VectorRetrievalSource:
         return [_vector_result_to_item(result, query) for result in results]
 
     def _result_in_project(self, result: Any) -> bool:
-        """Best-effort check that a search result belongs to this project."""
+        """Check that a search result belongs to this project.
 
-        getter = getattr(self._store, "get", None)
-        if getter is None:
-            return True
-        try:
-            record = getter(result.item_id)
-        except Exception:
-            return True
-        if record is None:
-            return True
-        return getattr(record, "project_name", self._project_name) == self._project_name
+        The store carries the item's ``project_name`` in the result metadata, so we
+        read it directly instead of a get()-by-id round-trip (search returns the
+        source id, the store is keyed by the storage id — the lookup always missed
+        and silently let every project through).
+        """
+        meta = getattr(result, "metadata", None) or {}
+        project = meta.get("project_name") if isinstance(meta, dict) else None
+        if project is None:
+            return True  # unknown provenance — don't drop (back-compat)
+        return bool(project == self._project_name)
 
 
 class RetrievalPlanner:
@@ -286,9 +291,10 @@ class RetrievalPlanner:
                 results = source.retrieve(query, top_k)
                 if results:
                     per_source.append(results)
-            except Exception:
+            except Exception as exc:
                 if source.name == ManifestRetrievalSource.name:
                     raise
+                _log.warning("retrieval source %r failed: %s", source.name, exc)
                 self.omissions.append(f"{source.name}_unavailable")
                 continue
 
@@ -354,7 +360,46 @@ class RetrievalPlanner:
                 personalization_map=personalization,
             )
 
-        return sorted(items, key=lambda item: (-_score(item), item.tokens, item.id))
+        # Persist the hybrid score onto each item so it survives into evidence
+        # confidence and the final pack ordering. Without this the hybrid signal
+        # (graph centrality, PPR, memory, freshness) would shape only this local
+        # sort and then be discarded downstream by a weaker lexical re-ranker.
+        scored = [(item, _score(item)) for item in items]
+        scored.sort(key=lambda pair: (-pair[1], pair[0].tokens, pair[0].id))
+        return [item.model_copy(update={"score": score}) for item, score in scored]
+
+    def _memory_boost_map(self, items: list[ContextItem], query: str) -> dict[str, float]:
+        """Boost candidates that recent FAILURE memory flagged as missing context.
+
+        compute_hybrid_score weights a ``recent_failure`` signal off this map, but
+        plan() never built it — so the "boost code that recently failed" promise
+        contributed 0 in prod. A FAILURE record's linked_nodes are the symbols or
+        files a past run lacked; when a current candidate matches one, lift it by
+        that record's confidence. Keyed to candidate ids so the lookup actually
+        lands. Degrades to an empty map (no boost) on any error or no store.
+        """
+
+        store = self._memory_store
+        if store is None or not items:
+            return {}
+        try:
+            from opencontext_core.models.agent_memory import MemoryLayer
+
+            records = store.search(query, scope=MemoryLayer.FAILURE, limit=25)
+        except Exception:
+            return {}
+        flagged: dict[str, float] = {}
+        for record in records:
+            for node in getattr(record, "linked_nodes", []) or []:
+                flagged[node] = max(flagged.get(node, 0.0), record.confidence)
+        if not flagged:
+            return {}
+        boost: dict[str, float] = {}
+        for item in items:
+            signal = max(flagged.get(item.id, 0.0), flagged.get(item.source, 0.0))
+            if signal > 0.0:
+                boost[item.id] = signal
+        return boost
 
     def plan(self, request: EvidenceRequest, top_k: int) -> EvidencePlan:
         """Return a traceable evidence plan for a converged retrieval request.
@@ -376,9 +421,10 @@ class RetrievalPlanner:
             for source in self.sources:
                 try:
                     base_items.extend(source.retrieve(request.query, top_k))
-                except Exception:
+                except Exception as exc:
                     if source.name == ManifestRetrievalSource.name:
                         raise
+                    _log.warning("retrieval source %r failed: %s", source.name, exc)
                     self.omissions.append(f"{source.name}_unavailable")
                     continue
             base_items = _deduplicate(base_items)
@@ -387,6 +433,7 @@ class RetrievalPlanner:
         all_items = _deduplicate([*base_items, *expanded_items])
         ranked = self.rank(
             all_items,
+            memory_boost_map=self._memory_boost_map(all_items, request.query) or None,
             graph_distance_map=graph_distance_map or None,
             query=request.query,
             focus_files=_git_focus_files(request.root),
@@ -470,8 +517,9 @@ class RetrievalPlanner:
                 seen_ids.add(exp_item.id)
                 new_items.append(neighbor)
             return new_items, graph_distance_map
-        except Exception:
+        except Exception as exc:
             # Expansion is best-effort; never break the base retrieval contract.
+            _log.warning("graph expansion failed: %s", exc)
             self.omissions.append("graph_expansion_unavailable")
             return [], {}
         finally:
@@ -549,7 +597,8 @@ def _git_focus_files(root: Path | None) -> frozenset[str]:
         for diff in GitContextProvider(root).get_recent_changes(days=7):
             files.update(diff.files_changed)
         return frozenset(files)
-    except Exception:
+    except Exception as exc:
+        _log.debug("git recent-changes lookup failed: %s", exc)
         return frozenset()
 
 
@@ -935,13 +984,14 @@ def _embed_query(generator: Any, query: str) -> list[float]:
     try:
         vectors = asyncio.run(generator.embed([query]))
     except RuntimeError:
-        # Already inside a running loop: use a dedicated loop instead.
-        loop = asyncio.new_event_loop()
-        try:
-            vectors = loop.run_until_complete(generator.embed([query]))
-        finally:
-            loop.close()
-    except Exception:
+        # Already inside a running loop on this thread — you can't nest loops, so
+        # run the coroutine on a dedicated worker thread with its own loop.
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            vectors = pool.submit(lambda: asyncio.run(generator.embed([query]))).result()
+    except Exception as exc:
+        _log.debug("query embedding failed: %s", exc)
         return []
     return list(vectors[0]) if vectors else []
 
@@ -990,6 +1040,7 @@ def _build_vector_source(
 
         generator = create_generator(config)
         store = LocalVectorStore(storage_path)
-    except Exception:
+    except Exception as exc:
+        _log.debug("vector retrieval source unavailable: %s", exc)
         return None
     return VectorRetrievalSource(store, generator, project_name=project_name)

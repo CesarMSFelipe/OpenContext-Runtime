@@ -19,6 +19,6 @@ opencontext doctor tokens
 ```
 
 ## Implemented Code
-- `packages/opencontext_core/opencontext_core/context/`
-- `packages/opencontext_core/opencontext_core/indexing/`
-- `packages/opencontext_core/opencontext_core/memory_usability/`
+- `packages/opencontext_profiles/opencontext_profiles/` (registry.py, markers.py, standards.py)
+- `packages/opencontext_core/opencontext_core/project/profiles.py` (profile interface)
+- `configs/` (per-stack YAMLs: opencontext.drupal.yaml, opencontext.symfony.yaml, opencontext.python.yaml, opencontext.node.yaml)

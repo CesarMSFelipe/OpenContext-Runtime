@@ -3,9 +3,7 @@
 ## Purpose
 Measure raw repository tokens, repo map tokens, context pack tokens, output mode, markdown vs compact serialization, memory injected/omitted tokens, compression savings, and quality risk.
 
-| Scenario | Raw Tokens | Final Input Tokens | Output Budget | Format | Memory Tokens | Savings % | Quality Risk |
-|---|---:|---:|---:|---|---:|---:|---|
-| Local proof | TBD | TBD | concise | markdown/toon | TBD | TBD | reported |
+Run the commands below on your own project to produce real numbers — there is no canned benchmark.
 
 ## Current Status
 Implemented through token reports, context pack token accounting, trace token estimates, output
@@ -19,6 +17,8 @@ opencontext inspect repomap --format toon
 opencontext pack . --query "review auth" --format compact_table
 opencontext cache plan --query "review auth"
 opencontext ask "Summarize project" --output-mode technical_terse
+opencontext telemetry show
+opencontext demo --query "review auth"
 ```
 
 ## Implemented Code

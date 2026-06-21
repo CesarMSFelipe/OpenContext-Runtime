@@ -218,13 +218,44 @@ def _print_run_summary(result) -> None:
         ):
             print(f"\n  ⚠  {w}")
 
+    # Be honest about whether the loop actually wrote source. In-process apply
+    # only runs when an executor produced concrete edits; otherwise the loop plans
+    # and the host agent performs the edits. Don't let "Loop complete" read as
+    # "code written" when it wasn't.
+    apply_note = _apply_outcome(artifacts)
+    if apply_note is not None:
+        print(f"\n  {apply_note}")
+
     print(f"\n  Status: {status_str}  |  {len(artifacts)} artifact(s)  |  {len(gates)} gate(s)")
 
 
+def _apply_outcome(artifacts: list) -> str | None:
+    """Report whether the apply phase wrote real source, read from its manifest."""
+    import json
+
+    for artifact in artifacts:
+        path = str(getattr(artifact, "path", ""))
+        if not path.endswith("apply-manifest.json"):
+            continue
+        try:
+            manifest = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        changes = manifest.get("changes", [])
+        if manifest.get("status") == "applied" and changes:
+            return f"✓ Apply wrote {len(changes)} file(s)."
+        return "note: Apply was planned-only — no source written (the host agent performs edits)."
+    return None
+
+
 def _ask_continue(phase: str) -> bool:
-    """Prompt user for continuation. Returns True to continue."""
+    """Prompt user for continuation with a Yes/No selector. Returns True to continue."""
+    # Checkpoints are a safety gate: never auto-continue on a non-interactive run.
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
     try:
-        ans = input(f"  Continue past {phase}? [Y/n] ").strip().lower()
-        return ans in ("", "y", "yes")
+        from opencontext_core import prompts
+
+        return prompts.confirm(f"Continue past {phase}?", default=True)
     except (EOFError, KeyboardInterrupt):
         return False

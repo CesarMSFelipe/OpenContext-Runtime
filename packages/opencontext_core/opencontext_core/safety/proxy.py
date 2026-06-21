@@ -17,6 +17,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from opencontext_core.context.budgeting import estimate_tokens
+
 logger = logging.getLogger(__name__)
 
 
@@ -173,7 +175,7 @@ def _scan_pii_simple(text: str) -> list[dict[str, Any]]:
 
 # Secrets detection
 _SECRETS_RE = [
-    (re.compile(r"\b(?:sk|pk|sk-[a-zA-Z0-9]{20,})\b"), "api_key.openai"),
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "api_key.openai"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "aws_access_key"),
     (re.compile(r"-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "private_key"),
     (re.compile(r"\bghp_[a-zA-Z0-9]{36}\b"), "github_token"),
@@ -256,11 +258,6 @@ def _scan_prompt_injection_simple(text: str) -> list[dict[str, Any]]:
 # ── Context Firewall ────────────────────────────────────────────────────────
 
 
-def _estimate_tokens(text: str) -> int:
-    """Rough token estimate: ~4 chars per token."""
-    return len(text) // 4
-
-
 def _generate_trace_id() -> str:
     """Generate a short trace/request ID."""
     import uuid
@@ -293,7 +290,7 @@ class ContextFirewall:
         start = time.monotonic()
         trace_id = _generate_trace_id()
         all_findings: list[dict[str, Any]] = []
-        ctx_tokens = _estimate_tokens(text)
+        ctx_tokens = estimate_tokens(text)
 
         # 1. Provider check
         provider_ok = self._check_provider(provider)
@@ -335,9 +332,12 @@ class ContextFirewall:
         all_findings.extend(secret_findings)
         all_findings.extend(injection_findings)
 
-        # 4. Determine action
+        # 4. Determine action: any BLOCK policy with findings blocks; otherwise
+        # collect every finding whose policy is REDACT and redact their union (so a
+        # REDACT policy on secrets/injection is honored, not silently dropped).
         action = ProxyAction.ALLOW
         reason_parts: list[str] = []
+        redact_findings: list[dict[str, Any]] = []
 
         if injection_findings and self.policy.action_on_injection == ProxyAction.BLOCK:
             action = ProxyAction.BLOCK
@@ -345,21 +345,24 @@ class ContextFirewall:
         elif secret_findings and self.policy.action_on_secrets == ProxyAction.BLOCK:
             action = ProxyAction.BLOCK
             reason_parts.append(f"Secrets detected ({len(secret_findings)} matches)")
-        elif pii_findings and self.policy.action_on_pii == ProxyAction.REDACT:
-            action = ProxyAction.REDACT
-            reason_parts.append(f"PII detected ({len(pii_findings)} items, will redact)")
-        elif all_findings:
-            action = ProxyAction.LOG_ONLY
-            reason_parts.append(f"{len(all_findings)} finding(s) found, logging only")
+        else:
+            if pii_findings and self.policy.action_on_pii == ProxyAction.REDACT:
+                redact_findings.extend(pii_findings)
+            if secret_findings and self.policy.action_on_secrets == ProxyAction.REDACT:
+                redact_findings.extend(secret_findings)
+            if injection_findings and self.policy.action_on_injection == ProxyAction.REDACT:
+                redact_findings.extend(injection_findings)
+            if redact_findings:
+                action = ProxyAction.REDACT
+                reason_parts.append(f"{len(redact_findings)} item(s) redacted")
+            elif all_findings:
+                action = ProxyAction.LOG_ONLY
+                reason_parts.append(f"{len(all_findings)} finding(s) found, logging only")
 
-        # 5. Redact if needed
+        # 5. Redact the union of all REDACT-policy findings (not just PII).
         redacted = None
-        if action == ProxyAction.REDACT or (
-            action == ProxyAction.ALLOW
-            and pii_findings
-            and self.policy.action_on_pii == ProxyAction.REDACT
-        ):
-            redacted = self._redact_text(text, pii_findings)
+        if action == ProxyAction.REDACT and redact_findings:
+            redacted = self._redact_text(text, redact_findings)
 
         # 6. Create audit entry
         duration = (time.monotonic() - start) * 1000
@@ -369,10 +372,7 @@ class ContextFirewall:
             provider=provider or "unknown",
             model=model or "unknown",
             action=action,
-            findings=[
-                {k: f["value"] if k == "value" else f[k] for k in ("kind", "severity", "value")}
-                for f in all_findings[:20]
-            ],
+            findings=[{k: f[k] for k in ("kind", "severity", "value")} for f in all_findings[:20]],
             context_size_tokens=ctx_tokens,
             duration_ms=round(duration, 1),
             policy_snapshot=self.policy.to_dict(),
@@ -559,7 +559,13 @@ class SimpleProxyServer:
                         200,
                         {
                             "action": decision.action.value,
-                            "text": decision.redacted_text or text,
+                            # Never echo the raw payload on BLOCK — that would re-emit
+                            # the secret the firewall just refused to let through.
+                            "text": (
+                                ""
+                                if decision.action == ProxyAction.BLOCK
+                                else (decision.redacted_text or text)
+                            ),
                             "findings": [
                                 {"kind": f["kind"], "severity": f["severity"]}
                                 for f in decision.findings[:10]

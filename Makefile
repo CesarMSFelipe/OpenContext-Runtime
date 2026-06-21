@@ -1,7 +1,7 @@
 # OpenContext Runtime Makefile
 # Common development tasks
 
-.PHONY: help install dev test lint format type-check clean docs e2e validate binary ci ci-clean
+.PHONY: help install dev test lint format type-check clean docs e2e validate binary ci ci-check ci-clean
 
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
@@ -20,11 +20,12 @@ help:
 	@echo "  make type-check Run type checker"
 	@echo "  make validate   Run all validation (test + lint + type-check)"
 	@echo "  make docs       Build documentation"
-	@echo "  make e2e        Run end-to-end tests"
+	@echo "  make e2e        Run CI checks (end-to-end)"
 	@echo "  make binary     Build single-file dist/opencontext.pyz"
 	@echo "  make clean      Clean build artifacts"
 	@echo "  make ci         Reproduce the GitHub test pipeline EXACTLY (pinned, fresh venv)"
 	@echo "  make ci-check   Run CI checks"
+	@echo "  make ci-clean   Remove the CI venv"
 
 install:
 	$(PIP) install -e packages/opencontext_core -e packages/opencontext_cli
@@ -54,7 +55,7 @@ docs:
 	@echo "Read docs/README.md for navigation"
 
 e2e:
-	bash scripts/e2e-validate.sh
+	opencontext ci-check run
 
 binary:
 	$(PYTHON) scripts/build_binary.py

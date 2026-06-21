@@ -102,6 +102,11 @@ class SQLiteMemoryBackend:
 
     def __init__(self, db_path: Path | str) -> None:
         self._path = str(db_path)
+        # Be self-contained: sqlite won't create missing parent directories (it
+        # raises "unable to open database file"). The runtime usually pre-creates
+        # the storage path, but the public factory must not depend on that.
+        if self._path != ":memory:":
+            Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     @contextmanager
@@ -321,6 +326,19 @@ class SQLiteMemoryBackend:
                 "SELECT DISTINCT key FROM memory_records WHERE invalid_at IS NULL ORDER BY key"
             ).fetchall()
         return [row["key"] for row in rows]
+
+    def list_records(self, *, limit: int = 200) -> list[MemoryRecord]:
+        """All active (not-yet-superseded) records, most-recent first.
+
+        Backs `memory list` so the CLI shows the canonical SQLite store directly.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memory_records WHERE invalid_at IS NULL "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [_row_to_record(row) for row in rows]
 
     def get(self, record_id: str) -> MemoryRecord | None:
         """Fetch a single record by id, or None."""

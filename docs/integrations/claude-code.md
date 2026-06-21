@@ -7,14 +7,17 @@ Keep `CLAUDE.md` concise and let OpenContext produce task-specific packs.
 ## Setup
 
 ```bash
-opencontext onboard
-opencontext agent init --target claude-code
+opencontext setup claude-code
 ```
 
 This creates:
-- `~/.claude/mcp.json` — MCP server for 8 KG tools
+- `~/.claude/mcp.json` — MCP server config
 - `~/.claude/CLAUDE.md` — Instructions with all CLI commands
 - `~/.claude/settings.json` — Pre-approved MCP tools
+- project-local `.claude/commands/` and `.claude/agents/` — slash commands + SDD agent profiles
+
+Use `--scope global` to write the `~/.claude` files to your home dir; default scope is local.
+`opencontext agent init --target claude-code` only writes a project-root `CLAUDE.md` — it does not wire MCP/settings.
 
 ## Available Commands (via bash)
 
@@ -40,7 +43,7 @@ opencontext config reconfigure plugins
 opencontext config backup
 ```
 
-## MCP Tools (direct)
+## MCP Tools (all 14)
 
 | Tool | Purpose |
 |------|---------|
@@ -51,6 +54,12 @@ opencontext config backup
 | `opencontext_node` | Get symbol details |
 | `opencontext_files` | Browse indexed files |
 | `opencontext_status` | Check KG health |
+| `opencontext_trace` | Find the shortest path between two symbols in the call graph |
+| `opencontext_replace_symbol_body` | Replace a named symbol's definition span with new source |
+| `opencontext_insert_before_symbol` | Insert source immediately before a named symbol |
+| `opencontext_insert_after_symbol` | Insert source immediately after a named symbol |
+| `opencontext_rename_symbol` | Rename a symbol at its definition and call-graph references |
+| `opencontext_run` | Drive the SDD agentic loop in-process using the host's selected model |
 
 ## Related Commands
 

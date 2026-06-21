@@ -83,9 +83,6 @@ opencontext doctor
 ### Search Your Codebase
 
 ```bash
-# Semantic search
-opencontext semantic "user authentication"
-
 # Knowledge graph search
 opencontext knowledge-graph search "authenticate"
 
@@ -98,9 +95,6 @@ opencontext knowledge-graph callers "login_user" --depth 2
 ```bash
 # What would break if I change this?
 opencontext knowledge-graph impact "UserService" --radius 3
-
-# Find affected tests
-opencontext affected src/auth.py
 ```
 
 ### Build Context for AI Agents
@@ -110,7 +104,7 @@ opencontext affected src/auth.py
 opencontext pack . --query "Review the authentication module" --mode review
 
 # For implementation
-opencontext pack . --query "Implement OAuth2 login" --mode implement_pack
+opencontext pack . --query "Implement OAuth2 login" --mode implement-pack
 
 # Copy to clipboard (if available)
 opencontext pack . --query "Explain caching" --copy
@@ -129,13 +123,25 @@ opencontext install
 ### Install for Specific Agents
 
 ```bash
-opencontext install --target claude,cursor,opencode
+# Configure one or more agents (positional ids, or --all)
+opencontext setup claude-code cursor opencode
+opencontext setup --all
+
+# Or scaffold per-agent files individually
+opencontext agent init --target claude-code
+opencontext agent init --target cursor
+opencontext agent init --target opencode
 ```
+
+The agent id is `claude-code`, not `claude`. Valid ids include: generic,
+codex, opencode, claude-code, cursor, windsurf, kilo-code, openclaw,
+gemini-cli, vscode-copilot, antigravity, kimi-code, kiro-ide, qwen-code, pi,
+aider, cline, roo, goose, copilot-cli, kiro, continue, openhands.
 
 ### MCP Server (for Claude Code, Cursor, etc.)
 
 ```bash
-opencontext serve --mcp
+opencontext mcp
 ```
 
 This starts an MCP server that exposes knowledge graph tools to your agent.
@@ -144,7 +150,7 @@ This starts an MCP server that exposes knowledge graph tools to your agent.
 
 After installation, your agent will have configuration files pointing to OpenContext:
 
-- **Claude Code**: `~/.config/claude/CLAUDE.md`
+- **Claude Code**: `CLAUDE.md` (project root)
 - **Cursor**: `.cursor/rules/opencontext.mdc`
 - **OpenCode**: `AGENTS.md`
 - **Windsurf**: `.windsurf/rules/opencontext.md`
@@ -156,10 +162,10 @@ After installation, your agent will have configuration files pointing to OpenCon
 Create `.opencontexthints` to guide AI agents with project-specific conventions:
 
 ```bash
-opencontext agent init --target generic
+opencontext hints init
 ```
 
-Edit the generated `AGENTS.md` to add your conventions:
+Edit the generated `.opencontexthints` to add your conventions:
 
 ```
 project: My Project
@@ -214,19 +220,20 @@ opencontext harness list
 ### Graph Visualization
 
 ```bash
-opencontext visualize --output repo-graph.svg --format svg
+opencontext knowledge-graph view --format mermaid --output repo-graph.md
 ```
 
 ### Performance Metrics
 
 ```bash
-opencontext metrics summary
+opencontext telemetry show
 ```
 
 ### Interactive TUI
 
 ```bash
-opencontext tui
+# Launch the interactive menu (run with no subcommand; requires a terminal)
+opencontext
 ```
 
 ## Configuration File Reference
@@ -299,7 +306,6 @@ opencontext install
 opencontext index .
 
 # Search
-opencontext semantic "auth flow"
 opencontext knowledge-graph search "login"
 
 # Context
@@ -307,7 +313,6 @@ opencontext pack . --query "Review auth" --mode review
 
 # Impact
 opencontext knowledge-graph impact "UserService"
-opencontext affected src/auth.py
 
 # Agents
 opencontext agent init --target claude-code

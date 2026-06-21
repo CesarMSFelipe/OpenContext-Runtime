@@ -11,15 +11,23 @@ from opencontext_cli.commands import persona_cmd
 from opencontext_core.configurator.service import Configurator
 from opencontext_core.personas import PERSONAS, get_persona
 
-_EXPECTED = {"oc-orchestrator", "oc-professor", "oc-reviewer"}
+_EXPECTED = {
+    "oc-orchestrator",
+    "oc-explorer",
+    "oc-architect",
+    "oc-builder",
+    "oc-professor",
+    "oc-reviewer",
+    "oc-tester",
+}
 
 
-def test_three_distinct_personas() -> None:
+def test_distinct_personas() -> None:
     ids = {p.id for p in PERSONAS}
     assert ids == _EXPECTED
     # Distinct prompts, each grounded in OpenContext tools.
     prompts = [p.system_prompt for p in PERSONAS]
-    assert len({*prompts}) == 3
+    assert len({*prompts}) == len(_EXPECTED)
     assert all("opencontext_" in p.system_prompt for p in PERSONAS)
 
 

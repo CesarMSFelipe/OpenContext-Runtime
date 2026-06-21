@@ -21,8 +21,11 @@ class OnboardingOptions:
     security_mode: str = "private_project"
     active_clients: list[str] = field(default_factory=lambda: ["opencode"])
     tdd_mode: str = "ask"
-    sdd_model_profile: str = "hybrid"
+    # 'default' = the client's selected model for every phase (no surprise model
+    # picks); presets (cheap/hybrid/premium) route per phase, tunable per persona.
+    sdd_model_profile: str = "default"
     orchestrator_profile: str = "multi-phase"
+    memory_provider: str = "local"
     setup_mcp: bool = False
     force_agent_files: bool = False
     token_budget_per_phase: int | None = None
@@ -67,10 +70,6 @@ class OnboardingService:
 
     def run(self, options: OnboardingOptions) -> OnboardingResult:
         """Execute the full onboarding pipeline."""
-        from opencontext_core.adapters.agent_manifest import (
-            AgentIntegrationGenerator,
-            AgentTarget,
-        )
         from opencontext_core.config import SecurityMode, default_config_data
         from opencontext_core.sdd_runtime import write_sdd_context
         from opencontext_core.user_prefs import UserConfigStore, mark_setup_complete
@@ -114,8 +113,21 @@ class OnboardingService:
                     semantic = cache.get("semantic")
                     if isinstance(semantic, dict):
                         semantic["enabled"] = False
+            # Memory backend: the wizard's explicit choice. Air-gapped forces local
+            # (no external coupling); otherwise honor the selected provider.
+            memory = config_data.get("memory")
+            if isinstance(memory, dict):
+                if options.template in ("air-gapped", "air_gapped"):
+                    memory["provider"] = "local"
+                else:
+                    memory["provider"] = options.memory_provider
             config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
         result.config_path = str(config_path)
+
+        # 2b. Keep the local index/memory out of git. This was setup-only, so a
+        # project onboarded via `opencontext install` could commit its binary
+        # graph. Managed block, best-effort — never fail onboarding over it.
+        self._write_gitignore_storage_block(root)
 
         # 3. Save user preferences
         store = UserConfigStore()
@@ -135,6 +147,11 @@ class OnboardingService:
         for known_agent in list(prefs.agent_integrations):
             prefs.agent_integrations[known_agent] = known_agent in options.active_clients
         store.save(prefs)
+        # Bridge runtime-affecting prefs into opencontext.yaml — the runtime reads
+        # provider/model/security from yaml, not from the prefs store.
+        from opencontext_core.config_sync import sync_runtime_prefs_to_yaml
+
+        sync_runtime_prefs_to_yaml(prefs, root=root, overwrite=False)
 
         # 4. Index project
         try:
@@ -166,17 +183,30 @@ class OnboardingService:
             if f.name == "context.json":
                 result.sdd_context_path = str(f)
 
-        # 6. Generate agent instruction files
-        generator = AgentIntegrationGenerator()
+        # 6. Configure agent files through the single Configurator engine.
+        # Unlike the old whole-file generator, this MERGES a managed block into
+        # existing AGENTS.md/CLAUDE.md (no silent skip when the file exists) and
+        # is reversed exactly by `opencontext uninstall`. The project instructions
+        # carry the per-client orchestrator profile.
+        from opencontext_core.adapters.agent_manifest import (
+            _base_rules,
+            _orchestrator_section,
+        )
+        from opencontext_core.configurator import KNOWN_AGENTS, Configurator
+
+        def _instructions(client: str) -> str:
+            return _base_rules() + _orchestrator_section(client)
+
         for client in options.active_clients:
-            try:
-                files = generator.generate(
-                    root, target=AgentTarget(client), force=options.force_agent_files
-                )
-                for gf in files:
-                    result.generated_agent_files.append(f"{gf.target.value}: {gf.path}")
-            except ValueError:
+            if client not in KNOWN_AGENTS:
                 result.warnings.append(f"Unknown agent target: {client}")
+        known_clients = [c for c in options.active_clients if c in KNOWN_AGENTS]
+        if known_clients:
+            configurator = Configurator(root, instructions_builder=_instructions)
+            report = configurator.configure(known_clients, scope="local")
+            for entry in report.get("results", []):
+                for path in entry.get("files", []):
+                    result.generated_agent_files.append(f"{entry['agent']}: {path}")
 
         # 7. Generate .opencontext/agents/<client>.md contract files
         agents_dir = root / ".opencontext" / "agents"
@@ -230,6 +260,26 @@ class OnboardingService:
         report = installer.install(targets=targets, location="global", yes=True)
         configured = [r for r in report.get("results", []) if r.get("status") == "configured"]
         return bool(configured)
+
+    @staticmethod
+    def _write_gitignore_storage_block(root: Path) -> None:
+        """Add a managed .gitignore block so the local index/memory stays out of git.
+
+        Shareable config (opencontext.yaml, AGENTS.md) stays committed; the binary
+        graph and memory under .storage/ / .opencontext/ do not. Best-effort.
+        """
+        try:
+            from opencontext_core.configurator.filemerge import (
+                inject_managed_lines,
+                write_text_atomic,
+            )
+
+            path = root / ".gitignore"
+            existing = path.read_text(encoding="utf-8") if path.exists() else ""
+            merged = inject_managed_lines(existing, "storage", [".storage/", ".opencontext/"])
+            write_text_atomic(path, merged)
+        except Exception:
+            return
 
     def _agent_contract_md(self, client: str, options: OnboardingOptions) -> str:
         """Generate .opencontext/agents/<client>.md contract file."""

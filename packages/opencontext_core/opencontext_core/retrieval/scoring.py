@@ -109,7 +109,9 @@ def _compute_freshness(modified_at: str | None) -> float:
         dt = datetime.fromisoformat(modified_at)
         now = datetime.now(tz=dt.tzinfo) if dt.tzinfo is not None else datetime.now()
         days = (now - dt).days
-        return max(0.5, 1.0 - days * 0.01)
+        # Clamp to [0.5, 1.0]: a future-dated mtime (clock skew) yields negative
+        # days and would otherwise produce a >1.0 freshness that dominates ranking.
+        return max(0.5, min(1.0, 1.0 - days * 0.01))
     except (ValueError, TypeError):
         return 0.7
 

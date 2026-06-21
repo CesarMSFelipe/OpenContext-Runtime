@@ -7,7 +7,7 @@ tools, no MCP, and no file-writing agent behavior.
 ## 1. Install
 
 ```bash
-pipx install opencontext-runtime
+pip install opencontext-cli
 ```
 
 For local repository development:

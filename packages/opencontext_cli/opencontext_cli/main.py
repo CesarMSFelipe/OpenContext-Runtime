@@ -25,6 +25,7 @@ from opencontext_cli.commands.git_cmd import add_git_parser, handle_git
 from opencontext_cli.commands.hints_cmd import add_hints_parser, handle_hints
 from opencontext_cli.commands.kg_cmd import add_kg_parser, handle_kg
 from opencontext_cli.commands.loop_cmd import add_loop_commands, handle_loop
+from opencontext_cli.commands.models_cmd import add_models_parser, handle_models
 from opencontext_cli.commands.mutation_cmd import add_mutation_commands, handle_mutation
 from opencontext_cli.commands.persona_cmd import add_persona_parser, handle_persona
 from opencontext_cli.commands.plugin_cmd import add_plugin_parser, handle_plugin
@@ -282,9 +283,9 @@ def _check_first_run(command: str) -> None:
     fr_console.print(banner)
 
     try:
-        from rich.prompt import Confirm as RichConfirm
+        from opencontext_core import prompts
 
-        run_wizard = RichConfirm.ask("\nRun the setup wizard?", default=True)
+        run_wizard = prompts.confirm("Run the setup wizard?", default=True)
     except Exception:
         run_wizard = False
 
@@ -463,8 +464,8 @@ def _build_parser() -> argparse.ArgumentParser:
     onboard_parser.add_argument(
         "--sdd-profile",
         choices=["default", "cheap", "hybrid", "premium"],
-        default="hybrid",
-        help="SDD model profile (which models to use per phase).",
+        default="default",
+        help="SDD model profile (which models to use per phase; default = your client's model).",
     )
     onboard_parser.add_argument(
         "--orchestrator-profile",
@@ -498,6 +499,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Output results as JSON (CI-friendly).",
+    )
+    doctor_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero if any check fails (CI gate).",
     )
     clean_parser = subparsers.add_parser("clean", help="Remove OpenContext data from project.")
     clean_parser.add_argument("root", nargs="?", default=".", help="Project root.")
@@ -702,6 +708,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_uninstall_parser(subparsers)
     add_stack_parser(subparsers)
     add_profile_parser(subparsers)
+    add_models_parser(subparsers)
     add_persona_parser(subparsers)
     add_sync_parser(subparsers)
     # ── Health & Updates ──────────────────────────────────────────────
@@ -955,7 +962,9 @@ def _build_parser() -> argparse.ArgumentParser:
     for report_command in ("weekly", "cost", "security", "quality"):
         report_sub.add_parser(report_command)
 
-    memory_parser = subparsers.add_parser("memory", help="Progressive memory commands.")
+    memory_parser = subparsers.add_parser(
+        "memory", help="Progressive memory commands.", formatter_class=_PublicHelpFormatter
+    )
     memory_sub = memory_parser.add_subparsers(dest="memory_command", required=True)
     memory_sub.add_parser("init", help="Create context repository layout.")
     memory_sub.add_parser("list", help="List local memory.")
@@ -965,8 +974,11 @@ def _build_parser() -> argparse.ArgumentParser:
     memory_expand.add_argument("memory_id")
     memory_show = memory_sub.add_parser("show", help="Show a memory item by id.")
     memory_show.add_argument("memory_id")
-    for pin_command in ("pin", "unpin"):
-        pin_parser = memory_sub.add_parser(pin_command)
+    for pin_command, pin_help in (
+        ("pin", "Pin a memory so it is never auto-pruned."),
+        ("unpin", "Remove a pin, letting the memory age out normally."),
+    ):
+        pin_parser = memory_sub.add_parser(pin_command, help=pin_help)
         pin_parser.add_argument("memory_id")
     memory_harvest = memory_sub.add_parser("collect", help="Collect memory candidates from traces.")
     memory_harvest.add_argument("--from-trace", default="last")
@@ -979,13 +991,13 @@ def _build_parser() -> argparse.ArgumentParser:
     memory_harvest_alias = memory_sub.add_parser("harvest", help=argparse.SUPPRESS)
     memory_harvest_alias.add_argument("--from-trace", default="last")
     memory_harvest_alias.add_argument("--yes", action="store_true")
-    memory_promote = memory_sub.add_parser("promote")
+    memory_promote = memory_sub.add_parser("promote", help="Promote a memory to a higher tier.")
     memory_promote.add_argument("memory_id")
     memory_promote.add_argument("--to", default="system")
-    memory_demote = memory_sub.add_parser("demote")
+    memory_demote = memory_sub.add_parser("demote", help="Demote a memory to a lower tier.")
     memory_demote.add_argument("memory_id")
     memory_demote.add_argument("--to", default="archive")
-    memory_sub.add_parser("prune")
+    memory_sub.add_parser("prune", help="Remove archived and expired memories.")
     memory_gc = memory_sub.add_parser("gc", help="Garbage-collect expired and superseded memories.")
     memory_gc.add_argument(
         "--dry-run", action="store_true", help="Show what would be pruned without deleting."
@@ -1007,12 +1019,10 @@ def _build_parser() -> argparse.ArgumentParser:
     memory_review.add_argument(
         "--content", help="The corrected memory content (required with --supersede)."
     )
-    memory_sub.add_parser("facts")
-    memory_timeline = memory_sub.add_parser("timeline")
-    memory_timeline.add_argument("query")
-    memory_supersede = memory_sub.add_parser("supersede")
-    memory_supersede.add_argument("fact_id")
-    memory_supersede.add_argument("--by", required=True)
+    memory_sub.add_parser(
+        "doctor",
+        help="Diagnose memory system health: backends, store size, conflict count.",
+    )
     memory_export = memory_sub.add_parser(
         "export", help="Export memory to a shareable JSON file (commit it for the team)."
     )
@@ -1024,7 +1034,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     memory_import.add_argument("path", help="Path to an exported memory JSON file.")
 
-    # Status command
     status_parser = subparsers.add_parser("status", help="Show project status.")
     status_parser.add_argument("root", nargs="?", default=".", help="Project root.")
 
@@ -1153,7 +1162,7 @@ def _dispatch(args: argparse.Namespace) -> None:
             getattr(args, "setup_mcp", False),
             agent=getattr(args, "agent", None),
             tdd=getattr(args, "tdd", "ask"),
-            sdd_profile=getattr(args, "sdd_profile", "hybrid"),
+            sdd_profile=getattr(args, "sdd_profile", "default"),
             orchestrator_profile=getattr(args, "orchestrator_profile", "multi-phase"),
             token_budget_per_phase=getattr(args, "token_budget_per_phase", None),
             force_agent_files=getattr(args, "force_agent_files", False),
@@ -1299,6 +1308,8 @@ def _dispatch(args: argparse.Namespace) -> None:
         return
     if command == "profile":
         sys.exit(handle_profile(args))
+    if command == "models":
+        sys.exit(handle_models(args))
     if command == "persona":
         sys.exit(handle_persona(args))
     if command == "stack":
@@ -1368,8 +1379,13 @@ def _dispatch(args: argparse.Namespace) -> None:
             _pack_diff(args.base, args.head)
             return
         pack_root = Path(args.root)
-        if args.root != "." and pack_root.exists():
-            runtime.index_project(pack_root)
+        if pack_root.exists():
+            # Always index an explicit path; for `.` index only when there is no
+            # manifest yet, so a fresh checkout yields a real pack instead of an
+            # empty one (without re-indexing an already-indexed project).
+            manifest = pack_root / ".storage" / "opencontext" / "project_manifest.json"
+            if args.root != "." or not manifest.exists():
+                runtime.index_project(pack_root)
         _pack(
             runtime,
             args.query or ("Explain this project" if pack_root.exists() else args.root),
@@ -1411,7 +1427,13 @@ def _dispatch(args: argparse.Namespace) -> None:
                 getattr(args, "min_token_reduction", 0.5),
             )
     elif command == "doctor":
-        _doctor(runtime, args.scope, args.suggest_ignore, getattr(args, "json", False))
+        _doctor(
+            runtime,
+            args.scope,
+            args.suggest_ignore,
+            getattr(args, "json", False),
+            strict=getattr(args, "strict", False),
+        )
     elif command == "clean":
         _clean(args.root, args.dry_run, args.force)
     elif command == "provider":
@@ -1509,10 +1531,32 @@ def _template_config(template: str) -> dict[str, Any]:
     return config_data
 
 
+# Agents that run as MCP hosts and support sampling — generation uses their own
+# model (no provider/API key needed on the OpenContext side).
+_SAMPLING_CLIENTS = {
+    "opencode",
+    "claude-code",
+    "codex",
+    "cursor",
+    "windsurf",
+    "vscode-copilot",
+    "gemini-cli",
+    "kilo-code",
+    "kiro-ide",
+    "kimi-code",
+    "qwen-code",
+    "cline",
+    "roo",
+    "zed",
+    "continue",
+}
+
+
 def _install_wizard(args: Any, console: Any) -> None:
     """Interactive wizard: language → editor → API key."""
     from rich.console import Console as _Console
-    from rich.prompt import Prompt
+
+    from opencontext_core import prompts
 
     _c = _Console()
     root = Path(getattr(args, "root", "."))
@@ -1521,11 +1565,10 @@ def _install_wizard(args: Any, console: Any) -> None:
     try:
         from opencontext_core.i18n import set_language, t
 
-        lang = Prompt.ask(
+        lang = prompts.select(
             t("onboarding.language_prompt"),
-            choices=["en", "es"],
+            [("en", "English (en)"), ("es", "Español (es)")],
             default="en",
-            console=_c,
         )
         set_language(lang)
         cfg_path = root / "opencontext.yaml"
@@ -1547,25 +1590,46 @@ def _install_wizard(args: Any, console: Any) -> None:
             return k  # type: ignore[misc]
 
     _c.print()
-    _c.print("[bold]Which AI coding editor do you use?[/bold]")
     _EDITORS = [
-        ("1", "claude-code", "Claude Code (Anthropic)"),
-        ("2", "cursor", "Cursor"),
-        ("3", "opencode", "OpenCode"),
-        ("4", "windsurf", "Windsurf"),
-        ("5", "codex", "Codex CLI (OpenAI)"),
-        ("6", "vscode-copilot", "VS Code + Copilot"),
-        ("7", "other", "Other / I'll configure later"),
+        ("claude-code", "Claude Code (Anthropic)"),
+        ("cursor", "Cursor"),
+        ("opencode", "OpenCode"),
+        ("windsurf", "Windsurf"),
+        ("codex", "Codex CLI (OpenAI)"),
+        ("vscode-copilot", "VS Code + Copilot"),
+        ("other", "Other / I'll configure later"),
     ]
-    for num, _, label in _EDITORS:
-        _c.print(f"  {num}. {label}")
-    choice = Prompt.ask("Choice", choices=[n for n, _, _ in _EDITORS], default="1", console=_c)
-    chosen_editor = next((eid for n, eid, _ in _EDITORS if n == choice), None)
+    chosen_editor = prompts.select(
+        "Which AI coding editor do you use?",
+        _EDITORS,
+        default="claude-code",
+    )
     if chosen_editor and chosen_editor != "other":
         try:
             import os
 
             os.environ["_OC_WIZARD_EDITOR"] = chosen_editor
+        except Exception:
+            pass
+
+    # Step 2b — model routing across SDD phases. 'default' = your client's model
+    # everywhere (no surprise model picks); presets route per phase/persona and
+    # can be tuned later with `opencontext models set-persona`.
+    chosen_profile = prompts.select(
+        "Model routing across SDD phases?",
+        [
+            ("default", "Default — your client's model for every phase"),
+            ("cheap", "Economy — cheap models to explore, strong for design"),
+            ("hybrid", "Balanced — mix of cheap and strong"),
+            ("premium", "Premium — strongest models everywhere"),
+        ],
+        default="default",
+    )
+    if chosen_profile:
+        try:
+            import os
+
+            os.environ["_OC_WIZARD_SDD_PROFILE"] = chosen_profile
         except Exception:
             pass
 
@@ -1579,19 +1643,18 @@ def _install_wizard(args: Any, console: Any) -> None:
             _c.print("[bold]No LLM provider detected.[/bold]")
             _c.print("Agentic phases (loop, spec, design) need a real LLM provider.")
             _PROVIDERS = [
-                ("1", "ANTHROPIC_API_KEY", "Anthropic (Claude)"),
-                ("2", "OPENAI_API_KEY", "OpenAI (GPT-4)"),
-                ("3", "OPENROUTER_API_KEY", "OpenRouter (multi-model)"),
-                ("4", "skip", "Skip — I'll configure later"),
+                ("ANTHROPIC_API_KEY", "Anthropic (Claude)"),
+                ("OPENAI_API_KEY", "OpenAI (GPT-4)"),
+                ("OPENROUTER_API_KEY", "OpenRouter (multi-model)"),
+                ("skip", "Skip — I'll configure later"),
             ]
-            for num, _, label in _PROVIDERS:
-                _c.print(f"  {num}. {label}")
-            pchoice = Prompt.ask(
-                "Provider", choices=[n for n, _, _ in _PROVIDERS], default="4", console=_c
+            pkey = prompts.select(
+                "Provider",
+                _PROVIDERS,
+                default="skip",
             )
-            pkey = next((env for n, env, _ in _PROVIDERS if n == pchoice), "skip")
             if pkey != "skip":
-                api_key = Prompt.ask(f"Paste your {pkey}", password=True, console=_c)
+                api_key = prompts.secret(f"Paste your {pkey}")
                 if api_key.strip():
                     import os
 
@@ -1645,9 +1708,9 @@ def _print_agent_instructions(agents: list, console: Any) -> None:
 
 def _install(args: argparse.Namespace) -> None:
     """Quick project setup wizard with auto-detection and step-by-step progress."""
-    from rich.prompt import Confirm
     from rich.status import Status
 
+    from opencontext_core import prompts
     from opencontext_core.dx.console_styles import console
 
     try:
@@ -1668,7 +1731,7 @@ def _install(args: argparse.Namespace) -> None:
 
     if already_setup and not args.yes:
         console.print("[dim]OpenContext already configured for this project.[/]")
-        proceed = Confirm.ask("Re-run setup?", default=False)
+        proceed = prompts.confirm("Re-run setup?", default=False)
         if not proceed:
             console.print("[green]Nothing to do. Your project is ready.[/]")
             console.print("  Run [cyan]opencontext pack . --query 'Explain this'[/] to start.")
@@ -1700,7 +1763,7 @@ def _install(args: argparse.Namespace) -> None:
     console.print("  Will configure:")
     console.print("    • Project index + knowledge graph")
     console.print(f"    • SDD/TDD (mode: {tdd})")
-    console.print("    • Agent integration (opencode)")
+    console.print("    • Agent integration (your installed agents)")
     console.print("    • Harness workflow")
     console.print()
 
@@ -1709,167 +1772,108 @@ def _install(args: argparse.Namespace) -> None:
         _install_wizard(args, console)
 
     if not args.yes:
-        proceed = Confirm.ask("Proceed with setup?", default=not already_setup)
+        proceed = prompts.confirm("Proceed with setup?", default=not already_setup)
         if not proceed:
             console.print("[yellow]Setup cancelled.[/]")
             return
 
-    # ── Step-by-step phases with Rich Status ──────────────────────────
-    steps = [
-        ("Creating workspace and config...", "workspace"),
-        ("Indexing project and building knowledge graph...", "index"),
-        ("Setting up SDD/TDD context...", "sdd"),
-        ("Configuring agent integrations...", "agents"),
-        ("Setting up harness workflow...", "harness"),
-        ("Verifying setup...", "verify"),
-    ]
+    # ── Run the canonical onboarding engine ───────────────────────────
+    # config + prefs + index + SDD context + agent files + harness are all done by
+    # OnboardingService.run() — the SAME engine init/onboard use, so the install
+    # flow can no longer drift from them. Install adds the project SDD skills, the
+    # once-per-machine global integration, and a verify pass on top.
+    from opencontext_core.agent_installer import AgentInstaller as _AgentInstaller
+    from opencontext_core.install_manager import InstallationManager, InstallState
+    from opencontext_core.onboarding.service import OnboardingOptions, OnboardingService
 
-    results: dict[str, str] = {}
+    # Honor the editor the wizard asked about. Previously hard-coded to "opencode",
+    # so a claude-code/codex dev got opencode files and no wiring for their own agent.
+    _chosen_editor = os.environ.get("_OC_WIZARD_EDITOR", "").strip()
+    _have_editor = bool(_chosen_editor) and _chosen_editor != "other"
+    if _have_editor:
+        active_clients = [_chosen_editor]
+    else:
+        # Non-interactive (--yes / non-TTY): wire the agents actually installed on
+        # this machine instead of a blanket 'opencode'. Fall back to opencode only
+        # when none are detected.
+        try:
+            _detected = _AgentInstaller(project_root=root).detect_installed_agents()
+            active_clients = [t.value for t in _detected if t.value != "generic"] or ["opencode"]
+        except Exception:
+            active_clients = ["opencode"]
 
-    for phase_label, phase_key in steps:
-        with Status(phase_label, console=console, spinner="dots") as status:  # type: ignore[arg-type]
-            try:
-                if phase_key == "workspace":
-                    from opencontext_core.user_prefs import UserConfigStore
-                    from opencontext_core.workspace.layout import ensure_workspace
+    summary: list[str] = []
+    # Default to the client's model everywhere ('default' profile); the wizard's
+    # preset choice (if any) overrides. No surprise model assignments out of the box.
+    _sdd_profile = os.environ.get("_OC_WIZARD_SDD_PROFILE", "").strip() or "default"
+    options = OnboardingOptions(
+        root=root,
+        template="generic",
+        security_mode="private_project",
+        tdd_mode=tdd,
+        active_clients=active_clients,
+        sdd_model_profile=_sdd_profile,
+        orchestrator_profile="opencontext",
+        token_budget_per_phase=3000,
+    )
+    _msg = "Setting up project (config, index, SDD, agents, harness)..."
+    with Status(_msg, console=console, spinner="dots"):  # type: ignore[arg-type]
+        try:
+            ob = OnboardingService().run(options)
+            summary.append(f"✓ Indexed {ob.indexed_files} files, {ob.indexed_symbols} symbols")
+            summary.append(f"✓ SDD/TDD context (TDD: {tdd})")
+            summary.append(f"✓ {len(ob.generated_agent_files)} agent file(s)")
+            summary.extend(f"⚠ {w}" for w in ob.warnings)
+        except Exception as exc:
+            console.print(f"  [red]✗ Setup failed: {exc}[/]")
+            return
 
-                    ensure_workspace(root)
-                    # Write the project config so the runtime, `status`, and the
-                    # provider tip all see a real opencontext.yaml (init/wizard do
-                    # this too; install must converge with them).
-                    config_path = root / "opencontext.yaml"
-                    if not config_path.exists():
-                        import yaml as _yaml
+    mgr = InstallationManager()
+    try:
+        mgr._install_skills(root)
+        summary.append("✓ SDD skill commands (oc-*)")
+    except Exception as exc:
+        summary.append(f"⚠ Skill install: {exc}")
 
-                        from opencontext_core.config import default_config_data
+    # Global agent integration (MCP) — once per machine.
+    if mgr._is_installed():
+        summary.append("✓ Global integration (already installed)")
+    else:
+        try:
+            installer = _AgentInstaller(project_root=root)
+            detected = installer.detect_installed_agents()
+            report = installer.install(targets=detected, location="global")
+            mgr._save_state(
+                InstallState(version=mgr.VERSION, components=["agents"], agents=list(detected))
+            )
+            n = report.get("agents_configured", 0)
+            summary.append(f"✓ Global integration ({n} agent(s))" if n else "✓ Global integration")
+        except Exception as exc:
+            summary.append(f"⚠ Global integration: {exc}")
 
-                        cfg_data = default_config_data()
-                        project = cfg_data.get("project")
-                        if isinstance(project, dict):
-                            project["name"] = root.resolve().name or project.get("name", "project")
-                        security = cfg_data.get("security")
-                        if isinstance(security, dict):
-                            security["mode"] = "private_project"
-                        config_path.write_text(
-                            _yaml.safe_dump(cfg_data, sort_keys=False), encoding="utf-8"
-                        )
-                    store = UserConfigStore()
-                    prefs = store.load()
-                    prefs.security_mode = "private_project"
-                    prefs.sdd.tdd_mode = tdd
-                    prefs.sdd.sdd_model_profile = "hybrid"
-                    prefs.sdd.orchestrator_profile = "opencontext"
-                    prefs.agents.active_clients = ["opencode"]
-                    prefs.agents.default_client = "opencode"
-                    prefs.setup_completed = True
-                    store.save(prefs)
-                    results[phase_key] = "✓"
+    try:
+        from opencontext_core.doctor.checks import run_doctor
+        from opencontext_core.runtime import OpenContextRuntime
 
-                elif phase_key == "index":
-                    from opencontext_core.runtime import OpenContextRuntime
-
-                    config_path = root / "opencontext.yaml"
-                    runtime = OpenContextRuntime(
-                        config_path=str(config_path) if config_path.exists() else None,
-                        storage_path=root / ".storage" / "opencontext",
-                    )
-                    manifest = runtime.index_project(root)
-                    results[phase_key] = (
-                        f"✓ ({len(manifest.files)} files, {len(manifest.symbols)} symbols)"
-                    )
-
-                elif phase_key == "sdd":
-                    from opencontext_core.sdd_runtime import write_sdd_context
-
-                    _context, files = write_sdd_context(
-                        root,
-                        token_budget_per_phase=3000,
-                        tdd_mode=tdd,
-                        active_clients=["opencode"],
-                        sdd_model_profile="hybrid",
-                        execution_mode="auto",
-                        artifact_mode="hybrid",
-                    )
-                    _context_path = next((str(f) for f in files if f.name == "context.json"), "")
-                    results[phase_key] = f"✓ (TDD: {tdd})"
-
-                elif phase_key == "agents":
-                    from opencontext_core.adapters.agent_manifest import (
-                        AgentIntegrationGenerator,
-                        AgentTarget,
-                    )
-                    from opencontext_core.agent_installer import AgentInstaller as _AgentInstaller
-
-                    # Project-level instruction files (AGENTS.md, opencode.json)
-                    generator = AgentIntegrationGenerator()
-                    agent_files = generator.generate(
-                        root, target=AgentTarget("opencode"), force=False
-                    )
-                    agents_dir = root / ".opencontext" / "agents"
-                    agents_dir.mkdir(parents=True, exist_ok=True)
-                    for client in ["opencode"]:
-                        agent_path = agents_dir / f"{client}.md"
-                        if not agent_path.exists():
-                            agent_path.write_text(
-                                _agent_contract_md(client, tdd, "hybrid", "opencontext"),
-                                encoding="utf-8",
-                            )
-
-                    # Global agent config (MCP registration, agent profiles)
-                    agent_installer = _AgentInstaller(project_root=root)
-                    detected = agent_installer.detect_installed_agents()  # type: ignore[assignment]
-                    global_report = agent_installer.install(targets=detected, location="global")  # type: ignore[arg-type]
-                    global_count = global_report.get("agents_configured", 0)
-
-                    summary = f"✓ ({len(agent_files)} files"
-                    if global_count:
-                        summary += f", {global_count} agent(s) globally configured"
-                    summary += ")"
-                    results[phase_key] = summary
-
-                elif phase_key == "harness":
-                    from opencontext_core.onboarding.service import (
-                        OnboardingOptions,
-                        OnboardingService,
-                    )
-
-                    service = OnboardingService()
-                    service._write_harness_yaml(
-                        root / ".opencontext" / "harness.yaml",
-                        OnboardingOptions(root=root),
-                        3000,
-                    )
-                    results[phase_key] = "✓"
-
-                elif phase_key == "verify":
-                    from opencontext_core.doctor.checks import run_doctor
-                    from opencontext_core.runtime import OpenContextRuntime
-
-                    rt = OpenContextRuntime(config_path=None)
-                    checks = run_doctor(rt.config)
-                    passed = sum(1 for c in checks if c.ok)
-                    total = len(checks)
-                    results[phase_key] = f"✓ ({passed}/{total} checks passed)"
-
-                status.update(phase_label)
-            except Exception as exc:
-                results[phase_key] = f"✗ ({exc})"
-                console.print(f"  [red]✗ {phase_label}: {exc}[/]")
+        rt = OpenContextRuntime(config_path=str(root / "opencontext.yaml"))
+        checks = run_doctor(rt.config)
+        passed = sum(1 for c in checks if c.ok)
+        summary.append(f"✓ Verify ({passed}/{len(checks)} checks passed)")
+    except Exception as exc:
+        summary.append(f"⚠ Verify: {exc}")
 
     # ── Summary ────────────────────────────────────────────────────────
     console.print()
     console.rule("[bold]Install Complete[/]", style="green")
-    for phase_label, phase_key in steps:
-        result = results.get(phase_key, "?")
-        if result.startswith("✓"):
-            console.print(f"  [green]{result}[/]  {phase_label}")
-        elif result.startswith("✗"):
-            console.print(f"  [red]{result}[/]  {phase_label}")
-        else:
-            console.print(f"  [yellow]?[/]  {phase_label}: {result}")
+    for line in summary:
+        console.print(f"  [{'green' if line.startswith('✓') else 'yellow'}]{line}[/]")
 
     console.print()
     console.print("[bold]Next steps:[/]")
+    console.print(
+        "  [yellow]↻ Restart your agent (Claude Code / Codex / OpenCode) so it loads "
+        "the OpenContext MCP server.[/]"
+    )
     console.print("  [cyan]opencontext harness run --workflow sdd --task 'Your task'[/]")
     console.print("  [cyan]opencontext config wizard[/]")
     console.print("  [cyan]opencontext pack . --query 'Explain this code' --copy[/]")
@@ -1880,57 +1884,25 @@ def _install(args: argparse.Namespace) -> None:
         _cfg = _yaml.safe_load((root / "opencontext.yaml").read_text(encoding="utf-8"))
         _provider = _cfg.get("models", {}).get("default", {}).get("provider", "mock")
         if str(_provider) == "mock":
-            console.print(
-                "[yellow]Tip:[/] Using mock provider. Run [cyan]opencontext config wizard[/] "
-                "to connect a real provider."
-            )
+            if set(active_clients) & _SAMPLING_CLIENTS:
+                _names = ", ".join(active_clients)
+                console.print(
+                    f"[green]Generation[/] runs on your agent's model ({_names}) via MCP "
+                    "sampling — no provider or API key needed. The 'mock' provider only "
+                    "affects the standalone [cyan]opencontext ask[/] CLI."
+                )
+                console.print(
+                    "  Pick a model per role: [cyan]opencontext models set-role generate opus[/]"
+                )
+            else:
+                console.print(
+                    "[yellow]Tip:[/] Using mock provider. Run [cyan]opencontext config wizard[/] "
+                    "to connect a real provider (only needed for the standalone CLI)."
+                )
             console.print()
     except Exception:
         pass
     console.print("[dim]For help: opencontext --help[/]")
-
-
-def _agent_contract_md(
-    client: str,
-    tdd_mode: str = "ask",
-    sdd_model_profile: str = "hybrid",
-    orchestrator_profile: str = "multi-phase",
-) -> str:
-    """Generate .opencontext/agents/<client>.md contract file."""
-    lines = [
-        f"# OpenContext Agent Contract: {client}",
-        "",
-        "## Before acting",
-        "1. Read `.opencontext/sdd/context.json`.",
-        '2. Build a context pack: `opencontext pack . --query "<task>" --max-tokens 3000'
-        " --mode plan`.",
-        "3. Preserve trace_id across all phases.",
-        "4. Do not dump the full repository.",
-        f"5. Respect TDD mode: `{tdd_mode}`.",
-        "6. Respect token budget per phase.",
-        "7. Write outputs to `.opencontext/runs/<run_id>/artifacts/`.",
-        "",
-        "## Orchestrator profile",
-        f"- Type: `{orchestrator_profile}`",
-        f"- SDD model profile: `{sdd_model_profile}`",
-        f"- Active clients: {client}",
-        "",
-        "## Allowed actions",
-        "- Read files needed for the current phase",
-        "- Use opencontext CLI for context packs, knowledge graph, and memory",
-        "- Write to `.opencontext/runs/<run_id>/` for artifacts",
-        "",
-        "## Forbidden actions",
-        "- Do not disable security redaction",
-        "- Do not enable external providers without policy approval",
-        "- Do not write to `.env`, `secrets/`, `vendor/`",
-        "",
-        "## Required output",
-        "- Every phase must produce a trace_id and artifact",
-        "- Archive phase must persist memory and graph deltas",
-        "",
-    ]
-    return "\n".join(lines)
 
 
 def _index(runtime: OpenContextRuntime, root: str, incremental: bool = False) -> None:
@@ -2059,7 +2031,7 @@ def _onboard(
     setup_mcp: bool = False,
     agent: str | None = None,
     tdd: str = "ask",
-    sdd_profile: str = "hybrid",
+    sdd_profile: str = "default",
     orchestrator_profile: str = "multi-phase",
     token_budget_per_phase: int | None = None,
     force_agent_files: bool = False,
@@ -2177,7 +2149,9 @@ def _instructions(action: str) -> None:
 def _clarify(idea: str, output: str | None) -> None:
     """Convert a vague idea into a structured SDD brief."""
     if not idea:
-        idea = input("Describe your idea or feature: ").strip()
+        from opencontext_core import prompts
+
+        idea = prompts.text("Describe your idea or feature").strip()
     if not idea:
         print("No idea provided.")
         return
@@ -2369,6 +2343,7 @@ def _doctor(
     scope: str,
     suggest_ignore: bool = False,
     json_output: bool = False,
+    strict: bool = False,
 ) -> None:
     from opencontext_core.dx.console_styles import console
 
@@ -2501,6 +2476,8 @@ def _doctor(
     else:
         console.print("")
         console.warning(f"{failed} check(s) failed. Review above.")
+        if strict:
+            sys.exit(1)
 
 
 def _clean(root: str, dry_run: bool, force: bool) -> None:
@@ -2535,12 +2512,9 @@ def _clean(root: str, dry_run: bool, force: bool) -> None:
 
     # confirm (unless --force)
     if not force:
-        try:
-            response = input("\nRemove all OpenContext data? [y/N]: ")
-        except (EOFError, KeyboardInterrupt):
-            print("\nAborted.")
-            return
-        if response.lower() not in ("y", "yes"):
+        from opencontext_core import prompts
+
+        if not prompts.confirm("Remove all OpenContext data?", default=False):
             print("Aborted.")
             return
 
@@ -3328,6 +3302,11 @@ def _preset(command: str, name: str | None, root: str = ".", dry_run: bool = Fal
         for preset in presets:
             table.add_row(preset.name, preset.description, preset.strategy)
         dx_console.print(table)
+        dx_console.print(
+            "[dim]These tune an existing config. Project scaffolding presets "
+            "(context-first, full, enterprise, …) live under "
+            "`opencontext setup --preset`.[/dim]"
+        )
         return
 
     if command == "apply":
@@ -3335,7 +3314,12 @@ def _preset(command: str, name: str | None, root: str = ".", dry_run: bool = Fal
             raise OpenContextError("preset name is required")
         resolved_preset = load_preset(name, root=root)
         if resolved_preset is None:
-            raise OpenContextError(f"Preset not found: {name}")
+            available = ", ".join(p.name for p in find_presets(root)) or "(none)"
+            raise OpenContextError(
+                f"Preset not found: {name}. Available: {available}. "
+                "(Setup presets like 'context-first' are separate — "
+                "see `opencontext setup --help`.)"
+            )
         assert not isinstance(resolved_preset, str)
 
         config_path = Path(root) / "opencontext.yaml"
@@ -3857,6 +3841,14 @@ def _eval(
     print(json.dumps([r.model_dump() for r in eval_results], indent=2))
 
 
+def _agent_memory_store(args: argparse.Namespace) -> Any:
+    """The canonical SQLite AgentMemoryStore (source of truth), or None."""
+    try:
+        return _runtime(getattr(args, "config", None))._v2_memory_store
+    except Exception:
+        return None
+
+
 def _memory(args: argparse.Namespace) -> None:
     """Handle memory subcommands."""
     command = args.memory_command
@@ -3868,23 +3860,66 @@ def _memory(args: argparse.Namespace) -> None:
             print(f"- {path}")
         return
     if command == "list":
-        items = repo.list_items()
-        if not items:
-            print("No items in context repository. Run 'opencontext memory harvest' to populate.")
-        for item in items:
-            print(f"{item.id}: {item.kind} ({item.classification.value}) - {item.tokens} tokens")
+        # Canonical SQLite store first (what the agent recalls), markdown second.
+        shown = False
+        store = _agent_memory_store(args)
+        if store is not None and hasattr(store, "list_records"):
+            for rec in store.list_records(limit=200):
+                print(f"{rec.id}: {rec.layer.value} [{rec.key}] - {len(rec.content)} chars")
+                shown = True
+        for item in repo.list_items():
+            print(
+                f"{item.id}: {item.kind} ({item.classification.value}) - {item.tokens} tokens [md]"
+            )
+            shown = True
+        if not shown:
+            print("No memory yet. Run 'opencontext memory harvest' or an agentic loop.")
         return
     if command == "search":
-        results = repo.search(args.query)
-        if not results:
+        seen: set[str] = set()
+        hit = False
+        store = _agent_memory_store(args)
+        if store is not None:
+            for rec in store.search(args.query, limit=10):
+                seen.add(rec.id)
+                print(f"{rec.id} [{rec.layer.value}]: {rec.content[:100]}...")
+                hit = True
+        for item in repo.search(args.query):
+            if item.id in seen:
+                continue
+            print(f"{item.id} [{item.kind}]: {item.content[:100]}... [md]")
+            hit = True
+        if not hit:
             print(f"No memories match '{args.query}'.")
-        for item in results:
-            print(f"{item.id} [{item.kind}]: {item.content[:100]}...")
         return
     if command == "show":
+        store = _agent_memory_store(args)
+        rec = store.get(args.memory_id) if store is not None and hasattr(store, "get") else None
+        if rec is not None:
+            print(yaml.safe_dump(rec.model_dump(mode="json"), sort_keys=True))
+            return
         item = repo.get(args.memory_id)
         print(yaml.safe_dump(item.model_dump(mode="json"), sort_keys=True))
         return
+    # id-targeted mutations operate on the markdown repository. If the id is an
+    # agent (SQLite) record from `memory list`/`search`, say so clearly instead of
+    # failing with a raw FileNotFoundError from the markdown store.
+    if command in ("expand", "pin", "unpin", "promote", "demote"):
+        try:
+            repo.get(args.memory_id)
+        except FileNotFoundError:
+            store = _agent_memory_store(args)
+            rec = store.get(args.memory_id) if store is not None and hasattr(store, "get") else None
+            if rec is not None:
+                print(
+                    f"'{args.memory_id}' is an agent (SQLite) memory record; "
+                    f"{command} operates on markdown memory ([md] items in 'memory list'). "
+                    "Agent records support reinforce/supersede/decay, not pin/promote."
+                )
+            else:
+                print(f"Memory item not found: {args.memory_id}")
+            return
+
     if command == "expand":
         expansion = MemoryExpansionTool(repo)
         item = expansion.expand(args.memory_id)
@@ -3903,10 +3938,21 @@ def _memory(args: argparse.Namespace) -> None:
     if command in ("collect", "harvest"):
         trace_id = args.from_trace
         if trace_id == "last":
+            from opencontext_core.errors import MemoryStoreError
+
             runtime = _runtime(args.config)
-            trace = runtime.latest_trace()
+            try:
+                trace = runtime.latest_trace()
+            except MemoryStoreError:
+                # Empty state, not a failure: no agentic runs have produced traces.
+                print(
+                    "No traces to harvest yet. Run an agentic flow first "
+                    '(e.g. `opencontext loop -t "..."`), then harvest.'
+                )
+                return
         else:
-            # Scaffold: assume trace_id is a file path for now
+            # NOTE: single trace store — trace_id maps directly to a file path.
+            # Add source routing when traces span multiple stores.
             trace_path = Path(f".storage/opencontext/traces/{trace_id}.json")
             trace_data = json.loads(trace_path.read_text(encoding="utf-8"))
             trace = RuntimeTrace.model_validate(trace_data)
@@ -4007,23 +4053,14 @@ def _memory(args: argparse.Namespace) -> None:
             print(f"  {rec.id} [{kind}] {rec.content[:80]}")
         print("Confirm with 'memory review --confirm <id>' or correct with --supersede <id>.")
         return
-    if command == "facts":
-        print(
-            "Temporal facts: scaffolded. Stored facts live in "
-            ".opencontext/context-repository/facts."
-        )
-        return
-    if command == "timeline":
-        print(f"Timeline for '{args.query}': scaffolded")
-        return
-    if command == "supersede":
-        print(f"Superseded fact {args.fact_id} by {args.by}: scaffolded")
-        return
     if command == "export":
         _memory_export(repo, args.output)
         return
     if command == "import":
         _memory_import(repo, args.path)
+        return
+    if command == "doctor":
+        _memory_doctor()
         return
     _unreachable(command)
 
@@ -4072,6 +4109,66 @@ def _memory_import(repo: Any, path: str) -> None:
         )
         imported += 1
     print(f"Imported {imported} item(s), skipped {skipped} (already present or invalid).")
+
+
+def _memory_doctor() -> None:
+    """Diagnose memory system health: backends, store size, conflict count."""
+    from opencontext_core.memory.graph import LocalMemoryStore
+
+    checks: list[tuple[str, bool, str]] = []
+
+    # Check 1: ContextRepository (local .md store)
+    repo = ContextRepository(Path("."))
+    try:
+        items = repo.list_items()
+        checks.append(("context_repository", True, f"{len(items)} item(s) in local memory store"))
+    except Exception as exc:
+        checks.append(("context_repository", False, f"Cannot read local memory: {exc}"))
+
+    # Check 2: LocalMemoryStore (SQLite FTS5)
+    db_path = Path(".storage/opencontext/memory.db")
+    if db_path.exists():
+        try:
+            store = LocalMemoryStore(db_path)
+            records = store.search("", limit=1000)
+            checks.append(("sqlite_store", True, f"{len(records)} record(s) in SQLite memory"))
+        except Exception as exc:
+            checks.append(("sqlite_store", False, f"SQLite memory error: {exc}"))
+    else:
+        checks.append(("sqlite_store", True, "SQLite store not yet created (run `memory init`)"))
+
+    # Check 3: Conflict detection (same key, different layers)
+    try:
+        if db_path.exists():
+            store = LocalMemoryStore(db_path)
+            all_recs = store.search("", limit=5000)
+            key_layers: dict[str, set[str]] = {}
+            for rec in all_recs:
+                key_layers.setdefault(rec.key, set()).add(rec.layer.value)
+            conflicts = {k: v for k, v in key_layers.items() if len(v) > 1}
+            if conflicts:
+                checks.append(
+                    (
+                        "conflict_check",
+                        False,
+                        f"{len(conflicts)} key(s) present in multiple layers: "
+                        f"{', '.join(list(conflicts)[:5])}",
+                    )
+                )
+            else:
+                checks.append(("conflict_check", True, "No cross-layer key conflicts detected"))
+    except Exception as exc:
+        checks.append(("conflict_check", False, f"Conflict check failed: {exc}"))
+
+    # Print results
+    all_ok = all(ok for _, ok, _ in checks)
+    for name, ok, msg in checks:
+        status = "OK  " if ok else "FAIL"
+        print(f"  [{status}] {name}: {msg}")
+    if all_ok:
+        print("\nmemory doctor: all checks passed.")
+    else:
+        print("\nmemory doctor: some checks failed. Review above.")
 
 
 def _render_data(data: Any, output_format: str = "json") -> str:

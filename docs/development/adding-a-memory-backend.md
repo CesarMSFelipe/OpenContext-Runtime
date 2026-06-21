@@ -15,6 +15,6 @@ mypy packages/opencontext_core
 ```
 
 ## Implemented Code
-- `packages/opencontext_core/`
-- `packages/opencontext_cli/`
+- `packages/opencontext_core/opencontext_core/memory/stores.py` — the `ProjectMemoryStore` Protocol (stores.py:56) to satisfy
+- `packages/opencontext_core/opencontext_core/memory/backends.py` — concrete backend implementations (e.g. `SQLiteMemoryBackend`)
 - `tests/core/`

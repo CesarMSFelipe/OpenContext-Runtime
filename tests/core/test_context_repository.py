@@ -15,6 +15,34 @@ def test_context_repository_uses_frontmatter_and_requires_source(tmp_path: Path)
     assert repo.get(item.id).source == "trace:abc"
 
 
+def test_context_repository_dedups_near_identical_auto_stores(tmp_path: Path) -> None:
+    """M5: near-identical harvest summaries must not accrete every run."""
+    repo = ContextRepository(tmp_path)
+    body = (
+        "Goal: add token-based authentication to the login endpoint. "
+        "Accomplished: implemented the verify_password helper, wired the session "
+        "store, and added regression tests for expiry handling. Discoveries: the "
+        "middleware short-circuits on missing headers. Next steps: rate limit the "
+        "login route and document the new config keys. Run {rid} completed passed."
+    )
+    first = repo.store(
+        body.format(rid="abc123"),
+        kind="summary",
+        source="harness:run:abc123",
+        collection="summaries",
+    )
+    # Same summary, only the run id differs — should collapse onto the first.
+    second = repo.store(
+        body.format(rid="def456"),
+        kind="summary",
+        source="harness:run:def456",
+        collection="summaries",
+    )
+
+    assert second.id == first.id
+    assert len(list((tmp_path / ".opencontext/context-repository/summaries").glob("*.md"))) == 1
+
+
 def test_context_repository_promote_and_demote(tmp_path: Path) -> None:
     repo = ContextRepository(tmp_path)
     item = repo.store("Decision content with provenance.", kind="decision", source="trace:abc")

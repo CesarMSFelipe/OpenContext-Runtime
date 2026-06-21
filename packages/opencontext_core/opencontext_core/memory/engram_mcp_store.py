@@ -15,6 +15,7 @@ contradictions, and `contradict(id, evidence)` is called for each hit.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
@@ -25,6 +26,8 @@ from opencontext_core.models.agent_memory import (
     MemoryRecord,
 )
 from opencontext_core.models.evidence import EvidenceRef
+
+_log = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -115,7 +118,8 @@ class EngramMemoryStore:
             kwargs["type"] = layer.value
         try:
             raw = self._client.mem_search(**kwargs)
-        except Exception:
+        except Exception as exc:
+            _log.warning("engram search failed (query=%r): %s", query[:80], exc)
             return []
         return _extract_results(raw)
 
@@ -132,7 +136,8 @@ class EngramMemoryStore:
         # Contradiction-on-write: detect against existing same-key records first.
         try:
             existing_raw = self._search_raw(memory.key, limit=20, layer=None)
-        except Exception:
+        except Exception as exc:
+            _log.debug("contradiction pre-fetch failed (key=%r): %s", memory.key, exc)
             existing_raw = []
         existing = [_result_to_record(item, layer=memory.layer) for item in existing_raw]
         existing = [r for r in existing if r.key == memory.key and r.id]
@@ -142,7 +147,7 @@ class EngramMemoryStore:
             self.contradict(contradicted_id, evidence)
 
         try:
-            self._client.mem_save(
+            result = self._client.mem_save(
                 title=memory.key,
                 content=memory.content,
                 type=memory.layer.value,
@@ -150,9 +155,17 @@ class EngramMemoryStore:
                 project=self._project,
                 capture_prompt=False,
             )
-        except Exception:
-            # Persist failure must not raise; callers treat the local id as the handle.
-            pass
+        except Exception as exc:
+            # Persist failure must not raise; empty handle signals "not persisted"
+            # so a CompositeMemoryStore can fall back to the local store.
+            _log.warning("engram write failed (key=%r): %s", memory.key, exc)
+            return ""
+        # Clients that report success explicitly (the CLI bridge) gate the handle
+        # on it; clients that return nothing meaningful (MCP/mocks) are trusted.
+        ok = result.get("ok", True) if isinstance(result, dict) else True
+        if not ok:
+            _log.warning("engram write reported failure (key=%r)", memory.key)
+            return ""
         return memory.id
 
     def reinforce(self, memory_id: str, evidence: EvidenceRef) -> None:
@@ -162,7 +175,8 @@ class EngramMemoryStore:
             return
         try:
             update(observation_id=memory_id, action="reinforce")
-        except Exception:
+        except Exception as exc:
+            _log.debug("engram reinforce failed (id=%r): %s", memory_id, exc)
             return
 
     def contradict(self, memory_id: str, evidence: EvidenceRef) -> None:
@@ -172,7 +186,8 @@ class EngramMemoryStore:
         ref_id = getattr(evidence, "source", str(evidence))
         try:
             update(observation_id=memory_id, action="contradict", evidence=ref_id)
-        except Exception:
+        except Exception as exc:
+            _log.debug("engram contradict failed (id=%r): %s", memory_id, exc)
             return
 
     def decay(self) -> int:

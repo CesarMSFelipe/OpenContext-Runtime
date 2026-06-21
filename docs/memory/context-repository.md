@@ -15,7 +15,6 @@ opencontext memory list
 opencontext memory search "access control"
 opencontext memory harvest --from-trace last
 opencontext memory prune
-opencontext memory facts
 ```
 
 ## Implemented Code

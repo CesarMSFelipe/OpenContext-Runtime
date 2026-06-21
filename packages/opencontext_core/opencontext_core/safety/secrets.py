@@ -92,6 +92,10 @@ class SecretScanner:
         cursor = 0
         for finding in findings:
             if finding.start < cursor:
+                # Overlapping finding (e.g. the whole private-key body overlaps the
+                # BEGIN-marker finding): extend the redacted span instead of skipping
+                # it, so no secret bytes survive in the uncovered gap.
+                cursor = max(cursor, finding.end)
                 continue
             redacted_parts.append(text[cursor : finding.start])
             redacted_parts.append(f"[REDACTED:{finding.kind}]")

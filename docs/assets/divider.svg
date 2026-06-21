@@ -17,14 +17,14 @@
   </defs>
 
   <!-- Node 1 — teal -->
-  <circle cx="200" cy="12" r="4" fill="#0B0F14" stroke="#00C9A7" stroke-width="1.5"/>
-  <circle cx="200" cy="12" r="2" fill="#00C9A7"/>
+  <circle cx="200" cy="12" r="4" fill="#0B0F14" stroke="#2DC4A4" stroke-width="1.5"/>
+  <circle cx="200" cy="12" r="2" fill="#2DC4A4"/>
 
   <!-- Node 2 — blue -->
-  <circle cx="360" cy="12" r="4" fill="#0B0F14" stroke="#00A8E8" stroke-width="1.5"/>
-  <circle cx="360" cy="12" r="2" fill="#00A8E8"/>
+  <circle cx="360" cy="12" r="4" fill="#0B0F14" stroke="#35ADE5" stroke-width="1.5"/>
+  <circle cx="360" cy="12" r="2" fill="#35ADE5"/>
 
   <!-- Node 3 — purple -->
-  <circle cx="520" cy="12" r="4" fill="#0B0F14" stroke="#845EC2" stroke-width="1.5"/>
-  <circle cx="520" cy="12" r="2" fill="#845EC2"/>
+  <circle cx="520" cy="12" r="4" fill="#0B0F14" stroke="#8A6BBF" stroke-width="1.5"/>
+  <circle cx="520" cy="12" r="2" fill="#8A6BBF"/>
 </svg>

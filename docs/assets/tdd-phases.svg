@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 210" width="720" height="210" role="img" aria-label="TDD workflow: explore (offline), write test (red — failing), implement, verify (green — passing), refactor, verify (offline). Repeat write test to verify until green.">
+  <rect width="720" height="210" rx="8" fill="#0B0F14"/>
+
+  <text x="65" y="24" font-size="11" fill="#606978" letter-spacing="1" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">TDD WORKFLOW</text>
+
+  <!-- Connector arrows (box top=46, h=60, midpoint y=76) -->
+  <g stroke="#21262D" stroke-width="1.5" fill="none">
+    <line x1="155" y1="76" x2="162" y2="76"/>
+    <line x1="252" y1="76" x2="259" y2="76"/>
+    <line x1="349" y1="76" x2="356" y2="76"/>
+    <line x1="446" y1="76" x2="453" y2="76"/>
+    <line x1="543" y1="76" x2="550" y2="76"/>
+  </g>
+  <g fill="#21262D">
+    <polygon points="162,72 162,80 170,76"/>
+    <polygon points="259,72 259,80 267,76"/>
+    <polygon points="356,72 356,80 364,76"/>
+    <polygon points="453,72 453,80 461,76"/>
+    <polygon points="550,72 550,80 558,76"/>
+  </g>
+
+  <!-- 1: explore (offline) -->
+  <rect x="65" y="46" width="90" height="60" rx="5" fill="#111820" stroke="#35ADE5" stroke-width="1"/>
+  <text x="110" y="71" text-anchor="middle" font-size="12" fill="#35ADE5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">explore</text>
+  <text x="110" y="88" text-anchor="middle" font-size="11" fill="#606978" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">offline</text>
+
+  <!-- 2: write test (RED) -->
+  <rect x="162" y="46" width="90" height="60" rx="5" fill="#1E1010" stroke="#E8706A" stroke-width="1"/>
+  <text x="207" y="69" text-anchor="middle" font-size="12" fill="#E8706A" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">write test</text>
+  <text x="207" y="87" text-anchor="middle" font-size="11" fill="#E8706A" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">● red</text>
+
+  <!-- 3: implement -->
+  <rect x="259" y="46" width="90" height="60" rx="5" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="304" y="80" text-anchor="middle" font-size="12" fill="#E6EDF3" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">implement</text>
+
+  <!-- 4: verify green -->
+  <rect x="356" y="46" width="90" height="60" rx="5" fill="#0D2220" stroke="#2DC4A4" stroke-width="1"/>
+  <text x="401" y="69" text-anchor="middle" font-size="12" fill="#2DC4A4" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">verify</text>
+  <text x="401" y="87" text-anchor="middle" font-size="11" fill="#2DC4A4" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">● green</text>
+
+  <!-- 5: refactor -->
+  <rect x="453" y="46" width="90" height="60" rx="5" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="498" y="80" text-anchor="middle" font-size="12" fill="#E6EDF3" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">refactor</text>
+
+  <!-- 6: verify (offline) -->
+  <rect x="550" y="46" width="90" height="60" rx="5" fill="#111820" stroke="#35ADE5" stroke-width="1"/>
+  <text x="595" y="69" text-anchor="middle" font-size="12" fill="#35ADE5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">verify</text>
+  <text x="595" y="88" text-anchor="middle" font-size="11" fill="#606978" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">offline</text>
+
+  <!-- "repeat until green" loop bracket under write test → verify -->
+  <g stroke="#8A6BBF" stroke-width="1" fill="none" stroke-dasharray="3 2">
+    <line x1="162" y1="112" x2="162" y2="130"/>
+    <line x1="162" y1="130" x2="446" y2="130"/>
+    <line x1="446" y1="130" x2="446" y2="112"/>
+  </g>
+  <text x="304" y="148" text-anchor="middle" font-size="11" fill="#8A6BBF" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">repeat until green</text>
+
+  <!-- Legend -->
+  <rect x="65" y="166" width="10" height="10" rx="2" fill="#111820" stroke="#35ADE5" stroke-width="1"/>
+  <text x="82" y="176" font-size="11" fill="#606978" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">works without LLM</text>
+  <rect x="220" y="166" width="10" height="10" rx="2" fill="#111821" stroke="#21262D" stroke-width="1"/>
+  <text x="236" y="176" font-size="11" fill="#606978" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">requires LLM</text>
+  <rect x="350" y="166" width="10" height="10" rx="2" fill="#1E1010" stroke="#E8706A" stroke-width="1"/>
+  <text x="366" y="176" font-size="11" fill="#606978" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">failing (red)</text>
+  <rect x="468" y="166" width="10" height="10" rx="2" fill="#0D2220" stroke="#2DC4A4" stroke-width="1"/>
+  <text x="484" y="176" font-size="11" fill="#606978" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">passing (green)</text>
+</svg>

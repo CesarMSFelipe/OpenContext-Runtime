@@ -9,6 +9,122 @@ import pytest
 from opencontext_core.plugin_system import PluginRegistry
 
 
+def _registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PluginRegistry:
+    monkeypatch.setattr(
+        PluginRegistry,
+        "__init__",
+        lambda self, plugins_dir=None: (
+            setattr(self, "plugins_dir", tmp_path)
+            or setattr(self, "_plugins", {})
+            or setattr(self, "_commands", {})
+            or setattr(self, "_hooks", {})
+            or setattr(self, "_permissions", {})
+        ),
+    )
+    return PluginRegistry(tmp_path)
+
+
+def _make_plugin(
+    tmp_path: Path, name: str, *, checksum: str | None, permissions: object = None
+) -> None:
+    import hashlib
+    import json
+
+    pdir = tmp_path / name
+    pdir.mkdir()
+    body = "class OpenContextPlugin:\n    name = 'p'\n"
+    # write_bytes (not write_text) so the on-disk bytes equal what the declared
+    # checksum hashes — text mode would translate \n->\r\n on Windows and the
+    # byte-exact integrity check (read_bytes) would then mismatch.
+    (pdir / "plugin.py").write_bytes(body.encode("utf-8"))
+    info: dict = {"name": name, "enabled": True, "entry_point": "plugin.py"}
+    if checksum == "valid":
+        info["entry_checksum"] = "sha256:" + hashlib.sha256(body.encode()).hexdigest()
+    elif checksum == "tampered":
+        info["entry_checksum"] = "sha256:" + ("0" * 64)
+    if permissions is not None:
+        info["permissions"] = permissions
+    (pdir / "plugin.json").write_text(json.dumps(info), encoding="utf-8")
+
+
+def test_load_parses_and_enforces_declared_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = _registry(tmp_path, monkeypatch)
+    _make_plugin(
+        tmp_path, "netty", checksum=None, permissions={"network_hosts": ["api.example.com"]}
+    )
+    assert registry.load("netty") is not None
+    # Declared allowlist is honored; anything else is deny-by-default.
+    assert registry.is_allowed("netty", "network", "api.example.com") is True
+    assert registry.is_allowed("netty", "network", "evil.example.com") is False
+    assert registry.is_allowed("netty", "write", "/etc") is False
+
+
+def test_unmanaged_plugin_denies_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = _registry(tmp_path, monkeypatch)
+    _make_plugin(tmp_path, "bare", checksum=None, permissions=None)  # no manifest
+    assert registry.load("bare") is not None
+    perms = registry.declared_permissions("bare")
+    assert perms is not None and perms.network_hosts == []  # nothing declared
+    assert registry.is_allowed("bare", "network", "api.example.com") is False
+
+
+def test_malformed_permissions_refuses_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = _registry(tmp_path, monkeypatch)
+    _make_plugin(tmp_path, "broken", checksum=None, permissions="not-a-dict")
+    assert registry.load("broken") is None
+
+
+def test_load_refuses_plugin_with_bad_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = _registry(tmp_path, monkeypatch)
+    _make_plugin(tmp_path, "evil", checksum="tampered")
+    assert registry.load("evil") is None  # tampered entry point -> refused
+
+
+def test_load_accepts_plugin_with_valid_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = _registry(tmp_path, monkeypatch)
+    _make_plugin(tmp_path, "good", checksum="valid")
+    assert registry.load("good") is not None  # checksum matches -> loads
+
+
+def test_stamp_plugin_integrity_makes_install_verifiable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """H3: install/init must stamp a checksum so load() verifies integrity."""
+    import json
+
+    from opencontext_core.plugin_system import stamp_plugin_integrity
+
+    pdir = tmp_path / "fresh"
+    pdir.mkdir()
+    (pdir / "plugin.py").write_text("class OpenContextPlugin:\n    name = 'p'\n", encoding="utf-8")
+    (pdir / "plugin.json").write_text(
+        json.dumps({"name": "fresh", "enabled": True, "entry_point": "plugin.py"}),
+        encoding="utf-8",
+    )
+
+    stamp_plugin_integrity(pdir)
+    manifest = json.loads((pdir / "plugin.json").read_text(encoding="utf-8"))
+    assert manifest["entry_checksum"].startswith("sha256:")
+    assert "permissions" in manifest
+    assert _registry(tmp_path, monkeypatch).load("fresh") is not None
+
+    # Tampering the entry point after stamping must be detected.
+    (pdir / "plugin.py").write_text(
+        "class OpenContextPlugin:\n    name = 'evil'\n", encoding="utf-8"
+    )
+    assert _registry(tmp_path, monkeypatch).load("fresh") is None
+
+
 class TestPluginRegistry:
     """Test plugin registry."""
 

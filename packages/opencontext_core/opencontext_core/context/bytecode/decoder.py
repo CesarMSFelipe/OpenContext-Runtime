@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from opencontext_core.context.bytecode.models import ContextBytecode, ExpandMode, OpCode
 from opencontext_core.retrieval.contracts import (
@@ -15,6 +16,9 @@ from opencontext_core.retrieval.contracts import (
     evidence_trace_id,
 )
 
+if TYPE_CHECKING:
+    from opencontext_core.compression.ccr_cache import CCRCacheBackend
+
 
 class AICXDecoder:
     """Reconstructs an EvidencePlan from a ContextBytecode.
@@ -22,7 +26,14 @@ class AICXDecoder:
     Content fields that were not inlined (mode=handle/if_needed) are
     restored as empty strings — the caller must re-fetch content if needed.
     This is intentional: the whole point is lazy expansion.
+
+    Dictionary values prefixed ``ccr:<hash>`` are fetched from the CCR cache
+    when a ``ccr_backend`` is supplied; otherwise the token string is returned
+    as-is (compatible with old decoders that predate CCR support).
     """
+
+    def __init__(self, *, ccr_backend: CCRCacheBackend | None = None) -> None:
+        self._ccr_backend = ccr_backend
 
     def decode(self, bc: ContextBytecode) -> EvidencePlan:
         req_args = _parse_instr(bc, OpCode.REQUEST)
@@ -44,7 +55,8 @@ class AICXDecoder:
             mode = ExpandMode(a.get("mode", "handle"))
             # INLINE/protected items carry their content in the dictionary (key "c");
             # reference-only items decode to "" (resolved lazily if ever needed).
-            content = bc.get(a["c"]) if "c" in a else ""
+            raw = bc.get(a["c"]) if "c" in a else ""
+            content = self._expand_ccr(raw)
             evidence.append(
                 EvidenceItem(
                     id=a.get("id", ""),
@@ -92,6 +104,18 @@ class AICXDecoder:
             omissions=omissions,
             source_surfaces=list({e.surface for e in evidence}),
         )
+
+    def _expand_ccr(self, value: str) -> str:
+        """Resolve a CCR token to the original content, or return as-is."""
+        if not value.startswith("ccr:"):
+            return value
+        if self._ccr_backend is None:
+            return value  # no backend — return token (graceful degradation)
+        from opencontext_core.compression.ccr_cache import retrieve_original
+
+        content_hash = value[4:]
+        recovered = retrieve_original(content_hash, backend=self._ccr_backend)
+        return recovered if recovered is not None else value
 
 
 def _parse_instr(bc: ContextBytecode, op: str) -> dict[str, str]:

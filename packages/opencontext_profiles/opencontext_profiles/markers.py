@@ -119,6 +119,23 @@ class DrupalTechnologyProfile(MarkerTechnologyProfile):
         "config/install",
         "config/schema",
     )
+    # templates// and components// alone are not Drupal; require a Drupal-specific
+    # manifest, hook file, or src/ plugin path.
+    required_any_markers = (
+        ".info.yml",
+        ".services.yml",
+        ".routing.yml",
+        ".permissions.yml",
+        ".links.menu.yml",
+        ".module",
+        ".install",
+        "src/Controller",
+        "src/Form",
+        "src/Plugin",
+        "src/EventSubscriber",
+        "config/install",
+        "config/schema",
+    )
     score_divisor = 4
     workflow_packs = (
         WorkflowPackReference(name="drupal-review", mode="review"),
@@ -192,6 +209,17 @@ class NodeTechnologyProfile(MarkerTechnologyProfile):
         "components/",
         "tests/",
     )
+    # Bare src//routes//components//tests/ are shared with every other ecosystem;
+    # require a real Node manifest before claiming the project is Node.
+    required_any_markers = (
+        "package.json",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "tsconfig.json",
+        "vite.config.ts",
+        "next.config.js",
+    )
     workflow_packs = (WorkflowPackReference(name="node-review", mode="review"),)
     validation_commands = (
         SafeCommand(name="npm_test", command=("npm", "test")),
@@ -209,6 +237,14 @@ class ReactTechnologyProfile(MarkerTechnologyProfile):
         "src/App.tsx",
         "src/components",
         "vite.config.ts",
+        "public/index.html",
+    )
+    # A bare src/components/ dir is not React; require a real manifest or an App entry.
+    required_any_markers = (
+        "package.json",
+        "vite.config.ts",
+        "src/App.jsx",
+        "src/App.tsx",
         "public/index.html",
     )
     workflow_packs = (WorkflowPackReference(name="react-review", mode="review"),)
@@ -230,6 +266,14 @@ class NextTechnologyProfile(MarkerTechnologyProfile):
         "pages/index.tsx",
         "src/app",
         "src/pages",
+    )
+    # Bare src/app/ or src/pages/ dirs are not Next; require a Next config or router entry.
+    required_any_markers = (
+        "next.config.js",
+        "next.config.mjs",
+        "next.config.ts",
+        "app/page.tsx",
+        "pages/index.tsx",
     )
     workflow_packs = (WorkflowPackReference(name="next-review", mode="review"),)
     validation_commands = (
@@ -352,6 +396,8 @@ class RustTechnologyProfile(MarkerTechnologyProfile):
 
     name = "rust"
     markers = ("Cargo.toml", "Cargo.lock", "src/main.rs", "src/lib.rs", "tests/")
+    # A bare tests/ dir is not Rust; require a Cargo manifest or a crate entrypoint.
+    required_any_markers = ("Cargo.toml", "Cargo.lock", "src/main.rs", "src/lib.rs")
 
 
 class TerraformTechnologyProfile(MarkerTechnologyProfile):

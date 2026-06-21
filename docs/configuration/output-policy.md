@@ -6,7 +6,7 @@ Output policy controls default mode, max output tokens, and preservation of code
 ## Current Status
 Output policy is implemented through default output mode, max output tokens, and preservation rules.
 The output budget controller uses these settings to reduce low-signal prose while preserving code,
-commands, paths, symbols, warnings, numbers, errors, and test results.
+commands, paths, symbols, warnings, and numbers.
 
 ## Related Commands
 ```bash

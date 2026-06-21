@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from opencontext_core.compression.code_compressor import CodeCompressionMode, CodeCompressor
 from opencontext_core.compression.terse import TerseCompressor
 from opencontext_core.config import CompressionConfig
 from opencontext_core.context.budgeting import estimate_tokens
 from opencontext_core.context.protection import ProtectedSpanManager
-from opencontext_core.models.context import CompressionResult, CompressionStrategy, ContextItem
+from opencontext_core.models.context import (
+    CompressionResult,
+    CompressionStrategy,
+    ContentFormat,
+    ContextItem,
+)
+
+# Maps detected ContentFormat to a CompressionStrategy when adaptive routing is active.
+# Falls back to config.strategy for MIXED / UNKNOWN.
+_FORMAT_TO_STRATEGY: dict[ContentFormat, CompressionStrategy] = {
+    ContentFormat.CODE: CompressionStrategy.CODE_AST,
+    ContentFormat.JSON_ARRAY: CompressionStrategy.SMART_CRUSHER,
+    ContentFormat.JSON_STRUCTURED: CompressionStrategy.SMART_CRUSHER,
+    ContentFormat.SHELL_OUTPUT: CompressionStrategy.EXTRACTIVE_HEAD_TAIL,
+    ContentFormat.LOGS: CompressionStrategy.TERSE,
+    ContentFormat.MARKDOWN: CompressionStrategy.EXTRACTIVE_HEAD_TAIL,
+    ContentFormat.PROSE: CompressionStrategy.EXTRACTIVE_HEAD_TAIL,
+}
 
 
 class CompressionEngine:
@@ -15,6 +35,34 @@ class CompressionEngine:
     def __init__(self, config: CompressionConfig) -> None:
         self.config = config
         self.protected_spans = ProtectedSpanManager()
+        self._code_compressor: CodeCompressor | None = None
+        self._cache_aligner: Any | None = None
+        self._output_reducer: Any | None = None
+        # ContentRouter is imported lazily to avoid circular imports.
+        self._content_router: Any | None = None
+
+    def _get_strategy(self, item: ContextItem) -> CompressionStrategy:
+        """Return compression strategy for an item.
+
+        When adaptive routing is enabled, detects content format and selects
+        the best strategy. Falls back to config.strategy for unknown formats.
+        """
+        if not getattr(self.config, "adaptive", False):
+            return self.config.strategy
+
+        if self._content_router is None:
+            try:
+                from opencontext_core.memory_usability.content_router import ContentRouter
+
+                self._content_router = ContentRouter()
+            except ImportError:
+                return self.config.strategy
+
+        try:
+            route = self._content_router.route(item.content)
+            return _FORMAT_TO_STRATEGY.get(route.content_format, self.config.strategy)
+        except Exception:
+            return self.config.strategy
 
     def compress_item(self, item: ContextItem) -> CompressionResult:
         """Compress a single context item according to configuration."""
@@ -37,12 +85,18 @@ class CompressionEngine:
             return self._result(preserved, preserved, CompressionStrategy.NONE, "none")
 
         target_tokens = max(1, int(item.tokens * self.config.max_compression_ratio))
-        strategy = self.config.strategy
+        strategy = self._get_strategy(item)
         strategy_value = strategy.value
+
+        # Route by strategy
         if strategy_value == CompressionStrategy.NONE.value:
             return self._result(item, item, CompressionStrategy.NONE, "none")
         elif strategy_value == CompressionStrategy.TERSE.value:
             return self._compress_terse(item)
+        elif strategy_value == CompressionStrategy.SMART_CRUSHER.value:
+            return self._compress_smart_crusher(item)
+        elif strategy_value == CompressionStrategy.CODE_AST.value:
+            return self._compress_code_ast(item)
         elif strategy_value == CompressionStrategy.TRUNCATE.value:
             compressed_content = _truncate_to_tokens(item.content, target_tokens)
             lossiness = "lossy_truncation"
@@ -123,12 +177,15 @@ class CompressionEngine:
         strategy: CompressionStrategy,
         lossiness: str,
     ) -> CompressionResult:
+        reversible = strategy is CompressionStrategy.CCR
         return CompressionResult(
             item=compressed_item,
             original_tokens=original_item.tokens,
             compressed_tokens=compressed_item.tokens,
             strategy=strategy,
             lossiness=lossiness,
+            reversible=reversible,
+            expand_hint="ccr_cache" if reversible else "",
         )
 
     def _compress_terse(self, item: ContextItem) -> CompressionResult:
@@ -255,8 +312,65 @@ class CompressionEngine:
             )
             return self._result(item, compressed_item, CompressionStrategy.DEEP, "lossy_deep")
         except BackendUnavailableError:
-            # Degrade to compact
             return self._compress_compact(item)
+
+    def _compress_smart_crusher(self, item: ContextItem) -> CompressionResult:
+        """Compress JSON arrays using SmartCrusher."""
+        from opencontext_core.compression.smart_crusher import compress as _sc
+
+        compressed_content = _sc(
+            item.content,
+            min_array_length=self.config.smart_crusher.min_array_length,
+            tabular_format=self.config.smart_crusher.tabular_format,
+        )
+        compressed_tokens = estimate_tokens(compressed_content)
+        metadata = dict(item.metadata)
+        metadata["compression"] = {
+            "original_token_estimate": item.tokens,
+            "compressed_token_estimate": compressed_tokens,
+            "strategy": CompressionStrategy.SMART_CRUSHER.value,
+            "lossiness": "lossy_structural",
+        }
+        compressed_item = item.model_copy(
+            update={
+                "content": compressed_content,
+                "tokens": compressed_tokens,
+                "metadata": metadata,
+            }
+        )
+        return self._result(
+            item, compressed_item, CompressionStrategy.SMART_CRUSHER, "lossy_structural"
+        )
+
+    def _compress_code_ast(self, item: ContextItem) -> CompressionResult:
+        """Compress source code using AST-aware compression."""
+        compressor = CodeCompressor()
+        language = _language_for_item(item)
+        compressed_content = compressor.compress(
+            item.content,
+            language=language,
+            mode=CodeCompressionMode.REVIEW,
+            strip_docstrings=self.config.code_compressor.strip_docstrings,
+            strip_comments=self.config.code_compressor.strip_comments,
+            shorten_locals=self.config.code_compressor.shorten_locals,
+            preserve_exports=self.config.code_compressor.preserve_exports,
+        )
+        compressed_tokens = estimate_tokens(compressed_content)
+        metadata = dict(item.metadata)
+        metadata["compression"] = {
+            "original_token_estimate": item.tokens,
+            "compressed_token_estimate": compressed_tokens,
+            "strategy": CompressionStrategy.CODE_AST.value,
+            "lossiness": "lossy_code_ast",
+        }
+        compressed_item = item.model_copy(
+            update={
+                "content": compressed_content,
+                "tokens": compressed_tokens,
+                "metadata": metadata,
+            }
+        )
+        return self._result(item, compressed_item, CompressionStrategy.CODE_AST, "lossy_code_ast")
 
 
 def _language_for_item(item: ContextItem) -> str | None:

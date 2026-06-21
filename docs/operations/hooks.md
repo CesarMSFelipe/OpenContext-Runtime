@@ -8,9 +8,10 @@ Local scaffolds are implemented for command registry, hook registry, approvals, 
 
 ## Related Commands
 ```bash
-opencontext playbooks list
-opencontext command run review-pr
-opencontext approvals list
+opencontext security scan
+opencontext prompt audit
+opencontext trace last
+opencontext tokens report
 ```
 
 ## Implemented Code
