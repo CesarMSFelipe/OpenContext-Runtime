@@ -4,8 +4,9 @@ Where the CON-vs-SIN efficiency benchmark pits ONE OpenContext arm against ONE
 control, this module runs a *panel* of arms over the same task so they can be compared
 side by side on both cost AND capability:
 
-* ``GENTLE-SIM``    — a Gentle-AI-style "load the skill, then grep" loop
-  (:func:`opencontext_core.evaluation.gentle_agent.run_gentle_case`).
+* ``SKILL-GREP``    — a prose-skill + grep baseline that loads a skill file as standing
+  instructions, then greps the working tree
+  (:func:`opencontext_core.evaluation.skill_grep_agent.run_skill_grep_case`).
 * ``REALISTIC-SIN`` — a careful OpenContext-free agent that reads only a window around
   each grep hit (:func:`opencontext_core.evaluation.realistic_agent.run_realistic_case`).
 * ``OC-SURGICAL`` / ``OC-BROAD`` — the OpenContext arms. These require the runtime
@@ -88,11 +89,11 @@ class _ControlPack:
 # (kg_grounding, impact_consulted) to False for both controls; the rest is credited
 # truthfully here so the comparison is not a strawman.
 #
-# GENTLE-SIM models a REAL SDD system (Gentle-AI): portable, Engram memory, a
+# SKILL-GREP models a REAL prose-skill SDD system: portable, Engram memory, a
 # spec/design/tasks artifact chain, and a TDD gate. It genuinely has these — OC must
 # win on the capabilities it actually adds (KG grounding + impact), not on fabricated
 # gaps.
-_GENTLE_METADATA: dict[str, bool] = {
+_SKILL_GREP_METADATA: dict[str, bool] = {
     "portability": True,
     "tdd_gate_passed": True,
     "memory_used": True,
@@ -119,7 +120,7 @@ def run_head_to_head(
 
     For every (repo, case):
 
-    * The GENTLE-SIM and REALISTIC-SIN control arms are always measured here (they need
+    * The SKILL-GREP and REALISTIC-SIN control arms are always measured here (they need
       only the working tree).
     * The OpenContext arms (OC-SURGICAL / OC-BROAD) are produced by ``oc_arm_runner``
       when supplied — it returns ``(arms, matrix)`` which are merged in. When it is
@@ -137,8 +138,8 @@ def run_head_to_head(
     # Imported lazily to avoid an import cycle: these leaf modules import ``ArmResult``
     # from THIS module at load time.
     from opencontext_core.evaluation.capability import score_matrix
-    from opencontext_core.evaluation.gentle_agent import run_gentle_case
     from opencontext_core.evaluation.realistic_agent import run_realistic_case
+    from opencontext_core.evaluation.skill_grep_agent import run_skill_grep_case
 
     reports: list[MultiArmReport] = []
     control_pack = _ControlPack()
@@ -148,11 +149,11 @@ def run_head_to_head(
             arms: list[ArmResult] = []
             matrix: dict[str, CapabilityMatrix] = {}
 
-            # GENTLE-SIM arm — credited its genuine SDD capabilities (honest).
-            gentle = run_gentle_case(case, repo)
-            arms.append(gentle)
-            matrix[gentle.arm] = score_matrix(
-                gentle.arm, control_pack, run_metadata=_GENTLE_METADATA
+            # SKILL-GREP arm — credited its genuine SDD capabilities (honest).
+            skill_grep = run_skill_grep_case(case, repo)
+            arms.append(skill_grep)
+            matrix[skill_grep.arm] = score_matrix(
+                skill_grep.arm, control_pack, run_metadata=_SKILL_GREP_METADATA
             )
 
             # REALISTIC-SIN arm — a bare grep+read agent.

@@ -14,9 +14,9 @@ capability:
   that produced no grounded sources cannot claim grounding.
 * The control arms lack the two capabilities that REQUIRE a knowledge graph —
   ``kg_grounding`` (grounded sources) and ``impact_consulted`` (call-graph blast
-  radius). When the arm name contains ``"GENTLE"`` or ``"SIN"`` those two are FORCED
-  to False regardless of ``run_metadata``. The OTHER capabilities are credited
-  honestly from ``run_metadata``: a real SDD system like Gentle-AI genuinely has
+  radius). When the arm name contains ``"SKILL-GREP"`` or ``"SIN"`` those two are
+  FORCED to False regardless of ``run_metadata``. The OTHER capabilities are credited
+  honestly from ``run_metadata``: a real prose-skill SDD agent genuinely has
   portability, memory (Engram), a spec/artifact chain, and a TDD gate, and denying it
   those would be a strawman — OC must win on the capabilities it actually has, not on
   ones the comparison fabricates.
@@ -29,7 +29,7 @@ from collections.abc import Mapping
 from opencontext_core.evaluation.multi_arm import CapabilityMatrix
 
 # Arm-name fragments that mark a structurally-limited control (no KG/impact/TDD/…).
-_CONTROL_ARM_FRAGMENTS = ("GENTLE", "SIN")
+_CONTROL_ARM_FRAGMENTS = ("SKILL-GREP", "SIN")
 
 
 def score_matrix(
@@ -42,8 +42,8 @@ def score_matrix(
 
     ``kg_grounding`` is taken from real evidence on ``pack_result`` (the presence of
     ``included_sources``); every other capability is read from ``run_metadata``
-    booleans. For control arms (name contains ``GENTLE``/``SIN``) the six capabilities
-    those systems structurally lack are forced to False.
+    booleans. For control arms (name contains ``SKILL-GREP``/``SIN``) the six
+    capabilities those systems structurally lack are forced to False.
     """
     kg_grounding = bool(getattr(pack_result, "included_sources", []))
 

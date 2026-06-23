@@ -2,8 +2,8 @@
 
 Regression: `opencontext_run` hard-coded `HarnessRunner(root=Path.cwd())` and the
 KG-indexed warning opened a bare cwd-bound `KnowledgeGraph()`, so OC's full SDD loop
-could only run inside the directory the MCP server was started in — unlike Gentle-AI's
-portable skill, which runs on any repo. These tests pin the `root`-driven behavior.
+could only run inside the directory the MCP server was started in — unlike a portable
+prose-skill agent, which runs on any repo. These tests pin the `root`-driven behavior.
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def test_warn_kg_uses_root_db(tmp_path: Path, monkeypatch) -> None:
 def test_sdd_runs_outside_tree(tmp_path: Path, monkeypatch) -> None:
     """Integration: a full SDD run drives the project at ``root`` even when the process
     cwd is a different, unrelated directory — and writes its artifacts under ``root``,
-    never the foreign cwd. This is the portability parity Gentle-AI's skill has."""
+    never the foreign cwd. This is the portability parity a prose-skill agent has."""
     from opencontext_core.harness.runner import HarnessRunner
 
     project = tmp_path / "project"
