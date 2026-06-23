@@ -5,6 +5,19 @@ All notable changes to OpenContext Runtime will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-23
+
+### Added
+
+- **Structural test-gap detection**: `opencontext quality test-gaps` (and `GraphDatabase.find_test_gaps`) lists functions/methods that no test file references — a deterministic structural proxy for "this symbol has no test", computed purely from the knowledge graph. Informational (exit 0) so it slots into CI as a report; `is_test_path` recognises multi-language test conventions (`tests`/`spec`/`__tests__` dirs and `test_*`/`*_test`/`*.test.*`/`*.spec.*` names).
+- **Cross-run quality trend**: the `quality check` report and the `opencontext_quality` MCP response carry a `trend` (latest/previous/delta over recorded runs), distinct from the per-run ratchet delta. The MCP path is read-only — the CLI and harness remain the recorders, so the check stays side-effect-free.
+- **Durable project profile**: `project.profile` (purpose/audience/problem/key_decisions) in `opencontext.yaml` captures the domain context the code graph cannot derive; the MCP context tool prepends it so an agent is grounded in the product, not only the code. An unset profile renders to nothing.
+- **LOC-distribution (Gini) metric**: `QualityMetrics.loc_gini_bp` reports how evenly LOC is spread across files in basis points (report-only; the rolled-up health score is unchanged).
+
+### Changed
+
+- **Memory `topic_key` upsert preserves history**: a new version under an existing `topic_key` no longer overwrites in place — the prior record is marked superseded (kept and queryable, `invalid_at` set) and the new version is inserted linked via `supersedes` with `revision_count` carried forward, aligning the dedup path with consolidation so prior state stays recoverable.
+
 ## [1.4.0] - 2026-06-21
 
 ### Added
