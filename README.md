@@ -20,7 +20,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/runtime-strip.svg" alt="offline-first · call-graph traced · deterministic · MCP ready · 2300+ tests" width="720">
+  <img src="docs/assets/runtime-strip.svg" alt="offline-first · call-graph traced · deterministic · MCP ready · claims tested" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/assets/hero-runtime.svg" alt="From agent request to verified context in one call: an AI coding agent asks; OpenContext Runtime traces the call graph, ranks symbols, locks a token budget and checks gates; a verified context pack is returned in one call" width="720">
 </p>
 
 <p align="center">
@@ -84,7 +88,8 @@ OpenContext separates **local context operations** (always offline, deterministi
 | Capability | Needs a model? | How it runs |
 |---|---|---|
 | Index, code graph, context packs, `explain`, `pack`, search, impact, routes, AICX bytecode | **No** | Fully offline, deterministic — same result every run |
-| MCP tools, including `opencontext_run` | **Host agent's model** | Via MCP sampling — your agent runs it on its own model; zero provider or API-key config on the OpenContext side |
+| MCP read tools, the quality tool, memory search/context | **No** | Local MCP server over the indexed repo — deterministic |
+| MCP `opencontext_run` (in-process agentic run) | **Host agent's model** | Via MCP sampling — your agent runs it on its own model; zero provider or API-key config on the OpenContext side |
 | Standalone `opencontext loop` / `harness run` generative phases (spec, design, apply, …) | **Yes** | A configured provider or local model (e.g. ollama). Without one the harness stays **honest planned-only** — it emits a structured plan for your agent to complete; it never fakes a result |
 
 </td>
@@ -92,6 +97,14 @@ OpenContext separates **local context operations** (always offline, deterministi
 </table>
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/offline-model-matrix.svg" alt="What runs offline vs needs a model: local context ops and MCP read/quality/memory tools are offline and deterministic; opencontext_run uses the host agent's model via MCP sampling; standalone generative phases need a provider or run planned-only" width="720">
+</p>
+
+<p align="center">
+  <sub>Offline by default · only generative phases need a model · <code>opencontext_run</code> borrows the host agent's model via sampling</sub>
+</p>
 
 <p align="center">
   <img src="docs/assets/divider.svg" alt="" width="720">
@@ -190,11 +203,10 @@ Run the demo on your actual repository, then wire OpenContext into your editor.
 <td width="760">
 
 ```bash
-pip install opencontext-cli
+pipx install opencontext-cli   # recommended — isolated, on PATH
 cd your-project
-opencontext demo        # real token reduction on your actual repo
-opencontext install     # stack detection · editor setup · index repo
-opencontext             # navigable menu: settings & tools in one place, no flags
+opencontext install            # stack detection · editor setup · index repo
+opencontext demo               # see the token + call reduction on your repo
 ```
 
 </td>
@@ -515,7 +527,7 @@ opencontext setup --all
 
 The execution harness runs structured multi-agent workflows. Each phase is isolated: it reads what it needs, does its work, passes gates, then hands off. No phase can skip a gate.
 
-**Requires an LLM provider** — set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` before running.
+**Generative phases need a model.** Inside an MCP host, `opencontext_run` uses the host agent's model via sampling — no key needed. Standalone (`opencontext loop` / `harness run`) needs a configured provider or local model; without one the harness stays honest planned-only — it emits a structured plan, never fakes output.
 
 ```bash
 opencontext clarify "add OAuth2 login"
@@ -622,15 +634,11 @@ opencontext preset apply privacy    # air-gapped · fail-closed · no egress
 
 **Requirements:** Python 3.12+
 
-| Method | Command |
-|--------|---------|
-| pip | `pip install opencontext-cli` |
-| pipx | `pipx install opencontext-cli` |
-| uv | `uv tool install opencontext-cli` |
-| Ubuntu / Debian | `curl -fsSL https://raw.githubusercontent.com/CesarMSFelipe/OpenContext-Runtime/main/install.sh \| bash` |
-| macOS | `curl -fsSL https://raw.githubusercontent.com/CesarMSFelipe/OpenContext-Runtime/main/install.sh \| bash` |
-| Windows (PowerShell) | `irm https://raw.githubusercontent.com/CesarMSFelipe/OpenContext-Runtime/main/install.ps1 \| iex` |
-| Portable binary | `make binary` → `dist/opencontext.pyz` (Python 3.12+) |
+```bash
+pipx install opencontext-cli      # recommended — isolated, always on PATH
+```
+
+Other options — `pip`, `uv`, the `curl` / PowerShell bootstrap scripts, and the portable `.pyz` binary — are in the [installation guide](docs/getting-started/installation.md).
 
 After installing, run the setup wizard in your project:
 
@@ -800,6 +808,14 @@ They check the contract risk tiers and token budgets, the AICX bytecode round-tr
 </table>
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/release-trust.svg" alt="Release 1.5.0 status: stable — code graph, context packs, MCP read tools, local memory; opt-in — Engram, external providers, symbol-edit tools, semantic search; host-agent dependent — opencontext_run and standalone generative phases; scaffolded and fail-closed — egress, tool forwarding, raw traces. Claims guarded by pytest tests/smoke/test_readme_claims.py" width="720">
+</p>
+
+<p align="center">
+  <sub>Status · stable / opt-in / host-dependent / fail-closed · every quantified claim guarded by a smoke test</sub>
+</p>
 
 <p align="center">
   <img src="docs/assets/divider.svg" alt="" width="720">
