@@ -40,11 +40,11 @@ Rules:
 | `logo.svg`, `divider.svg`, `runtime-strip.svg` | exists | strip alt corrected to "claims tested" |
 | `pipeline.svg` | exists | base for an optional `pipeline-animated.svg` (decorative motion only) |
 | `local-code-graph.svg`, `mcp-tools.svg`, `sdd-phases.svg`, `tdd-phases.svg`, benchmark cards, `security-defaults.svg`, `difference-card.svg`, `before-after.svg` | exists | keep |
-| `hero-runtime.svg` | to create | agent → runtime → verified pack, four lanes (graph/budget/gates/pack) |
-| `install-path.svg` | to create | 3 steps: install → project → wire agent + index |
-| `offline-model-matrix.svg` | to create | visualizes the offline-vs-model table (4 rows) |
-| `mcp-interface-map.svg` | to create | clients (left) → MCP server → tool groups (right); "support varies" |
-| `release-trust.svg` | to create | stable / opt-in / host-dependent / scaffolded-fail-closed + `pytest tests/smoke/test_readme_claims.py` |
+| `hero-runtime.svg` | created | agent → runtime → verified pack, four lanes (graph/budget/gates/pack); wired into the hero |
+| `install-path.svg` | skipped | duplicates existing `quickstart-flow.svg` (install → demo → editor → ready) |
+| `offline-model-matrix.svg` | created | visualizes the offline-vs-model table (4 cards); wired below that table |
+| `mcp-interface-map.svg` | skipped | duplicates existing `mcp-tools.svg` (the 19-tool group map) |
+| `release-trust.svg` | created | stable / opt-in / host-dependent / scaffolded-fail-closed + `pytest tests/smoke/test_readme_claims.py`; wired into Maturity |
 | `demo-*.gif` / `*.webm` | to record | install, explain, kept-out, mcp-run, benchmark — **requires screen recording (manual/CI), not generatable from code** |
 | benchmark card SVGs | regenerate | must be generated from saved `opencontext benchmark run --format markdown/json` output, not hand-edited; store raw results under `docs/benchmarks/results/` |
 
@@ -62,9 +62,18 @@ Rules:
 - Hygiene: README < 500 KiB, all asset links resolve, meaningful SVGs carry
   `role`/`aria-label`.
 
-**Polish layer — PENDING:**
-- Author the five new SVGs above (hero-runtime, install-path, offline-model-matrix,
-  mcp-interface-map, release-trust) on the palette/canvas system.
+**Polish layer — DONE (this change):**
+- Authored 3 of the 5 candidate SVGs on the palette/canvas system and wired them
+  into the README: `hero-runtime.svg` (hero), `offline-model-matrix.svg` (offline
+  section), `release-trust.svg` (Maturity). The other two (`install-path`,
+  `mcp-interface-map`) were dropped — they duplicate `quickstart-flow.svg` and
+  `mcp-tools.svg`; adding them would be redundant art, not new signal.
+- `runtime-strip.svg` rendered text corrected "2300+ tests" → "claims tested"
+  (the README alt was already corrected in the blocker layer).
+- All meaningful SVGs carry `role`/`aria-label`; README is 31 KiB (< 500 KiB);
+  every asset link resolves; all SVGs parse as well-formed XML.
+
+**Polish layer — STILL PENDING (needs tools not available here):**
 - Record the demo GIFs (manual — needs a terminal recorder; cannot be produced
   from source).
 - Generate benchmark card SVGs from reproducible `opencontext benchmark run`
