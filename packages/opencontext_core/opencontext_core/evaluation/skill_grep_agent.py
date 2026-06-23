@@ -1,20 +1,20 @@
-"""GENTLE-SIM arm — model a Gentle-AI-style "load the skill, then grep" loop.
+"""SKILL-GREP arm — model a "load the skill, then grep" loop.
 
-Gentle-AI's documented apply loop loads a large prose SKILL file into context as
-standing instructions, then — having no knowledge graph — falls back to grepping the
-working tree for the symbol it must change and reading the hit files. This module
-measures exactly that cost so it is comparable, in the SAME token unit, to the other
-arms.
+This control models a real prose-skill SDD agent (portable, has memory, no knowledge
+graph): its apply loop loads a large prose SKILL file into context as standing
+instructions, then — having no knowledge graph — falls back to grepping the working
+tree for the symbol it must change and reading the hit files. This module measures
+exactly that cost so it is comparable, in the SAME token unit, to the other arms.
 
 Honesty constraints (the point of this control):
 
 * It imports NOTHING from ``opencontext_core.indexing`` / ``opencontext_core.runtime``
-  / ``knowledge_graph`` — a Gentle-style agent has no such machinery, and powering the
-  control with the system under test would understate its cost.
+  / ``knowledge_graph`` — a prose-skill + grep agent has no such machinery, and
+  powering the control with the system under test would understate its cost.
 * File resolution is plain :mod:`re` over the working tree (``pathlib`` + ``re``, no
   ``subprocess``), mirroring :mod:`opencontext_core.evaluation.naive_agent` so token
   counts line up across arms.
-* The standing-prompt cost (:data:`SKILL_FILE_TOKENS`) is sized from a *real* Gentle
+* The standing-prompt cost (:data:`SKILL_FILE_TOKENS`) is sized from a *real* SDD
   skill file when one can be located on disk (see :func:`_resolve_skill_tokens`), so
   the number is honest rather than invented; otherwise it falls back to a documented
   estimate.
@@ -52,24 +52,23 @@ _IGNORE_DIR_NAMES = {
 
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
-# Candidate on-disk locations of a real Gentle/SDD apply SKILL file, in priority order.
+# Candidate on-disk locations of a real SDD apply SKILL file, in priority order.
 # Sizing the standing-prompt cost from a real file keeps the control honest.
 _SKILL_FILE_CANDIDATES: tuple[Path, ...] = (
-    Path.home() / ".gentle-ai" / "skills" / "sdd-apply" / "SKILL.md",
     Path.home() / ".claude" / "skills" / "sdd-apply" / "SKILL.md",
-    Path.home() / ".gentle-ai" / "SKILL.md",
+    Path.home() / ".config" / "opencontext" / "skills" / "sdd-apply" / "SKILL.md",
 )
 
-# Documented fallback when no real skill file is found on disk: a Gentle apply-skill is
+# Documented fallback when no real skill file is found on disk: an SDD apply-skill is
 # a multi-page prose instruction file; ~800 tokens is a conservative documented
 # estimate for such a standing prompt.
 _DEFAULT_SKILL_FILE_TOKENS = 800
 
 
 def _resolve_skill_tokens() -> tuple[int, str]:
-    """Return ``(token_cost, source)`` for the Gentle standing-prompt.
+    """Return ``(token_cost, source)`` for the SKILL-GREP standing-prompt.
 
-    Prefers the token estimate of a REAL Gentle/SDD ``SKILL.md`` found at one of
+    Prefers the token estimate of a REAL SDD ``SKILL.md`` found at one of
     :data:`_SKILL_FILE_CANDIDATES`; ``source`` is then that file's path. When none is
     present, returns :data:`_DEFAULT_SKILL_FILE_TOKENS` with ``source="estimate"`` so
     the provenance of the number is always explicit.
@@ -118,13 +117,13 @@ def _derive_target(case: ContextBenchCase) -> str:
     return max(candidates, key=len)
 
 
-def run_gentle_case(
+def run_skill_grep_case(
     case: ContextBenchCase,
     root: str | Path,
     *,
     top_k: int = 5,
 ) -> ArmResult:
-    """Measure the cost of a Gentle-AI-style apply loop for one case.
+    """Measure the cost of a prose-skill + grep apply loop for one case.
 
     Procedure:
       1. Pay the standing-prompt cost :data:`SKILL_FILE_TOKENS` (the loaded skill).
@@ -165,7 +164,7 @@ def run_gentle_case(
 
     latency_ms = (time.monotonic() - t0) * 1000
     return ArmResult(
-        arm="GENTLE-SIM",
+        arm="SKILL-GREP",
         tokens=cost,
         tool_calls=1 + len(hits),
         latency_ms=latency_ms,

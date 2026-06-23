@@ -3,7 +3,7 @@
 ``score_matrix`` derives ``kg_grounding`` from real evidence on the pack
 (``included_sources``), reads the rest from ``run_metadata``, and HARD-forces the two
 KG-exclusive capabilities (``kg_grounding``, ``impact_consulted``) to False for the
-control arms (GENTLE/SIN) — but credits their genuine capabilities (memory, spec,
+control arms (SKILL-GREP/SIN) — but credits their genuine capabilities (memory, spec,
 artifact chain, TDD, portability) honestly from metadata.
 """
 
@@ -57,11 +57,11 @@ class TestKgGroundingFromPack:
 
 
 class TestControlArmsLackOnlyKgCapabilities:
-    def test_gentle_denied_kg_and_impact_but_credited_real_capabilities(self) -> None:
+    def test_skill_grep_denied_kg_and_impact_but_credited_real_capabilities(self) -> None:
         # The two KG-exclusive capabilities are denied no matter what metadata claims —
-        # GENTLE greps, it has no knowledge graph.
+        # SKILL-GREP greps, it has no knowledge graph.
         pack = _FakePack(included_sources=["src/auth.py"])
-        matrix = score_matrix("GENTLE-SIM", pack, run_metadata=_FULL_METADATA)
+        matrix = score_matrix("SKILL-GREP", pack, run_metadata=_FULL_METADATA)
         assert matrix.kg_grounding is False
         assert matrix.impact_consulted is False
         # But a real SDD system IS credited its genuine capabilities (honest, not a
@@ -88,7 +88,7 @@ class TestControlArmsLackOnlyKgCapabilities:
 
     def test_control_arms_retain_portability_and_correctness(self) -> None:
         pack = _FakePack(included_sources=[])
-        matrix = score_matrix("GENTLE-SIM", pack, run_metadata=_FULL_METADATA)
+        matrix = score_matrix("SKILL-GREP", pack, run_metadata=_FULL_METADATA)
         assert isinstance(matrix, CapabilityMatrix)
         assert matrix.portability is True
         assert matrix.correctness is True

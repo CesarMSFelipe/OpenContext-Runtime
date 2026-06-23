@@ -65,8 +65,8 @@ def add_benchmark_parser(subparsers: Any) -> None:
     h2h = bm_sub.add_parser(
         "head2head",
         help=(
-            "Panel head-to-head: OpenContext (surgical) vs a Gentle-AI-style "
-            "skill+grep loop vs a careful grep agent — on tokens AND capabilities."
+            "Panel head-to-head: OpenContext (surgical) vs a prose-skill + grep "
+            "loop vs a careful grep agent — on tokens AND capabilities."
         ),
     )
     h2h.add_argument("--repos", required=True, help="Comma-separated repo roots to evaluate.")

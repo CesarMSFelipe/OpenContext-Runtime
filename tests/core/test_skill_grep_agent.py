@@ -1,4 +1,4 @@
-"""Tests for the GENTLE-SIM arm (Gentle-AI-style "load the skill, then grep" loop).
+"""Tests for the SKILL-GREP arm (a prose-skill + grep "load the skill, then grep" loop).
 
 * tokens == SKILL_FILE_TOKENS (the standing prompt) + Σ estimate_tokens(full hit file).
 * It must resolve files by PLAIN REGEX over the working tree — an import-guard asserts
@@ -11,20 +11,20 @@ import ast
 from pathlib import Path
 
 from opencontext_core.context.budgeting import estimate_tokens
-from opencontext_core.evaluation.gentle_agent import (
-    SKILL_FILE_TOKENS,
-    run_gentle_case,
-)
 from opencontext_core.evaluation.models import ContextBenchCase
 from opencontext_core.evaluation.multi_arm import ArmResult
+from opencontext_core.evaluation.skill_grep_agent import (
+    SKILL_FILE_TOKENS,
+    run_skill_grep_case,
+)
 
-GENTLE_AGENT_SRC = (
+SKILL_GREP_AGENT_SRC = (
     Path(__file__).parent.parent.parent
     / "packages"
     / "opencontext_core"
     / "opencontext_core"
     / "evaluation"
-    / "gentle_agent.py"
+    / "skill_grep_agent.py"
 )
 
 
@@ -35,7 +35,7 @@ def _write(root: Path, rel: str, body: str) -> Path:
     return path
 
 
-class TestGentleHonestCost:
+class TestSkillGrepHonestCost:
     def test_tokens_equal_skill_plus_hit_file_estimates(self, tmp_path: Path) -> None:
         target = _write(
             tmp_path,
@@ -55,10 +55,10 @@ class TestGentleHonestCost:
             query="Modify the Widget class",
             target_symbol="Widget",
         )
-        result = run_gentle_case(case, tmp_path)
+        result = run_skill_grep_case(case, tmp_path)
 
         assert isinstance(result, ArmResult)
-        assert result.arm == "GENTLE-SIM"
+        assert result.arm == "SKILL-GREP"
         expected = (
             SKILL_FILE_TOKENS
             + estimate_tokens(target.read_text())
@@ -76,7 +76,7 @@ class TestGentleHonestCost:
             query="change MissingSymbol",
             target_symbol="MissingSymbol",
         )
-        result = run_gentle_case(case, tmp_path)
+        result = run_skill_grep_case(case, tmp_path)
         # No hit files, but the loaded skill is still paid for; only the grep pass runs.
         assert result.tokens == SKILL_FILE_TOKENS
         assert result.tool_calls == 1
@@ -86,7 +86,7 @@ class TestGentleHonestCost:
             _write(tmp_path, f"m{i}.py", f"def helper_{i}() -> int:\n    return shared_sym()\n")
         _write(tmp_path, "core.py", "def shared_sym() -> int:\n    return 1\n")
         case = ContextBenchCase(id="popular", query="x", target_symbol="shared_sym")
-        result = run_gentle_case(case, tmp_path, top_k=3)
+        result = run_skill_grep_case(case, tmp_path, top_k=3)
         # At most top_k reads regardless of how many files mention the symbol.
         assert result.tool_calls == 1 + 3
 
@@ -94,11 +94,11 @@ class TestGentleHonestCost:
         assert SKILL_FILE_TOKENS > 0
 
 
-class TestGentleImportGuard:
-    """The Gentle control must NOT use OpenContext's KG/index to resolve files."""
+class TestSkillGrepImportGuard:
+    """The SKILL-GREP control must NOT use OpenContext's KG/index to resolve files."""
 
     def test_imports_no_kg_or_runtime(self) -> None:
-        tree = ast.parse(GENTLE_AGENT_SRC.read_text(encoding="utf-8"))
+        tree = ast.parse(SKILL_GREP_AGENT_SRC.read_text(encoding="utf-8"))
         imported: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -120,12 +120,12 @@ class TestGentleImportGuard:
         for name in imported:
             for frag in forbidden_fragments:
                 assert frag not in name, (
-                    f"Gentle control must not import {frag!r} (found via {name!r}); "
+                    f"SKILL-GREP control must not import {frag!r} (found via {name!r}); "
                     "the control may not use the system under test."
                 )
 
     def test_no_subprocess(self) -> None:
-        tree = ast.parse(GENTLE_AGENT_SRC.read_text(encoding="utf-8"))
+        tree = ast.parse(SKILL_GREP_AGENT_SRC.read_text(encoding="utf-8"))
         imported: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

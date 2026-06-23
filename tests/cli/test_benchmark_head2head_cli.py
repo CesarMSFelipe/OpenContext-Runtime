@@ -43,5 +43,5 @@ def test_head2head_cli_json_exit_zero(tmp_path: Path) -> None:
     report = data[0]
     arms = {a["arm"] for a in report["arms"]}
     assert "OC-SURGICAL" in arms
-    assert "GENTLE-SIM" in arms
+    assert "SKILL-GREP" in arms
     assert "semantic_layer" in report

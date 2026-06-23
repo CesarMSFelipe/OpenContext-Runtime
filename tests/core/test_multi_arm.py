@@ -1,7 +1,7 @@
 """Tests for the multi-arm head-to-head measurement primitive.
 
 ``run_head_to_head`` runs a panel of agent arms over the same (repo, case). With no
-``oc_arm_runner`` it must still produce the two control arms (GENTLE-SIM, REALISTIC-SIN)
+``oc_arm_runner`` it must still produce the two control arms (SKILL-GREP, REALISTIC-SIN)
 for every (repo, case) pair, and must NOT fabricate the OpenContext arms.
 """
 
@@ -77,7 +77,7 @@ class TestRunHeadToHeadControlsOnly:
         assert len(reports) == 1
         report = reports[0]
         arm_names = {a.arm for a in report.arms}
-        assert arm_names == {"GENTLE-SIM", "REALISTIC-SIN"}
+        assert arm_names == {"SKILL-GREP", "REALISTIC-SIN"}
         # No OpenContext arms are fabricated when no runner is wired.
         assert not any(a.arm.startswith("OC-") for a in report.arms)
         # The matrix covers exactly the arms produced.
@@ -129,5 +129,5 @@ class TestRunHeadToHeadControlsOnly:
 
         report = reports[0]
         arm_names = {a.arm for a in report.arms}
-        assert arm_names == {"GENTLE-SIM", "REALISTIC-SIN", "OC-SURGICAL"}
+        assert arm_names == {"SKILL-GREP", "REALISTIC-SIN", "OC-SURGICAL"}
         assert report.matrix["OC-SURGICAL"].kg_grounding is True

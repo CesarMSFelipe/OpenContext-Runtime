@@ -1,4 +1,4 @@
-"""Acceptance: OpenContext's surgical retrieval beats a Gentle-AI-style loop on BOTH
+"""Acceptance: OpenContext's surgical retrieval beats a prose-skill + grep loop on BOTH
 token consumption AND capabilities — the head-to-head that proves the product claim.
 
 The fixture test always runs (CI-reproducible, no network). The real-repo test runs the
@@ -52,7 +52,7 @@ def _make_fixture_repo(root: Path) -> None:
         )
 
 
-def test_oc_surgical_beats_gentle_and_is_capability_superior(tmp_path: Path) -> None:
+def test_oc_surgical_beats_skill_grep_and_is_capability_superior(tmp_path: Path) -> None:
     repo = tmp_path / "fixture"
     _make_fixture_repo(repo)
     case = ContextBenchCase(
@@ -64,23 +64,23 @@ def test_oc_surgical_beats_gentle_and_is_capability_superior(tmp_path: Path) -> 
     assert len(reports) == 1
     rep = reports[0]
     arms = {a.arm: a for a in rep.arms}
-    assert {"OC-SURGICAL", "OC-BROAD", "GENTLE-SIM", "REALISTIC-SIN"} <= set(arms)
+    assert {"OC-SURGICAL", "OC-BROAD", "SKILL-GREP", "REALISTIC-SIN"} <= set(arms)
 
-    # CONSUMPTION: OC's surgical pack is cheaper than Gentle's skill-load + file reads,
-    # and cheaper than (or equal to) OC's own broad regression baseline.
-    assert arms["OC-SURGICAL"].tokens < arms["GENTLE-SIM"].tokens
+    # CONSUMPTION: OC's surgical pack is cheaper than the skill-load + file reads of the
+    # SKILL-GREP control, and cheaper than (or equal to) OC's own broad regression baseline.
+    assert arms["OC-SURGICAL"].tokens < arms["SKILL-GREP"].tokens
     assert arms["OC-SURGICAL"].tokens <= arms["OC-BROAD"].tokens
 
-    # CAPABILITY: OC >= Gentle on every check, strictly greater on the KG-exclusive ones.
+    # CAPABILITY: OC >= SKILL-GREP on every check, strictly greater on the KG-exclusive ones.
     m = rep.matrix
     for fld in _FIELDS:
-        assert getattr(m["OC-SURGICAL"], fld) >= getattr(m["GENTLE-SIM"], fld), fld
-    assert m["OC-SURGICAL"].kg_grounding and not m["GENTLE-SIM"].kg_grounding
-    assert m["OC-SURGICAL"].impact_consulted and not m["GENTLE-SIM"].impact_consulted
+        assert getattr(m["OC-SURGICAL"], fld) >= getattr(m["SKILL-GREP"], fld), fld
+    assert m["OC-SURGICAL"].kg_grounding and not m["SKILL-GREP"].kg_grounding
+    assert m["OC-SURGICAL"].impact_consulted and not m["SKILL-GREP"].impact_consulted
     # correctness is MEASURED (target symbol surfaced in the pack), not asserted.
     assert m["OC-SURGICAL"].correctness is True
-    # Honesty guard: Gentle IS credited the SDD capabilities it genuinely has.
-    assert m["GENTLE-SIM"].memory_used and m["GENTLE-SIM"].spec_artifact
+    # Honesty guard: the SKILL-GREP control IS credited the SDD capabilities it genuinely has.
+    assert m["SKILL-GREP"].memory_used and m["SKILL-GREP"].spec_artifact
 
 
 _REAL_REPOS = {
@@ -102,7 +102,7 @@ def test_oc_surgical_beats_both_controls_on_real_repos() -> None:
         rep = run_head_to_head([repo], [case], oc_arm_runner=oc_arm_runner)[0]
         arms = {a.arm: a for a in rep.arms}
         oc = arms["OC-SURGICAL"].tokens
-        gen = arms["GENTLE-SIM"].tokens
+        skill_grep = arms["SKILL-GREP"].tokens
         sin = arms["REALISTIC-SIN"].tokens
-        assert oc < gen, f"{repo}: OC {oc} !< GENTLE {gen}"
+        assert oc < skill_grep, f"{repo}: OC {oc} !< SKILL-GREP {skill_grep}"
         assert oc < sin, f"{repo}: OC {oc} !< SIN {sin}"
