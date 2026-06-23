@@ -24,6 +24,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/assets/hero-runtime.svg" alt="From agent request to verified context in one call: an AI coding agent asks; OpenContext Runtime traces the call graph, ranks symbols, locks a token budget and checks gates; a verified context pack is returned in one call" width="720">
+</p>
+
+<p align="center">
   <a href="#the-opencontext-difference">What It Does</a> ·
   <a href="#start-in-30-seconds">Quick Start</a> ·
   <a href="#proof-not-promises">Benchmarks</a> ·
@@ -93,6 +97,14 @@ OpenContext separates **local context operations** (always offline, deterministi
 </table>
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/offline-model-matrix.svg" alt="What runs offline vs needs a model: local context ops and MCP read/quality/memory tools are offline and deterministic; opencontext_run uses the host agent's model via MCP sampling; standalone generative phases need a provider or run planned-only" width="720">
+</p>
+
+<p align="center">
+  <sub>Offline by default · only generative phases need a model · <code>opencontext_run</code> borrows the host agent's model via sampling</sub>
+</p>
 
 <p align="center">
   <img src="docs/assets/divider.svg" alt="" width="720">
@@ -796,6 +808,14 @@ They check the contract risk tiers and token budgets, the AICX bytecode round-tr
 </table>
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/release-trust.svg" alt="Release 1.5.0 status: stable — code graph, context packs, MCP read tools, local memory; opt-in — Engram, external providers, symbol-edit tools, semantic search; host-agent dependent — opencontext_run and standalone generative phases; scaffolded and fail-closed — egress, tool forwarding, raw traces. Claims guarded by pytest tests/smoke/test_readme_claims.py" width="720">
+</p>
+
+<p align="center">
+  <sub>Status · stable / opt-in / host-dependent / fail-closed · every quantified claim guarded by a smoke test</sub>
+</p>
 
 <p align="center">
   <img src="docs/assets/divider.svg" alt="" width="720">
