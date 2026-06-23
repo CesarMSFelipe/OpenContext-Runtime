@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/runtime-strip.svg" alt="offline-first · call-graph traced · deterministic · MCP ready · 1600+ tests" width="720">
+  <img src="docs/assets/runtime-strip.svg" alt="offline-first · call-graph traced · deterministic · MCP ready · 2300+ tests" width="720">
 </p>
 
 <p align="center">
@@ -166,6 +166,7 @@ pip install opencontext-cli
 cd your-project
 opencontext demo        # real token reduction on your actual repo
 opencontext install     # stack detection · editor setup · index repo
+opencontext             # navigable menu: settings & tools in one place, no flags
 ```
 
 </td>
@@ -741,7 +742,8 @@ opencontext memory search "query"
 opencontext memory collect
 opencontext memory gc --dry-run
 
-# Config & plugins
+# Config & plugins  (or just run `opencontext` for the navigable menu)
+opencontext config          # one navigable settings menu — arrow keys, no y/n
 opencontext config wizard
 opencontext preset apply <name>
 opencontext plugin install <name> --github owner/repo
@@ -773,6 +775,7 @@ opencontext benchmark run
 | Area | Links |
 |------|-------|
 | Getting Started | [Quickstart](docs/getting-started/quickstart.md) · [Installation](docs/getting-started/installation.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) |
+| Configuration | [TUI Menu](docs/configuration/tui-menu.md) · [Walkthrough](docs/configuration/walkthrough.md) · [Reference](docs/configuration/reference.md) · [User Config](docs/configuration/user-config.md) |
 | Architecture | [Overview](docs/architecture/overview.md) · [Context Pack Builder](docs/architecture/context-pack-builder.md) · [Safety Layer](docs/architecture/safety-layer.md) |
 | Workflows | [Flow Modes](docs/workflows/modes.md) · [SDD Guide](docs/workflows/sdd-workflow.md) · [Custom Workflows](docs/workflows/custom-workflows.md) |
 | Security | [Threat Model](docs/security/threat-model.md) · [Data Classification](docs/security/data-classification.md) |
