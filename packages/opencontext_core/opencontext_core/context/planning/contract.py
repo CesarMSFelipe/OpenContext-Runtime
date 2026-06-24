@@ -9,7 +9,11 @@ from opencontext_core.context.planning.classifier import (
     TaskClassifierProtocol,
 )
 from opencontext_core.context.planning.risk import RiskClassifier
-from opencontext_core.models.context_contract import ContextContract, VerificationGate
+from opencontext_core.models.context_contract import (
+    ContextContract,
+    ContractCoverage,
+    VerificationGate,
+)
 from opencontext_core.models.evidence import EvidenceRef
 
 TIER_BUDGET: dict[str, int] = {
@@ -22,6 +26,14 @@ TIER_GATES: dict[str, list[str]] = {
     "cheap": ["run-tests", "lint"],
     "precise": ["run-tests", "lint", "type-check"],
     "critical": ["run-tests", "lint", "type-check", "security-scan"],
+}
+
+# Named policy/quality profiles selected by risk tier (contract v2). The names
+# are stable handles; the runtime resolves them to concrete policy/gate configs.
+TIER_PROFILE: dict[str, str] = {
+    "cheap": "fast",
+    "precise": "standard",
+    "critical": "strict",
 }
 
 
@@ -128,6 +140,7 @@ class ContextContractBuilder:
         query: str,
         manifest: Any = None,
         memory_context: Any = None,
+        workflow_hint: str = "sdd",
     ) -> ContextContract:
         classification: TaskClassification = self._classifier.classify(query, manifest)
         risk_tier = self._risk_classifier.classify(
@@ -143,11 +156,23 @@ class ContextContractBuilder:
         if memory_context:
             required_memories = [m.key for m in memory_context if hasattr(m, "key")]
 
+        profile = TIER_PROFILE.get(risk_tier, "standard")
+        # Build-time coverage is fail-closed: required context is declared but
+        # not yet resolved, so resolved counts stay 0 until retrieval fills them.
+        coverage = ContractCoverage(
+            required_symbols=len(required_symbols),
+            required_files=0,
+            required_memories=len(required_memories),
+        )
+
         return ContextContract(
             task=query,
             task_type=classification.task_type,
             risk_level=classification.risk_level,
             risk_tier=risk_tier,  # type: ignore[arg-type]
+            workflow_hint=workflow_hint,
+            policy_profile=profile,
+            quality_profile=profile,
             language=classification.language,
             framework=classification.framework,
             known=known,
@@ -159,4 +184,5 @@ class ContextContractBuilder:
             must_verify=must_verify,
             forbidden_sources=[],
             token_budget=TIER_BUDGET[risk_tier],
+            coverage=coverage,
         )
