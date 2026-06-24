@@ -19,6 +19,14 @@ class ComponentId(StrEnum):
     BUDGET = "budget"
     GIT = "git"
     OPENSPEC = "openspec"
+    ENGRAM = "engram"
+    SDD = "sdd"
+    MCP = "mcp"
+    SKILLS = "skills"
+    PERSONAS = "personas"
+    RECEIPTS = "receipts"
+    AICX = "aicx"
+    TUI = "tui"
 
 
 class PresetId(StrEnum):
@@ -39,6 +47,8 @@ class MemoryMode(StrEnum):
     ENGRAM = "engram"
     LOCAL = "local"
     OFF = "off"
+    HYBRID = "hybrid"
+    ENGRAM_ONLY = "engram_only"
 
 
 class FlowMode(StrEnum):
@@ -58,6 +68,8 @@ class BudgetMode(StrEnum):
     STRICT = "strict"
     WARN = "warn"
     OFF = "off"
+    ADAPTIVE = "adaptive"
+    ASK = "ask"
 
 
 class GitMode(StrEnum):
@@ -66,6 +78,9 @@ class GitMode(StrEnum):
     NONE = "none"
     SINGLE_PR = "single_pr"
     STACKED_PRS = "stacked_prs"
+    LOCAL_BRANCH = "local_branch"
+    COMMIT_ONLY = "commit_only"
+    PER_TASK_PRS = "per_task_prs"
 
 
 class OpenSpecMode(StrEnum):
@@ -94,6 +109,11 @@ class AgenticFlowConfig(BaseModel, extra="forbid"):
     install_engram_if_missing: bool = True
     allow_automatic_archive: bool = False
     allow_background_indexing: bool = True
+    economy_mode: Literal["off", "balanced", "aggressive"] = "balanced"
+    compact_handoffs: bool = True
+    max_handoff_tokens: int = 1200
+    setup_engram_for_agent: bool = True
+    approval_before_git: bool = True
 
 
 if __name__ == "__main__":
