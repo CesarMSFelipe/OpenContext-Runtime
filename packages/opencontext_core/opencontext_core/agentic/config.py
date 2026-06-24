@@ -34,6 +34,7 @@ class PresetId(StrEnum):
 
     FULL = "full-opencontext"
     AGENTIC_MINIMAL = "agentic-minimal"
+    AGENTIC_SAFE = "agentic-safe"
     MEMORY_ONLY = "memory-only"
     SDD_ONLY = "sdd-only"
     CONTEXT_ONLY = "context-only"
