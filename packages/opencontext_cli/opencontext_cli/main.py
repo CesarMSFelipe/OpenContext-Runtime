@@ -32,6 +32,7 @@ from opencontext_cli.commands.kg_cmd import add_kg_parser, handle_kg
 from opencontext_cli.commands.loop_cmd import add_loop_commands, handle_loop
 from opencontext_cli.commands.models_cmd import add_models_parser, handle_models
 from opencontext_cli.commands.mutation_cmd import add_mutation_commands, handle_mutation
+from opencontext_cli.commands.oc_new_cmd import add_oc_new_parser, handle_oc_new
 from opencontext_cli.commands.persona_cmd import add_persona_parser, handle_persona
 from opencontext_cli.commands.plugin_cmd import add_plugin_parser, handle_plugin
 from opencontext_cli.commands.privacy_cmd import add_privacy_parser, handle_privacy
@@ -459,6 +460,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     install_parser.add_argument("root", nargs="?", default=".", help="Project root.")
     install_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmations.")
+    install_parser.add_argument(
+        "--agent",
+        default=None,
+        choices=["claude-code", "opencode", "cursor", "codex", "aider", "generic"],
+        help="Target agent (default: auto-detect).",
+    )
+    install_parser.add_argument(
+        "--flow",
+        default="oc-new",
+        choices=["oc-new", "mcp_run", "cli_loop", "instructions_only"],
+        help="Preferred agentic flow (default: oc-new).",
+    )
+    install_parser.add_argument(
+        "--tdd",
+        default=None,
+        choices=["strict", "ask", "off"],
+        help="TDD posture (default: auto-detect from project).",
+    )
 
     onboard_parser = subparsers.add_parser("onboard", help=argparse.SUPPRESS)
     onboard_parser.add_argument("root", nargs="?", default=".", help="Project root.")
@@ -748,6 +767,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_profile_parser(subparsers)
     add_receipt_parser(subparsers)
     add_run_parser(subparsers)
+    add_oc_new_parser(subparsers)
     add_capabilities_parser(subparsers)
     add_aicx_parser(subparsers)
     add_models_parser(subparsers)
@@ -1384,6 +1404,9 @@ def _dispatch(args: argparse.Namespace) -> None:
     if command == "runs":
         handle_run_inspect(args)
         return
+    if command == "oc-new":
+        handle_oc_new(args)
+        return
     if command == "capabilities":
         handle_capabilities(args)
         return
@@ -1842,11 +1865,14 @@ def _install(args: argparse.Namespace) -> None:
         console.print(f"  [bold]Stack:[/]   {', '.join(detected)}")
     console.print()
 
-    tdd = "strict" if has_pytest else "ask"
+    tdd = getattr(args, "tdd", None) or ("strict" if has_pytest else "ask")
+    flow = getattr(args, "flow", "oc-new") or "oc-new"
+    agent_arg = getattr(args, "agent", None)
     console.print("  Will configure:")
     console.print("    • Project index + knowledge graph")
     console.print(f"    • SDD/TDD (mode: {tdd})")
-    console.print("    • Agent integration (your installed agents)")
+    console.print(f"    • Agent integration ({agent_arg or 'auto-detect'})")
+    console.print(f"    • Flow: {flow}")
     console.print("    • Harness workflow")
     console.print()
 
@@ -1875,8 +1901,8 @@ def _install(args: argparse.Namespace) -> None:
 
     # Honor the editor the wizard asked about. Previously hard-coded to "opencode",
     # so a claude-code/codex dev got opencode files and no wiring for their own agent.
-    _chosen_editor = os.environ.get("_OC_WIZARD_EDITOR", "").strip()
-    _have_editor = bool(_chosen_editor) and _chosen_editor != "other"
+    _chosen_editor = agent_arg or os.environ.get("_OC_WIZARD_EDITOR", "").strip()
+    _have_editor = bool(_chosen_editor) and _chosen_editor not in ("other", "generic")
     if _have_editor:
         active_clients = [_chosen_editor]
     else:
@@ -1951,13 +1977,36 @@ def _install(args: argparse.Namespace) -> None:
     for line in summary:
         console.print(f"  [{'green' if line.startswith('✓') else 'yellow'}]{line}[/]")
 
+    # Capability-aware next-step
+    try:
+        from opencontext_core.configurator.capability import build_capability_matrix
+
+        cap_matrix = build_capability_matrix()
+        _target_agent = active_clients[0] if active_clients else "claude-code"
+        _cap = cap_matrix.get(_target_agent)
+        _rec_flow = _cap.recommended_flow if _cap else flow
+        _supports_oc_new = _rec_flow == "native_oc_new"
+        _supports_mcp = _cap.mcp if _cap else True
+        _supports_sampling = _cap.supports_sampling if _cap else False
+        summary.append(
+            f"✓ Capability report: {_target_agent} → flow={_rec_flow}"
+            + (" (MCP)" if _supports_mcp else "")
+            + (" (sampling)" if _supports_sampling else "")
+        )
+    except Exception:
+        _supports_oc_new = flow == "oc-new"
+
     console.print()
     console.print("[bold]Next steps:[/]")
     console.print(
         "  [yellow]↻ Restart your agent (Claude Code / Codex / OpenCode) so it loads "
         "the OpenContext MCP server.[/]"
     )
-    console.print("  [cyan]opencontext harness run --workflow sdd --task 'Your task'[/]")
+    if _supports_oc_new:
+        console.print("  [cyan]/oc-new your task description[/]  ← start a new change")
+        console.print("  [cyan]opencontext oc-new status[/]       ← check run state")
+    else:
+        console.print("  [cyan]opencontext harness run --workflow sdd --task 'Your task'[/]")
     console.print("  [cyan]opencontext config wizard[/]")
     console.print("  [cyan]opencontext pack . --query 'Explain this code' --copy[/]")
     console.print()
