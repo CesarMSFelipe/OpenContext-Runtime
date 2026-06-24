@@ -36,6 +36,11 @@ class SubAgentResult:
     artifacts: list[str] = field(default_factory=list)
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Extended fields (all optional, additive — backward-compatible)
+    envelope: dict[str, Any] | None = None
+    skill_path: str | None = None
+    memory_policy: dict[str, Any] = field(default_factory=dict)
+    token_usage: dict[str, int] = field(default_factory=dict)
 
 
 class SubAgentDelegate:

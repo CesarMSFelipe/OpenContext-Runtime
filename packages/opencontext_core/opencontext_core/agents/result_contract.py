@@ -1,9 +1,19 @@
-"""Result contract for SDD phase execution."""
+"""Result contract for SDD phase execution.
+
+``PhaseResult`` is the SDD-agent-facing result shape used by the orchestrator.
+``PhaseResultEnvelope`` is the canonical harness-level contract; it is re-exported
+here so callers can import either name from this module without modification.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+# Re-export the canonical envelope so import sites can reference it from here.
+from opencontext_core.workflow.phase_result import (
+    PhaseResultEnvelope as PhaseResultEnvelope,
+)
 
 
 @dataclass
