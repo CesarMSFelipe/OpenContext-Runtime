@@ -11,7 +11,7 @@ version: 0.1.0
 # oc-tasks
 
 Slice the design into ordered, actionable work items. Run this phase **as the OC
-Orchestrator subagent**.
+Planner subagent**.
 
 ## When to use
 
@@ -19,7 +19,7 @@ After `oc-design`, before apply.
 
 ## Run as the persona
 
-- **Task tool**, `subagent_type: oc-orchestrator`.
+- **Task tool**, `subagent_type: oc-planner`.
 - Pass the change `<slug>` and the `trace_id`; delegate the phase to it.
 
 ## Steps (the spawned subagent performs these)

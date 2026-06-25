@@ -27,7 +27,7 @@ OC_NEW_FLOW: tuple[PhaseDefinition, ...] = (
     ),
     PhaseDefinition(
         name="spec",
-        persona="oc-orchestrator",
+        persona="oc-requirements",
         skill="oc-spec",
         required_artifacts=["proposal.md"],
         expected_artifacts=["spec.md", "spec.json", "spec.artifact.json"],
@@ -48,7 +48,7 @@ OC_NEW_FLOW: tuple[PhaseDefinition, ...] = (
     ),
     PhaseDefinition(
         name="tasks",
-        persona="oc-orchestrator",
+        persona="oc-planner",
         skill="oc-tasks",
         required_artifacts=["spec.md", "design.md"],
         expected_artifacts=["tasks.md", "tasks.json", "tasks.artifact.json"],
@@ -78,10 +78,15 @@ OC_NEW_FLOW: tuple[PhaseDefinition, ...] = (
     ),
     PhaseDefinition(
         name="verify",
-        persona="oc-reviewer",
+        persona="oc-harness-verifier",
         skill="oc-verify",
         required_artifacts=["apply-manifest.json"],
-        expected_artifacts=["verify-report.json", "verify.artifact.json"],
+        expected_artifacts=[
+            "verify-report.json",
+            "verify.artifact.json",
+            "compliance-matrix.json",
+            "harness-report.json",
+        ],
         required_tools=[
             "opencontext_memory_context",
             "opencontext_context",
@@ -106,7 +111,7 @@ OC_NEW_FLOW: tuple[PhaseDefinition, ...] = (
     ),
     PhaseDefinition(
         name="archive",
-        persona="oc-orchestrator",
+        persona="oc-archivist",
         skill="oc-archive",
         required_artifacts=["review-report.json"],
         expected_artifacts=["archive-report.json", "archive.artifact.json", "receipt.json"],

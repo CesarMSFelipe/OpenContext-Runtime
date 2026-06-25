@@ -4,6 +4,23 @@ from __future__ import annotations
 from opencontext_core.oc_new.conductor import OcNewConductor
 from opencontext_core.oc_new.flow import OC_NEW_FLOW
 
+
+def _phase(name: str):
+    return next(p for p in OC_NEW_FLOW if p.name == name)
+
+
+def test_flow_phase_personas() -> None:
+    assert _phase("spec").persona == "oc-requirements"
+    assert _phase("tasks").persona == "oc-planner"
+    assert _phase("verify").persona == "oc-harness-verifier"
+    assert _phase("archive").persona == "oc-archivist"
+
+
+def test_verify_phase_expected_artifacts_include_evidence() -> None:
+    artifacts = _phase("verify").expected_artifacts
+    assert "compliance-matrix.json" in artifacts
+    assert "harness-report.json" in artifacts
+
 # Artifacts that each phase needs from the previous phase
 _PHASE_ARTIFACTS: dict[str, list[str]] = {
     "explore": ["explore.artifact.json", "context-pack.json"],

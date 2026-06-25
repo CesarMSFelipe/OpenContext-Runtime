@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from argparse import Namespace
+
+from opencontext_cli.commands.persona_cmd import handle_persona
 from opencontext_core.personas import (
     PERSONAS,
     delegation_personas,
@@ -41,3 +44,32 @@ def test_no_overlap():
     pub_ids = {p.id for p in public_personas()}
     del_ids = {p.id for p in delegation_personas()}
     assert pub_ids.isdisjoint(del_ids)
+
+
+def test_persona_list_default_shows_only_public(capsys):
+    rc = handle_persona(Namespace(persona_command="list"))
+    assert rc == 0
+    out = capsys.readouterr().out
+    for pid in _PUBLIC_IDS:
+        assert pid in out
+    for p in delegation_personas():
+        assert p.id not in out
+
+
+def test_persona_list_all_shows_all(capsys):
+    rc = handle_persona(Namespace(persona_command="list", all=True, delegates=False))
+    assert rc == 0
+    out = capsys.readouterr().out
+    for p in PERSONAS:
+        assert p.id in out
+
+
+def test_persona_list_delegates_shows_only_delegation(capsys):
+    rc = handle_persona(Namespace(persona_command="list", all=False, delegates=True))
+    assert rc == 0
+    out = capsys.readouterr().out
+    for pid in _PUBLIC_IDS:
+        assert pid not in out
+    assert len(delegation_personas()) == 10
+    for p in delegation_personas():
+        assert p.id in out

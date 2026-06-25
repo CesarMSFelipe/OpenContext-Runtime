@@ -10,7 +10,7 @@ version: 0.1.0
 
 # oc-spec
 
-Capture WHAT the change must do. Run this phase **as the OC Orchestrator
+Capture WHAT the change must do. Run this phase **as the OC Requirements
 subagent**.
 
 ## When to use
@@ -19,7 +19,7 @@ After `oc-propose` is approved, before design.
 
 ## Run as the persona
 
-- **Task tool**, `subagent_type: oc-orchestrator`.
+- **Task tool**, `subagent_type: oc-requirements`.
 - Pass the change `<slug>` and the `trace_id`; delegate the phase to it.
 
 ## Steps (the spawned subagent performs these)

@@ -493,12 +493,12 @@ assert len(public_personas()) + len(delegation_personas()) == len(PERSONAS)
 PHASE_PERSONAS: dict[str, str] = {
     "explore": "oc-explorer",
     "propose": "oc-orchestrator",
-    "spec": "oc-orchestrator",
+    "spec": "oc-requirements",
     "design": "oc-architect",
-    "tasks": "oc-orchestrator",
+    "tasks": "oc-planner",
     "apply": "oc-builder",
     "test": "oc-tester",  # TDD test-writing
-    "verify": "oc-reviewer",
+    "verify": "oc-harness-verifier",
     "review": "oc-reviewer",
     "archive": "oc-archivist",
 }

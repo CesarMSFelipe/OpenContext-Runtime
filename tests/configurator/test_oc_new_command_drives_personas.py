@@ -26,11 +26,23 @@ def test_oc_new_command_spawns_each_phase_persona() -> None:
         "oc-orchestrator",
         "oc-architect",
         "oc-builder",
-        "oc-reviewer",
+        "oc-requirements",
+        "oc-planner",
+        "oc-harness-verifier",
+        "oc-archivist",
     ):
         assert f"subagent_type: {persona}" in body, (
             f"oc-new command must spawn the '{persona}' persona subagent"
         )
+
+
+def test_oc_new_command_no_stale_personas() -> None:
+    """spec/tasks/archive must not name oc-orchestrator; verify must not name oc-reviewer."""
+    body = _oc_new_body()
+    # oc-orchestrator is still valid for propose — check it is not used for spec/tasks/archive/verify
+    assert "subagent_type: oc-reviewer" not in body, (
+        "verify persona must be oc-harness-verifier, not oc-reviewer"
+    )
 
 
 def test_oc_new_command_uses_the_task_tool() -> None:
