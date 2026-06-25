@@ -44,6 +44,15 @@ DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     "*.min.css",
     ".claude/worktrees",
     ".claude/plugins/cache",
+    # OpenContext-generated and configuration files — excluded from context retrieval
+    # so OC's own config never appears as context for user tasks.
+    ".mcp.json",
+    ".claude/agents/oc-*.md",
+    ".claude/agents/.opencontext-delegates/**",
+    ".claude/commands/oc-*.md",
+    "opencontext.yaml",
+    "harness.yaml",
+    "openspec/changes/**/receipt.json",
 )
 
 

@@ -76,7 +76,9 @@ class OcNewConductor:
 
         if not path.exists():
             if require:
-                raise RuntimeError(f"Missing required phase envelope: {path}")
+                raise RuntimeError(
+                    f"Phase envelope missing: phase-result.{phase_name}.json"
+                )
             return PhaseResultEnvelope(
                 run_id=state.identity.run_id,
                 change_id=state.identity.change_id,
@@ -105,21 +107,15 @@ class OcNewConductor:
     ) -> OcNewRunState:
         state = self.store.load(run_id)
         phase = state.phase(phase_name)  # type: ignore[arg-type]
-        run_dir = self.store.run_dir(run_id)
-        envelope_path = run_dir / f"phase-result.{phase_name}.json"
         resolved = artifact_paths
         resolved_warnings = warnings
-        if envelope_path.exists():
-            try:
-                env = self._load_required_phase_envelope(state, phase_name)
-                resolved = env.artifacts
-                if not env.can_advance():
-                    # Override caller-supplied status when the envelope blocks advance.
-                    status = "failed" if env.status == "failed" else "blocked"
-                if env.risks:
-                    resolved_warnings = list(resolved_warnings or []) + env.risks
-            except Exception:
-                resolved = artifact_paths
+        env = self._load_required_phase_envelope(state, phase_name)
+        resolved = env.artifacts
+        if not env.can_advance():
+            # Override caller-supplied status when the envelope blocks advance.
+            status = "failed" if env.status == "failed" else "blocked"
+        if env.risks:
+            resolved_warnings = list(resolved_warnings or []) + env.risks
         updated = phase.model_copy(
             update={
                 "status": status,
