@@ -17,6 +17,8 @@ class OcNewArchiveGate:
         "apply-manifest.json",
         "verify-report.json",
         "review-report.json",
+        "compliance-matrix.json",
+        "harness-report.json",
     ]
 
     def validate(self, run_dir: Path) -> list[str]:

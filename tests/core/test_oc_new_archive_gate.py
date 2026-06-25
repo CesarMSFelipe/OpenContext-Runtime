@@ -31,3 +31,29 @@ def test_gate_assert_passes_when_all_present(tmp_path):
     for name in gate.REQUIRED:
         (tmp_path / name).write_text("{}", encoding="utf-8")
     gate.assert_can_archive(tmp_path)  # must not raise
+
+
+def test_gate_requires_compliance_matrix(tmp_path):
+    assert "compliance-matrix.json" in OcNewArchiveGate.REQUIRED
+
+
+def test_gate_requires_harness_report(tmp_path):
+    assert "harness-report.json" in OcNewArchiveGate.REQUIRED
+
+
+def test_gate_fails_when_compliance_matrix_missing(tmp_path):
+    gate = OcNewArchiveGate()
+    for name in gate.REQUIRED:
+        if name != "compliance-matrix.json":
+            (tmp_path / name).write_text("{}", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="compliance-matrix.json"):
+        gate.assert_can_archive(tmp_path)
+
+
+def test_gate_fails_when_harness_report_missing(tmp_path):
+    gate = OcNewArchiveGate()
+    for name in gate.REQUIRED:
+        if name != "harness-report.json":
+            (tmp_path / name).write_text("{}", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="harness-report.json"):
+        gate.assert_can_archive(tmp_path)
