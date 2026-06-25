@@ -99,22 +99,57 @@ class MetaHarnessScanner:
             return False, f"Import failed: {exc}"
 
     def _check_memory_backend(self) -> tuple[bool, str]:
-        try:
-            from opencontext_core.memory.backends import SQLiteMemoryBackend  # noqa: F401
+        """In-process write+read roundtrip against SQLiteMemoryBackend (CWD-rooted)."""
+        import tempfile
+        from datetime import UTC, datetime
+        from pathlib import Path
 
-            return True, "SQLiteMemoryBackend importable"
-        except Exception as exc:
-            return False, f"Import failed: {exc}"
-
-    def _check_kg_snapshot_path(self) -> tuple[bool, str]:
         try:
-            from opencontext_core.agentic.context_substrate import (
-                ContextSubstrateBuilder,  # noqa: F401
+            from opencontext_core.memory.backends import SQLiteMemoryBackend
+            from opencontext_core.models.agent_memory import (
+                DecayPolicy,
+                MemoryLayer,
+                MemoryRecord,
             )
 
-            return True, "ContextSubstrateBuilder (KG path) importable"
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                db_path = str(Path(tmp_dir) / "meta_harness_check.db")
+                backend = SQLiteMemoryBackend(db_path)
+                now = datetime.now(tz=UTC)
+                record = MemoryRecord(
+                    id="__meta_harness_check__",
+                    layer=MemoryLayer.EPISODIC,
+                    key="meta:harness:check",
+                    content="roundtrip-ok",
+                    decay_policy=DecayPolicy(enabled=False),
+                    created_at=now,
+                    updated_at=now,
+                )
+                backend.store(record)
+                results = backend.search("roundtrip", limit=1)
+                if results:
+                    return True, "SQLiteMemoryBackend write+read roundtrip succeeded"
+                return False, "SQLiteMemoryBackend write succeeded but read returned no results"
         except Exception as exc:
-            return False, f"Import failed: {exc}"
+            return False, f"Memory backend roundtrip failed: {exc}"
+
+    def _check_kg_snapshot_path(self) -> tuple[bool, str]:
+        """Check that a KG artifact exists on disk (behavioral, not just importable)."""
+        from pathlib import Path
+
+        cwd = Path.cwd()
+        candidates = [
+            cwd / ".storage" / "opencontext" / "context_graph.db",
+            cwd / ".opencontext" / "knowledge_graph.json",
+        ]
+        for path in candidates:
+            if path.exists():
+                return True, f"KG artifact found: {path.relative_to(cwd)}"
+        return (
+            False,
+            "No KG artifact found (expected .storage/opencontext/context_graph.db "
+            "or .opencontext/knowledge_graph.json) — run 'opencontext index .' first",
+        )
 
     def _check_context_substrate(self) -> tuple[bool, str]:
         try:
@@ -154,12 +189,30 @@ class MetaHarnessScanner:
             return False, f"Import failed: {exc}"
 
     def _check_tui_app(self) -> tuple[bool, str]:
+        """Check that the TUI app module file exists on disk.
+
+        Uses a file-existence check rather than importlib.find_spec so that a
+        missing optional dependency (textual) does not cause the check to fail.
+        """
         try:
             import importlib.util
+            from pathlib import Path
 
-            spec = importlib.util.find_spec("opencontext_cli.tui.app")
-            if spec is not None:
-                return True, "TUI app module resolvable"
+            # Fast path: resolve the package location without importing it.
+            pkg_spec = importlib.util.find_spec("opencontext_cli")
+            if pkg_spec is not None and pkg_spec.origin is not None:
+                pkg_dir = Path(pkg_spec.origin).parent
+                app_path = pkg_dir / "tui" / "app.py"
+                if app_path.exists():
+                    return True, "TUI app module file present"
+                return False, f"opencontext_cli.tui.app not found at {app_path}"
+            # Fallback: try find_spec but ignore ModuleNotFoundError from textual.
+            try:
+                spec = importlib.util.find_spec("opencontext_cli.tui.app")
+                if spec is not None:
+                    return True, "TUI app module resolvable"
+            except (ModuleNotFoundError, ValueError):
+                pass
             return False, "opencontext_cli.tui.app spec not found"
         except Exception as exc:
             return False, f"Spec lookup failed: {exc}"

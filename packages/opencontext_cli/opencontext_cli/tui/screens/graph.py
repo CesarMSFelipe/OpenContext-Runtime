@@ -120,43 +120,83 @@ def load_graph_for_run(run_id: str, root: Path | str = ".") -> GraphViewState:
 
 
 def load_graph_for_kg(root: Path | str = ".") -> GraphViewState:
-    """Load graph data from the knowledge graph JSON snapshot.
+    """Load graph data from the knowledge graph snapshot.
+
+    Load order:
+    1. ``.opencontext/knowledge_graph.json`` (JSON snapshot)
+    2. ``.storage/opencontext/context_graph.db`` (SQLite DB via GraphDatabase)
+    3. Empty GraphViewState on any failure or absence.
 
     Returns a GraphViewState with KG nodes (capped at 60).
-    Falls back to an empty GraphViewState when the KG file is not found.
     """
     import json
 
+    base = Path(root)
     try:
-        kg_path = Path(root) / ".opencontext" / "knowledge_graph.json"
-        if not kg_path.exists():
-            return GraphViewState(nodes=[], edges=[], mode=GraphMode.KG)
+        kg_path = base / ".opencontext" / "knowledge_graph.json"
+        if kg_path.exists():
+            data = json.loads(kg_path.read_text(encoding="utf-8"))
+            raw_nodes = []
+            raw_edges: list[Any] = []
 
-        data = json.loads(kg_path.read_text(encoding="utf-8"))
-        raw_nodes = []
-        raw_edges = []
+            if isinstance(data, dict):
+                raw_nodes = data.get("nodes", [])
+                raw_edges = data.get("edges", [])
+            elif isinstance(data, list):
+                raw_nodes = data
 
-        if isinstance(data, dict):
-            raw_nodes = data.get("nodes", [])
-            raw_edges = data.get("edges", [])
-        elif isinstance(data, list):
-            raw_nodes = data
+            nodes = []
+            for item in raw_nodes:
+                if isinstance(item, dict):
+                    nid = str(item.get("id", item.get("path", "")))
+                    label = str(item.get("label", item.get("name", nid)))
+                    nodes.append(GraphNodeView(node_id=nid, label=label, kind=GraphNodeKind.FILE))
 
-        nodes = []
-        for item in raw_nodes:
-            if isinstance(item, dict):
-                nid = str(item.get("id", item.get("path", "")))
-                label = str(item.get("label", item.get("name", nid)))
-                nodes.append(GraphNodeView(node_id=nid, label=label, kind=GraphNodeKind.FILE))
+            edges = []
+            for item in raw_edges:
+                if isinstance(item, dict):
+                    src = str(item.get("source", item.get("from", "")))
+                    tgt = str(item.get("target", item.get("to", "")))
+                    if src and tgt:
+                        edges.append(GraphEdgeView(source_id=src, target_id=tgt))
 
-        edges = []
-        for item in raw_edges:
-            if isinstance(item, dict):
-                src = str(item.get("source", item.get("from", "")))
-                tgt = str(item.get("target", item.get("to", "")))
-                if src and tgt:
-                    edges.append(GraphEdgeView(source_id=src, target_id=tgt))
-
-        return GraphViewState.build(nodes, edges, mode=GraphMode.KG)
+            return GraphViewState.build(nodes, edges, mode=GraphMode.KG)
     except Exception:
-        return GraphViewState(nodes=[], edges=[], mode=GraphMode.KG)
+        pass
+
+    # Fallback: load from SQLite knowledge-graph DB.
+    try:
+        db_path = base / ".storage" / "opencontext" / "context_graph.db"
+        if db_path.exists():
+            from opencontext_core.indexing.graph_db import GraphDatabase
+
+            db = GraphDatabase(db_path)
+            conn = db._connect()
+            node_rows = conn.execute(
+                "SELECT id, name, kind FROM nodes LIMIT 60"
+            ).fetchall()
+            edge_rows = conn.execute(
+                "SELECT source_node_id, target_node_id FROM edges "
+                "WHERE target_node_id IS NOT NULL LIMIT 120"
+            ).fetchall()
+
+            nodes = [
+                GraphNodeView(
+                    node_id=str(r["id"]),
+                    label=str(r["name"]),
+                    kind=GraphNodeKind.FILE,
+                )
+                for r in node_rows
+            ]
+            edges = [
+                GraphEdgeView(
+                    source_id=str(r["source_node_id"]),
+                    target_id=str(r["target_node_id"]),
+                )
+                for r in edge_rows
+            ]
+            return GraphViewState.build(nodes, edges, mode=GraphMode.KG)
+    except Exception:
+        pass
+
+    return GraphViewState(nodes=[], edges=[], mode=GraphMode.KG)
