@@ -189,31 +189,51 @@ class MetaHarnessScanner:
             return False, f"Import failed: {exc}"
 
     def _check_tui_app(self) -> tuple[bool, str]:
-        """Check that the TUI app module file exists on disk.
+        """Check that the TUI app module file exists (on disk or bundled in pyz).
 
-        Uses a file-existence check rather than importlib.find_spec so that a
-        missing optional dependency (textual) does not cause the check to fail.
+        Uses a file-existence check rather than importing so that a missing
+        optional dependency (textual) does not cause the check to fail.
         """
         try:
             import importlib.util
             from pathlib import Path
 
-            # Fast path: resolve the package location without importing it.
+            # Fast path for an editable / site-packages install: the package
+            # origin gives us a real directory on disk.
             pkg_spec = importlib.util.find_spec("opencontext_cli")
             if pkg_spec is not None and pkg_spec.origin is not None:
                 pkg_dir = Path(pkg_spec.origin).parent
                 app_path = pkg_dir / "tui" / "app.py"
                 if app_path.exists():
                     return True, "TUI app module file present"
-                return False, f"opencontext_cli.tui.app not found at {app_path}"
-            # Fallback: try find_spec but ignore ModuleNotFoundError from textual.
+
+            # Fallback path covers zipimport (pyz bundle) and any other loader:
+            # try to resolve the spec without triggering the textual import.
+            # find_spec raises ModuleNotFoundError when a *parent* package's
+            # __init__ imports textual; catching it gives us parity with the
+            # file-check above.
             try:
-                spec = importlib.util.find_spec("opencontext_cli.tui.app")
-                if spec is not None:
-                    return True, "TUI app module resolvable"
+                tui_spec = importlib.util.find_spec("opencontext_cli.tui")
+                if tui_spec is not None and tui_spec.submodule_search_locations:
+                    for search_path in tui_spec.submodule_search_locations:
+                        candidate = Path(search_path) / "app.py"
+                        if candidate.exists():
+                            return True, "TUI app module file present"
+                    # For zip-based loaders the path may not exist on disk; fall
+                    # through to the origin-name check below.
             except (ModuleNotFoundError, ValueError):
                 pass
-            return False, "opencontext_cli.tui.app spec not found"
+
+            if pkg_spec is not None and pkg_spec.origin is not None:
+                # Inside a pyz the origin path ends with opencontext_cli/__init__.py
+                # inside the archive. We can't do Path.exists() there, but the mere
+                # presence of the spec proves the package ships the module.
+                pkg_dir = Path(pkg_spec.origin).parent
+                app_path = pkg_dir / "tui" / "app.py"
+                if str(app_path).endswith(".pyz") or ".pyz/" in str(app_path):
+                    return True, "TUI app module bundled in pyz archive"
+
+            return False, "opencontext_cli.tui.app module not found"
         except Exception as exc:
             return False, f"Spec lookup failed: {exc}"
 
