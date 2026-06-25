@@ -105,7 +105,7 @@ class NextAction(BaseModel):
     required_tools: list[str] = Field(default_factory=list)
     expected_artifacts: list[str] = Field(default_factory=list)
     # NOTE: metadata carries transport data (memory policy, budget hints) keyed by subsystem.
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class OcNewRunState(BaseModel):

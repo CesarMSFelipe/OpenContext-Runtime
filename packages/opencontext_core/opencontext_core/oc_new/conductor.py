@@ -20,6 +20,7 @@ from opencontext_core.oc_new.store import OcNewStore
 from opencontext_core.workflow.phase_result import PhaseResultEnvelope
 
 if TYPE_CHECKING:
+    from opencontext_core.agentic.budget_controller import BudgetDecision
     from opencontext_core.agentic.config import AgenticFlowConfig
     from opencontext_core.memory.capture import MemoryCaptureService
     from opencontext_core.memory.phase_policy import PhaseMemoryPolicy
@@ -303,7 +304,7 @@ class OcNewConductor:
             memory_backend = "local"
             if state.config is not None:
                 memory_backend = state.config.memory_mode.value
-            mem_metadata: dict = {
+            mem_metadata: dict[str, object] = {
                 "backend": memory_backend,
                 "read_layers": [layer.value for layer in policy.read_layers] if policy else [],
                 "write_layers": [layer.value for layer in policy.write_layers] if policy else [],
@@ -408,7 +409,7 @@ class OcNewConductor:
             return
         git_mode = state.config.git_mode
         task_phases = [p for p in state.phases if p.status in {"passed", "warning"}]
-        tasks = [p.name for p in task_phases]
+        tasks: list[str] = [p.name for p in task_phases]
         planner = GitWorkPlanner()
         plan = planner.plan(
             change_id=state.identity.change_id,
@@ -420,7 +421,7 @@ class OcNewConductor:
         git_plan_path = run_dir / "git_plan.json"
         git_plan_path.write_text(json.dumps(plan.model_dump(), indent=2))
 
-    def _check_budget(self, state: OcNewRunState, phase_name: str) -> object:
+    def _check_budget(self, state: OcNewRunState, phase_name: str) -> "BudgetDecision":
         """Return a BudgetDecision for *phase_name* given current run state."""
         from opencontext_core.agentic.budget import BudgetLedger
         from opencontext_core.agentic.budget_controller import BudgetController

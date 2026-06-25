@@ -8,6 +8,10 @@ _record_phase_budget in the conductor.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from opencontext_core.agentic.budget import BudgetLedger
 
 
 @dataclass(frozen=True)
@@ -103,14 +107,14 @@ class BudgetController:
 
     def record(
         self,
-        ledger: object,
+        ledger: "BudgetLedger",
         phase: str,
         *,
         input_tokens: int = 0,
         output_tokens: int = 0,
         compression_savings: int = 0,
         estimated_cost_usd: float | None = None,
-    ) -> object:
+    ) -> "BudgetLedger":
         """Append a PhaseBudget entry and return the updated ledger."""
         from opencontext_core.agentic.budget import PhaseBudget
 
@@ -121,7 +125,7 @@ class BudgetController:
             compression_savings=compression_savings,
             estimated_cost_usd=estimated_cost_usd,
         )
-        return ledger.add_phase(entry)  # type: ignore[union-attr]
+        return ledger.add_phase(entry)
 
 
 if __name__ == "__main__":

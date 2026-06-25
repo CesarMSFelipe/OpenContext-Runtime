@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import List
 
 from opencontext_core.learning.evolution import EvolutionProposal
 
@@ -101,7 +102,7 @@ class EvolutionStore:
                 continue
         return proposals
 
-    def list_by_status(self, status: str) -> list[EvolutionProposal]:
+    def list_by_status(self, status: str) -> List[EvolutionProposal]:
         """Return proposals whose ``status`` matches the given value."""
         return [p for p in self.list() if p.status == status]
 
