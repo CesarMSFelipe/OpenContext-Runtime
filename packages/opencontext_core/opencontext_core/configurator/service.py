@@ -264,6 +264,7 @@ class Configurator:
                 if path.exists():
                     path.unlink()  # whole file we created
                     changed.append(str(path))
+        changed.extend(self._remove_hidden_delegation_personas(adapter))
         return changed
 
     def _plan(self, adapter: Adapter) -> list[PlanEntry]:
@@ -348,7 +349,47 @@ class Configurator:
             entries.extend(self._plan_commands(adapter))
         if constants.persona_dir(adapter.agent_id):
             entries.extend(self._plan_personas(adapter))
+        if constants.hidden_delegation_dir(adapter.agent_id):
+            entries.extend(self._plan_hidden_delegation_personas(adapter))
         return entries
+
+    def _plan_hidden_delegation_personas(self, adapter: Adapter) -> list[PlanEntry]:
+        """Plan hidden delegation persona files under a hidden subdirectory."""
+        from opencontext_core.personas import hidden_delegation_personas
+
+        rel = constants.hidden_delegation_dir(adapter.agent_id)
+        if rel is None:
+            return []
+
+        root = self.project_root / rel
+        entries: list[PlanEntry] = []
+
+        for persona in hidden_delegation_personas():
+            path = root / f"{persona.id}.md"
+            content = _render_persona(persona)
+            entries.append((path, _content_if_changed(path, content)))
+
+        return entries
+
+    def _remove_hidden_delegation_personas(self, adapter: Adapter) -> list[str]:
+        """Remove hidden delegation persona files."""
+        rel = constants.hidden_delegation_dir(adapter.agent_id)
+        if rel is None:
+            return []
+
+        root = self.project_root / rel
+        changed: list[str] = []
+
+        if root.exists():
+            for path in root.glob("oc-*.md"):
+                path.unlink()
+                changed.append(str(path))
+            try:
+                root.rmdir()
+            except OSError:
+                pass
+
+        return changed
 
     def _plan_personas(self, adapter: Adapter) -> list[PlanEntry]:
         """Plan the agent's persona/subagent files (OC Orchestrator/Professor/Reviewer)."""

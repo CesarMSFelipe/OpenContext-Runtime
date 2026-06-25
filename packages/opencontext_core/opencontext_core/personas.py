@@ -9,8 +9,15 @@ self-contained; they reference OpenContext's own tools, nothing external.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from opencontext_core.configurator.constants import KG_READ_TOOLS, MEMORY_TOOLS
+
+
+class PersonaVisibility(StrEnum):
+    PUBLIC_MAIN = "public_main"
+    PUBLIC_SUPPORT = "public_support"
+    HIDDEN_DELEGATION = "hidden_delegation"
 
 # Every persona reaches the knowledge graph and persistent memory through the
 # opencontext MCP server, never through native code search. Grep/Glob are
@@ -39,14 +46,14 @@ class Persona:
     description: str
     system_prompt: str
     tools: tuple[str, ...] = field(default_factory=tuple)
-    visibility: str = "delegation"  # "public" | "delegation"
+    visibility: PersonaVisibility = PersonaVisibility.HIDDEN_DELEGATION
 
 
 _ORCHESTRATOR = Persona(
     id="oc-orchestrator",
     name="OC Orchestrator",
     description="Thin coordinator: plans, delegates, and verifies through the gates.",
-    visibility="public",
+    visibility=PersonaVisibility.PUBLIC_MAIN,
     system_prompt="""You are the OC Orchestrator.
 
 You coordinate work end to end without doing it all yourself. Keep the main
@@ -85,7 +92,7 @@ _PROFESSOR = Persona(
     id="oc-professor",
     name="OC Professor",
     description="Teaching mentor: explains the why and the concept before the code.",
-    visibility="public",
+    visibility=PersonaVisibility.PUBLIC_SUPPORT,
     system_prompt="""You are the OC Professor.
 
 You help people understand, not just ship. Lead with the concept and the reason,
@@ -108,7 +115,7 @@ _REVIEWER = Persona(
     id="oc-reviewer",
     name="OC Reviewer",
     description="Rigorous reviewer: code review, GGA gates, judgment-day review. One finding per line.",  # noqa: E501
-    visibility="public",
+    visibility=PersonaVisibility.PUBLIC_SUPPORT,
     system_prompt="""You are the OC Reviewer.
 
 Three modes: code review, GGA quality enforcement, and judgment-day adversarial review.
@@ -475,14 +482,32 @@ PERSONAS: tuple[Persona, ...] = (
 _BY_ID: dict[str, Persona] = {p.id: p for p in PERSONAS}
 
 
-def public_personas() -> tuple[Persona, ...]:
-    """Return personas with visibility == 'public' (written to visible agent dirs)."""
-    return tuple(p for p in PERSONAS if p.visibility == "public")
+def public_main_persona() -> "Persona":
+    """Return the single PUBLIC_MAIN persona (raises RuntimeError if count != 1)."""
+    mains = [p for p in PERSONAS if p.visibility == PersonaVisibility.PUBLIC_MAIN]
+    if len(mains) != 1:
+        raise RuntimeError(f"Expected exactly one public main persona, got {len(mains)}")
+    return mains[0]
 
 
-def delegation_personas() -> tuple[Persona, ...]:
-    """Return personas with visibility == 'delegation' (internal, not emitted)."""
-    return tuple(p for p in PERSONAS if p.visibility == "delegation")
+def public_support_personas() -> tuple["Persona", ...]:
+    """Return personas with visibility == PUBLIC_SUPPORT."""
+    return tuple(p for p in PERSONAS if p.visibility == PersonaVisibility.PUBLIC_SUPPORT)
+
+
+def hidden_delegation_personas() -> tuple["Persona", ...]:
+    """Return personas with visibility == HIDDEN_DELEGATION."""
+    return tuple(p for p in PERSONAS if p.visibility == PersonaVisibility.HIDDEN_DELEGATION)
+
+
+def public_personas() -> tuple["Persona", ...]:
+    """Return all public personas (main + support), written to visible agent dirs."""
+    return (public_main_persona(),) + public_support_personas()
+
+
+def delegation_personas() -> tuple["Persona", ...]:
+    """Backwards-compat alias for hidden_delegation_personas()."""
+    return hidden_delegation_personas()
 
 
 assert len(public_personas()) + len(delegation_personas()) == len(PERSONAS)

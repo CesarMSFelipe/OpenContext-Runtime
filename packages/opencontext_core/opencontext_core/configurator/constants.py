@@ -229,6 +229,16 @@ def persona_dir(agent_id: str) -> str | None:
     return _PERSONA_DIR.get(agent_id)
 
 
+_HIDDEN_DELEGATION_DIRS: dict[str, str] = {
+    "claude-code": ".claude/agents/.opencontext-delegates",
+}
+
+
+def hidden_delegation_dir(agent_id: str) -> str | None:
+    """Return the hidden delegation subdirectory for agent_id, or None if unsupported."""
+    return _HIDDEN_DELEGATION_DIRS.get(agent_id)
+
+
 # Agents with a global (home-dir-relative) agents directory — persona .md files go here.
 # Key: agent_id → subdir within agent_home(agent_id).
 _GLOBAL_AGENTS_SUBDIR: dict[str, str] = {
