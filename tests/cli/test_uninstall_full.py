@@ -190,3 +190,132 @@ def test_full_does_not_delete_untracked(tmp_path, monkeypatch):
 
     assert user_file.exists()
     assert user_file.read_text(encoding="utf-8") == "keep me"
+
+
+# ---------------------------------------------------------------------------
+# REQ-02: --full --dry-run must NOT require --yes
+# ---------------------------------------------------------------------------
+
+
+def test_full_dry_run_no_yes_required(tmp_path, monkeypatch, capsys):
+    """--full --dry-run exits 0 without --yes and must not delete any files."""
+    monkeypatch.chdir(tmp_path)
+    mcp = tmp_path / ".mcp.json"
+    mcp.write_text("{}", encoding="utf-8")
+
+    import opencontext_cli.main as main_mod
+
+    monkeypatch.setattr(main_mod, "_resolve_flag", lambda v, _: v)
+    args = SimpleNamespace(
+        full=True,
+        verify=False,
+        yes=False,  # no --yes
+        dry_run=True,  # --dry-run
+        json=False,
+        scope="local",
+        root=str(tmp_path),
+        all_agents=False,
+        agents=[],
+        purge=False,
+    )
+    from opencontext_cli.commands.uninstall_cmd import handle_uninstall
+
+    # Must not raise SystemExit with a non-zero code.
+    try:
+        handle_uninstall(args)
+    except SystemExit as exc:
+        assert exc.code in (None, 0), f"--dry-run exited with non-zero code: {exc.code}"
+
+    # The file must NOT have been deleted.
+    assert mcp.exists(), ".mcp.json was deleted despite --dry-run"
+
+    out = capsys.readouterr().out
+    assert "dry" in out.lower() or "Dry" in out, "output must indicate dry-run mode"
+
+
+# ---------------------------------------------------------------------------
+# REQ-03: --full --yes must purge .mcp.json
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_json_purged_on_full_uninstall(tmp_path, monkeypatch):
+    """--full --yes deletes .mcp.json when present."""
+    from unittest.mock import patch
+
+    monkeypatch.chdir(tmp_path)
+    mcp = tmp_path / ".mcp.json"
+    mcp.write_text('{"mcpServers":{}}', encoding="utf-8")
+
+    import opencontext_cli.main as main_mod
+
+    monkeypatch.setattr(main_mod, "_resolve_flag", lambda v, _: v)
+    args = SimpleNamespace(
+        full=True,
+        verify=False,
+        yes=True,
+        dry_run=False,
+        json=True,  # JSON suppresses Rich output
+        scope="local",
+        root=str(tmp_path),
+        all_agents=False,
+        agents=[],
+        purge=False,
+    )
+
+    with (
+        patch("opencontext_cli.commands.uninstall_cmd.Configurator") as mock_cfg,
+        patch("opencontext_core.install_manager.InstallationManager") as mock_im,
+    ):
+        mock_cfg.return_value.detect_installed.return_value = []
+        mock_cfg.return_value.deconfigure.return_value = {"results": []}
+        mock_im.return_value._load_state.return_value = None
+        mock_im.return_value.clear_state.return_value = True
+
+        from opencontext_cli.commands.uninstall_cmd import handle_uninstall
+
+        try:
+            handle_uninstall(args)
+        except SystemExit as exc:
+            assert exc.code in (None, 0), f"full uninstall exited non-zero: {exc.code}"
+
+    assert not mcp.exists(), ".mcp.json was NOT deleted by --full --yes"
+
+
+def test_mcp_json_absent_no_error_on_full_uninstall(tmp_path, monkeypatch):
+    """--full --yes succeeds without error when .mcp.json is absent."""
+    from unittest.mock import patch
+
+    monkeypatch.chdir(tmp_path)
+    assert not (tmp_path / ".mcp.json").exists()
+
+    import opencontext_cli.main as main_mod
+
+    monkeypatch.setattr(main_mod, "_resolve_flag", lambda v, _: v)
+    args = SimpleNamespace(
+        full=True,
+        verify=False,
+        yes=True,
+        dry_run=False,
+        json=True,
+        scope="local",
+        root=str(tmp_path),
+        all_agents=False,
+        agents=[],
+        purge=False,
+    )
+
+    with (
+        patch("opencontext_cli.commands.uninstall_cmd.Configurator") as mock_cfg,
+        patch("opencontext_core.install_manager.InstallationManager") as mock_im,
+    ):
+        mock_cfg.return_value.detect_installed.return_value = []
+        mock_cfg.return_value.deconfigure.return_value = {"results": []}
+        mock_im.return_value._load_state.return_value = None
+        mock_im.return_value.clear_state.return_value = True
+
+        from opencontext_cli.commands.uninstall_cmd import handle_uninstall
+
+        try:
+            handle_uninstall(args)
+        except SystemExit as exc:
+            assert exc.code in (None, 0), f"full uninstall exited non-zero: {exc.code}"
