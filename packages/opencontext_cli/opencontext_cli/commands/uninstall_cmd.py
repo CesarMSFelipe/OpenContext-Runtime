@@ -52,7 +52,13 @@ def _strip_project_managed_blocks(root: object, scope: str) -> None:
             pass
 
 
-_PURGE_TARGETS = (".opencontext", ".storage/opencontext", "opencontext.yaml", "harness.yaml")
+_PURGE_TARGETS = (
+    ".opencontext",
+    ".storage/opencontext",
+    "opencontext.yaml",
+    "harness.yaml",
+    ".mcp.json",
+)
 
 
 def _purge_project_artifacts(root: object) -> list[str]:
@@ -326,6 +332,21 @@ def handle_uninstall(args: Any) -> None:
 
     # --full: complete trace removal
     if getattr(args, "full", False):
+        if dry_run:
+            # Dry-run never requires --yes; just print the plan and exit 0.
+            targets = [
+                *_PURGE_TARGETS,
+                ".claude/agents/oc-*.md",
+                ".claude/commands/oc-*.md",
+            ]
+            if json_output:
+                print(json.dumps({"dry_run": True, "would_remove": targets}, indent=2))
+            else:
+                console.print("[bold yellow]Dry run — nothing removed.[/]")
+                console.print("Would remove:")
+                for t in targets:
+                    console.print(f"  [dim]{t}[/]")
+            return
         if not yes and not sys.stdin.isatty():
             sys.stderr.write("--full requires --yes in non-interactive mode.\n")
             sys.exit(1)

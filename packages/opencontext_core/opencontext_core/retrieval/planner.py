@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import fnmatch
 import logging
 import re
 from collections import defaultdict
@@ -39,6 +40,39 @@ from opencontext_core.retrieval.scoring import (
 from opencontext_core.safety.redaction import SinkGuard
 
 _log = logging.getLogger(__name__)
+
+# Patterns for OC-generated or OC-configuration files that should never appear
+# in context retrieval results. Applied as a post-retrieval filter in plan().
+_OC_GENERATED_PATTERNS: tuple[str, ...] = (
+    ".mcp.json",
+    ".claude/agents/oc-*.md",
+    ".claude/agents/.opencontext-delegates/**",
+    ".claude/commands/oc-*.md",
+    "opencontext.yaml",
+    "harness.yaml",
+    "openspec/changes/**/receipt.json",
+)
+
+
+def _is_oc_generated(path: str) -> bool:
+    """Return True if *path* matches any OC-generated file pattern.
+
+    Used to filter context items so that OC's own config/artifact files
+    are never included in retrieval results returned to the user.
+    """
+    # Normalise to forward slashes and strip leading "./"
+    normalised = path.replace("\\", "/").lstrip("./")
+    for pattern in _OC_GENERATED_PATTERNS:
+        pat = pattern.lstrip("./")
+        if fnmatch.fnmatch(normalised, pat):
+            return True
+        # Also check just the basename for simple name patterns (e.g. ".mcp.json")
+        basename = normalised.rsplit("/", 1)[-1]
+        pat_base = pat.rsplit("/", 1)[-1]
+        if "/" not in pat and fnmatch.fnmatch(basename, pat_base):
+            return True
+    return False
+
 
 # The 9 v2 ``RankingConfig`` weight fields map 1:1 onto identically-named
 # ``RetrievalWeights`` fields (B1-REQ-3). The four non-mapped ``RetrievalWeights``
@@ -537,6 +571,12 @@ class RetrievalPlanner:
         # Diversity-aware selection: maximize information per token by demoting
         # near-duplicates of already-chosen evidence before truncating to top_k.
         context_items = _redact_selected(select_diverse(ranked, top_k))
+
+        # Drop OC-generated / OC-configuration files from context results so
+        # that OpenContext's own config never appears as context for user tasks.
+        context_items = [
+            item for item in context_items if not _is_oc_generated(item.source)
+        ]
 
         evidence = [_context_item_to_evidence(item, request.surface) for item in context_items]
         fallback_actions = _fallback_actions_for(request, evidence)

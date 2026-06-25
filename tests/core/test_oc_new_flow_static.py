@@ -4,6 +4,22 @@ from __future__ import annotations
 
 from opencontext_core.oc_new.conductor import OcNewConductor
 from opencontext_core.oc_new.flow import OC_NEW_FLOW
+from opencontext_core.workflow.phase_result import PhaseResultEnvelope
+
+
+def _write_envelope(run_dir, run_id, change_id, phase_name, artifacts=None):
+    """Write a minimal passing phase-result envelope for tests."""
+    envelope = PhaseResultEnvelope(
+        run_id=run_id,
+        change_id=change_id,
+        phase=phase_name,
+        status="passed",
+        duration_s=0.0,
+        artifacts=artifacts or [],
+    )
+    (run_dir / f"phase-result.{phase_name}.json").write_text(
+        envelope.model_dump_json(), encoding="utf-8"
+    )
 
 
 def _phase(name: str):
@@ -58,6 +74,15 @@ def test_full_10_phase_static_flow(tmp_path):
         artifacts = _PHASE_ARTIFACTS.get(phase_name, [])
         for artifact in artifacts:
             (run_dir / artifact).write_text("{}", encoding="utf-8")
+
+        # Write phase-result envelope (required by conductor.mark_done)
+        _write_envelope(
+            run_dir,
+            state.identity.run_id,
+            state.identity.change_id,
+            phase_name,
+            artifacts=artifacts,
+        )
 
         state = conductor.mark_done(
             state.identity.run_id,

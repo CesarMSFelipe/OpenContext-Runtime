@@ -2,7 +2,25 @@
 
 from __future__ import annotations
 
+import pytest
+
 from opencontext_core.oc_new.conductor import OcNewConductor
+from opencontext_core.workflow.phase_result import PhaseResultEnvelope
+
+
+def _write_envelope(run_dir, run_id, change_id, phase_name, artifacts=None):
+    """Write a minimal passing phase-result envelope for tests."""
+    envelope = PhaseResultEnvelope(
+        run_id=run_id,
+        change_id=change_id,
+        phase=phase_name,
+        status="passed",
+        duration_s=0.0,
+        artifacts=artifacts or [],
+    )
+    (run_dir / f"phase-result.{phase_name}.json").write_text(
+        envelope.model_dump_json(), encoding="utf-8"
+    )
 
 
 def test_conductor_start_points_to_explore(tmp_path):
@@ -23,6 +41,13 @@ def test_conductor_advances_after_phase_done(tmp_path):
     run_dir = tmp_path / ".opencontext" / "runs" / state.identity.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "explore.artifact.json").write_text("{}", encoding="utf-8")
+    _write_envelope(
+        run_dir,
+        state.identity.run_id,
+        state.identity.change_id,
+        "explore",
+        artifacts=["explore.artifact.json"],
+    )
 
     state = conductor.mark_done(
         state.identity.run_id,
@@ -39,7 +64,18 @@ def test_conductor_blocks_when_artifact_missing(tmp_path):
     conductor = OcNewConductor(tmp_path)
     state = conductor.start("Add graph health command")
 
-    # Mark explore done WITHOUT creating the artifact file
+    run_dir = tmp_path / ".opencontext" / "runs" / state.identity.run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    # Write envelope with no artifacts — advance will block on required artifact check
+    _write_envelope(
+        run_dir,
+        state.identity.run_id,
+        state.identity.change_id,
+        "explore",
+        artifacts=[],
+    )
+
+    # Mark explore done with envelope present but no artifact file on disk
     state = conductor.mark_done(state.identity.run_id, "explore")
 
     # propose needs explore.artifact.json — should be blocked
@@ -66,6 +102,13 @@ def test_conductor_reaches_approval_phase(tmp_path):
     for phase_name, artifacts in artifacts_by_phase.items():
         for a in artifacts:
             (run_dir / a).write_text("{}", encoding="utf-8")
+        _write_envelope(
+            run_dir,
+            state.identity.run_id,
+            state.identity.change_id,
+            phase_name,
+            artifacts=artifacts,
+        )
         state = conductor.mark_done(state.identity.run_id, phase_name, artifact_paths=artifacts)
 
     assert state.current_phase == "approval"
@@ -96,8 +139,6 @@ def test_conductor_state_persisted(tmp_path):
 def test_mark_done_reads_artifacts_from_envelope_file(tmp_path):
     """When phase-result.<phase>.json exists, its artifacts field is used."""
 
-    from opencontext_core.workflow.phase_result import PhaseResultEnvelope
-
     conductor = OcNewConductor(tmp_path)
     state = conductor.start("test envelope read")
     run_dir = tmp_path / ".opencontext" / "runs" / state.identity.run_id
@@ -122,17 +163,16 @@ def test_mark_done_reads_artifacts_from_envelope_file(tmp_path):
     assert "explore.artifact.json" in explore_phase.artifact_paths
 
 
-def test_mark_done_falls_back_to_artifact_paths_when_no_file(tmp_path):
-    """When no phase-result file exists, artifact_paths param is used, no exception."""
+def test_mark_done_raises_when_envelope_missing(tmp_path):
+    """When no phase-result file exists and require=True (default), RuntimeError is raised."""
     conductor = OcNewConductor(tmp_path)
-    state = conductor.start("test fallback")
+    state = conductor.start("test envelope required")
     run_dir = tmp_path / ".opencontext" / "runs" / state.identity.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "explore.artifact.json").write_text("{}", encoding="utf-8")
 
-    # No phase-result.explore.json created — should fall back to artifact_paths
-    new_state = conductor.mark_done(
-        state.identity.run_id, "explore", artifact_paths=["explore.artifact.json"]
-    )
-    explore_phase = new_state.phase("explore")
-    assert "explore.artifact.json" in explore_phase.artifact_paths
+    # No phase-result.explore.json created — must raise RuntimeError
+    with pytest.raises(RuntimeError, match=r"Phase envelope missing: phase-result\.explore\.json"):
+        conductor.mark_done(
+            state.identity.run_id, "explore", artifact_paths=["explore.artifact.json"]
+        )

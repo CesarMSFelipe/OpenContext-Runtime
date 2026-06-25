@@ -2084,20 +2084,24 @@ def _install(args: argparse.Namespace) -> None:
         summary.append(f"⚠ Skill install: {exc}")
 
     # Global agent integration (MCP) — once per machine.
-    if mgr._is_installed():
-        summary.append("✓ Global integration (already installed)")
-    else:
-        try:
-            installer = _AgentInstaller(project_root=root)
-            detected = installer.detect_installed_agents()
-            report = installer.install(targets=detected, location="global")
-            mgr._save_state(
-                InstallState(version=mgr.VERSION, components=["agents"], agents=list(detected))
-            )
-            n = report.get("agents_configured", 0)
-            summary.append(f"✓ Global integration ({n} agent(s))" if n else "✓ Global integration")
-        except Exception as exc:
-            summary.append(f"⚠ Global integration: {exc}")
+    # Skipped when --scope workspace is passed to avoid writing to global paths.
+    if getattr(args, "scope", None) != "workspace":
+        if mgr._is_installed():
+            summary.append("✓ Global integration (already installed)")
+        else:
+            try:
+                installer = _AgentInstaller(project_root=root)
+                detected = installer.detect_installed_agents()
+                report = installer.install(targets=detected, location="global")
+                mgr._save_state(
+                    InstallState(version=mgr.VERSION, components=["agents"], agents=list(detected))
+                )
+                n = report.get("agents_configured", 0)
+                summary.append(
+                    f"✓ Global integration ({n} agent(s))" if n else "✓ Global integration"
+                )
+            except Exception as exc:
+                summary.append(f"⚠ Global integration: {exc}")
 
     try:
         from opencontext_core.doctor.checks import run_doctor
