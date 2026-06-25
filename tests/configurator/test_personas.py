@@ -9,7 +9,7 @@ import pytest
 
 from opencontext_cli.commands import persona_cmd
 from opencontext_core.configurator.service import Configurator
-from opencontext_core.personas import PERSONAS, get_persona
+from opencontext_core.personas import PERSONAS, PHASE_PERSONAS, get_persona
 
 _PUBLIC_EXPECTED = {
     "oc-orchestrator",
@@ -32,6 +32,12 @@ _EXPECTED = {
     "oc-archivist",
     "oc-evolution-steward",
 }
+
+
+def test_phase_personas_mapping() -> None:
+    assert PHASE_PERSONAS["spec"] == "oc-requirements"
+    assert PHASE_PERSONAS["tasks"] == "oc-planner"
+    assert PHASE_PERSONAS["verify"] == "oc-harness-verifier"
 
 
 def test_distinct_personas() -> None:

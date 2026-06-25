@@ -49,7 +49,7 @@ PHASE_SKILL_TO_PHASE: dict[str, str] = {
 
 # Phase skills whose driving persona is not a ``PHASE_PERSONAS`` key.
 EXTRA_SKILL_PERSONA: dict[str, str] = {
-    "oc-archive": "oc-orchestrator",
+    "oc-archive": "oc-archivist",
 }
 
 # Every phase skill (the per-phase ones plus the all-in-one entry point).
