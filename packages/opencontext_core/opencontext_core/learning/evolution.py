@@ -46,7 +46,7 @@ class EvolutionProposal(BaseModel):
     confidence: float = 0.5
     impact: Literal["low", "medium", "high"] = "medium"
     risk: Literal["low", "medium", "high"] = "low"
-    payload: dict = Field(default_factory=dict)
+    payload: dict[str, object] = Field(default_factory=dict)
     auto_applicable: bool = False
     requires_approval: bool = True
 
