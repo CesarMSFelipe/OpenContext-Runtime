@@ -10,6 +10,8 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # T1: _install_dry_run flag precedence
 # ---------------------------------------------------------------------------
@@ -93,10 +95,7 @@ def test_t3_kind_map_symbol() -> None:
     assert _map_kind("symbol") == GraphNodeKind.SYMBOL
 
 
-import pytest as _pytest
-
-
-@_pytest.mark.parametrize("kind", ["function", "method", "class", "artifact"])
+@pytest.mark.parametrize("kind", ["function", "method", "class", "artifact"])
 def test_t3_kind_map_symbol_kinds(kind: str) -> None:
     """function/method/class/artifact must all map to GraphNodeKind.SYMBOL."""
     from opencontext_cli.tui.graph.models import GraphNodeKind
@@ -107,7 +106,7 @@ def test_t3_kind_map_symbol_kinds(kind: str) -> None:
     )
 
 
-@_pytest.mark.parametrize("kind", ["variable", "constant"])
+@pytest.mark.parametrize("kind", ["variable", "constant"])
 def test_t3_kind_map_variable_constant(kind: str) -> None:
     """variable/constant must map to GraphNodeKind.FILE."""
     from opencontext_cli.tui.graph.models import GraphNodeKind

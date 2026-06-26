@@ -361,7 +361,7 @@ class OcNewConductor:
                 trace_id=state.identity.trace_id,
                 memory_key=state.identity.memory_key,
                 task=state.task or "",
-                phase=phase_def.name,  # type: ignore[arg-type]
+                phase=phase_def.name,
                 persona=phase_def.persona or "",
                 skill=phase_def.skill or "",
                 expected_outputs=list(phase_def.expected_artifacts),
