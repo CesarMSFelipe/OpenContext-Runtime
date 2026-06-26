@@ -405,3 +405,26 @@ def test_nonempty_claude_parent_left_intact_after_full_uninstall(tmp_path, monke
 
     assert (project / ".claude").exists(), ".claude/ must remain when it contains user content"
     assert user_file.exists(), "user's settings.json must not be deleted"
+
+
+def test_full_uninstall_global_state_removes_home_opencontext_state(tmp_path, monkeypatch):
+    """--full --global-state removes known OpenContext HOME state."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    project = tmp_path / "project"
+    project.mkdir()
+
+    profile = home / ".config" / "opencontext" / "profiles" / "default.json"
+    profile.parent.mkdir(parents=True)
+    profile.write_text("{}", encoding="utf-8")
+    backup = home / ".opencontext" / "backups" / "b1" / "file.txt"
+    backup.parent.mkdir(parents=True)
+    backup.write_text("x", encoding="utf-8")
+
+    from opencontext_cli.commands.uninstall_cmd import _run_full_uninstall
+
+    _run_full_uninstall(str(project), "local", json_output=True, global_state=True)
+
+    assert not (home / ".config" / "opencontext").exists()
+    assert not (home / ".opencontext" / "backups").exists()

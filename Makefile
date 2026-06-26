@@ -1,7 +1,7 @@
 # OpenContext Runtime Makefile
 # Common development tasks
 
-.PHONY: help install dev test lint format type-check clean docs e2e validate binary ci ci-check ci-clean
+.PHONY: help install dev test lint format type-check clean docs e2e validate binary release-zip ci ci-check ci-clean
 
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
@@ -22,6 +22,7 @@ help:
 	@echo "  make docs       Build documentation"
 	@echo "  make e2e        Run CI checks (end-to-end)"
 	@echo "  make binary     Build single-file dist/opencontext.pyz"
+	@echo "  make release-zip Build clean source release ZIP"
 	@echo "  make clean      Clean build artifacts"
 	@echo "  make ci         Reproduce the GitHub test pipeline EXACTLY (pinned, fresh venv)"
 	@echo "  make ci-check   Run CI checks"
@@ -59,6 +60,9 @@ e2e:
 
 binary:
 	$(PYTHON) scripts/build_binary.py
+
+release-zip:
+	$(PYTHON) scripts/build_release_zip.py
 
 CI_VENV ?= .ci-venv
 

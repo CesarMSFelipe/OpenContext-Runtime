@@ -138,9 +138,52 @@ def add_uninstall_parser(subparsers: Any) -> None:
         action="store_true",
         help="Scan for remaining OpenContext traces and report pass/fail (no files removed).",
     )
+    parser.add_argument(
+        "--global-state",
+        action="store_true",
+        help=(
+            "With --full, also remove OpenContext HOME state "
+            "(.config/opencontext, .opencontext/backups)."
+        ),
+    )
 
 
-def _run_full_uninstall(root: str | Path, scope: str, json_output: bool) -> None:
+def _global_state_targets() -> list[Path]:
+    home = Path.home()
+    return [
+        home / ".config" / "opencontext",
+        home / ".opencontext" / "backups",
+    ]
+
+
+def _purge_global_state() -> list[str]:
+    """Delete OpenContext HOME state. Best-effort and scoped to known OC dirs."""
+    import shutil
+
+    removed: list[str] = []
+    for target in _global_state_targets():
+        if not target.exists():
+            continue
+        try:
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+            removed.append(str(target))
+        except Exception:
+            pass
+
+    for parent in (Path.home() / ".config", Path.home() / ".opencontext"):
+        try:
+            parent.rmdir()
+        except OSError:
+            pass
+    return removed
+
+
+def _run_full_uninstall(
+    root: str | Path, scope: str, json_output: bool, *, global_state: bool = False
+) -> None:
     """Execute the --full uninstall: deconfigure, ledger delete, purge, glob sweep."""
     from pathlib import Path
 
@@ -222,6 +265,9 @@ def _run_full_uninstall(root: str | Path, scope: str, json_output: bool) -> None
 
     # 6. Verify traces
     residue = verify_no_traces(root)
+    if global_state:
+        report["global_removed"] = _purge_global_state()
+        report["global_residue"] = [str(p) for p in _global_state_targets() if p.exists()]
     report["verify"] = {"passed": len(residue) == 0, "residue": residue}
 
     if json_output:
@@ -235,6 +281,8 @@ def _run_full_uninstall(root: str | Path, scope: str, json_output: bool) -> None
     )
     if report.get("purged"):
         console.print(f"  [dim]purged: {', '.join(report['purged'])}[/]")
+    if report.get("global_removed"):
+        console.print(f"  [dim]global removed: {', '.join(report['global_removed'])}[/]")
     if residue:
         console.print("[yellow]Traces remain:[/]")
         for trace in residue:
@@ -375,6 +423,8 @@ def handle_uninstall(args: Any) -> None:
                 ".claude/agents/oc-*.md",
                 ".claude/commands/oc-*.md",
             ]
+            if getattr(args, "global_state", False):
+                targets.extend(str(p) for p in _global_state_targets())
             if json_output:
                 print(json.dumps({"dry_run": True, "would_remove": targets}, indent=2))
             else:
@@ -395,7 +445,9 @@ def handle_uninstall(args: Any) -> None:
             ):
                 console.print("[yellow]Full uninstall cancelled.[/]")
                 return
-        _run_full_uninstall(root, scope, json_output)
+        _run_full_uninstall(
+            root, scope, json_output, global_state=getattr(args, "global_state", False)
+        )
         return
 
     configurator = Configurator(project_root=getattr(args, "root", "."))

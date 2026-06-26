@@ -7,3 +7,7 @@ venv/ export-ignore
 .ruff_cache/ export-ignore
 .mypy_cache/ export-ignore
 .git-state/ export-ignore
+.opencontext/ export-ignore
+.storage/ export-ignore
+.sdd/ export-ignore
+.tools/ export-ignore
