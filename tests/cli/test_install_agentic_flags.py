@@ -59,6 +59,30 @@ def test_dry_run_with_preset_full(tmp_path, monkeypatch, capsys) -> None:
     assert "full-opencontext" in out
 
 
+def test_dry_run_git_flag_honored(tmp_path: object, monkeypatch: object) -> None:
+    """--git stacked_prs --dry-run output must contain the git mode value."""
+    rc, stdout, _stderr = _run_main(
+        ["install", "--git", "stacked_prs", "--dry-run"],
+        monkeypatch,
+        tmp_path,  # type: ignore[arg-type]
+    )
+    assert "stacked_prs" in stdout, (
+        f"Expected 'stacked_prs' in dry-run output, got: {stdout!r}"
+    )
+
+
+def test_dry_run_git_none_honored(tmp_path: object, monkeypatch: object) -> None:
+    """--git none --dry-run output must contain 'none' as the git mode."""
+    rc, stdout, _stderr = _run_main(
+        ["install", "--git", "none", "--dry-run"],
+        monkeypatch,
+        tmp_path,  # type: ignore[arg-type]
+    )
+    assert "none" in stdout.lower(), (
+        f"Expected 'none' in dry-run output, got: {stdout!r}"
+    )
+
+
 def test_install_parser_accepts_agentic_flags(tmp_path, monkeypatch) -> None:
     """All new flags parse without error."""
     from opencontext_cli.main import _build_parser  # type: ignore[attr-defined]
