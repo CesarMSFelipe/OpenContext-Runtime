@@ -5,19 +5,11 @@ from __future__ import annotations
 from enum import Enum, auto
 from typing import Any, ClassVar
 
-try:
-    from textual.app import ComposeResult
-    from textual.binding import Binding
-    from textual.reactive import reactive
-    from textual.screen import Screen
-    from textual.widgets import Footer, Static
-except ImportError:
-    Screen = object  # type: ignore[assignment,misc]
-    ComposeResult = Any  # type: ignore[assignment]
-    Binding = object  # type: ignore[assignment]
-
-    def reactive(default):  # type: ignore[assignment]
-        return default
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.reactive import reactive
+from textual.screen import Screen
+from textual.widgets import Footer, Static
 
 
 class WizardStep(Enum):
@@ -30,10 +22,10 @@ class WizardStep(Enum):
     CONFIRM = auto()
 
 
-class InstallWizard(Screen):  # type: ignore[misc,valid-type]
+class InstallWizard(Screen[None]):
     """Guided 5-step install wizard."""
 
-    BINDINGS: ClassVar[list] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("n", "next_step", "Next"),
         Binding("p", "prev_step", "Back"),
         Binding("escape", "dismiss", "Cancel"),
@@ -45,7 +37,7 @@ class InstallWizard(Screen):  # type: ignore[misc,valid-type]
     #wizard-nav { height: 3; }
     """
 
-    step: reactive[WizardStep] = reactive(WizardStep.WELCOME)  # type: ignore[valid-type]
+    step: reactive[WizardStep] = reactive(WizardStep.WELCOME)
 
     def compose(self) -> ComposeResult:
         yield Static("", id="wizard-content", markup=True)
@@ -131,7 +123,7 @@ class InstallWizard(Screen):  # type: ignore[misc,valid-type]
                 + "Press [bold][Enter / n][/bold] to apply or [bold][Escape][/bold] to cancel."
             )
 
-        return header
+        return header  # type: ignore[unreachable]
 
     def _nav_hint(self) -> str:
         steps = list(WizardStep)
@@ -153,7 +145,7 @@ class InstallWizard(Screen):  # type: ignore[misc,valid-type]
             self.step = steps[idx + 1]
         else:
             # Final step — dismiss as confirmed
-            self.dismiss(True)
+            self.dismiss(True)  # type: ignore[arg-type]
 
     def action_prev_step(self) -> None:
         steps = list(WizardStep)
@@ -161,7 +153,7 @@ class InstallWizard(Screen):  # type: ignore[misc,valid-type]
         if idx > 0:
             self.step = steps[idx - 1]
 
-    def action_dismiss(self) -> None:
+    def action_dismiss(self, result: Any = None) -> None:  # type: ignore[override]
         self.app.pop_screen()
 
 

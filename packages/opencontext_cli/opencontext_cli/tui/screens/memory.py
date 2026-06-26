@@ -4,21 +4,16 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-try:
-    from textual.app import ComposeResult
-    from textual.binding import Binding
-    from textual.screen import Screen
-    from textual.widgets import Footer, Static
-except ImportError:
-    Screen = object  # type: ignore[assignment,misc]
-    ComposeResult = Any  # type: ignore[assignment]
-    Binding = object  # type: ignore[assignment]
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.screen import Screen
+from textual.widgets import Footer, Static
 
 
-class MemoryBrowserScreen(Screen):  # type: ignore[misc,valid-type]
+class MemoryBrowserScreen(Screen[None]):
     """Lists memory keys from the local or Engram memory backend."""
 
-    BINDINGS: ClassVar[list] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape,q", "dismiss", "Back"),
     ]
 
@@ -40,10 +35,12 @@ class MemoryBrowserScreen(Screen):  # type: ignore[misc,valid-type]
 
     def _render_memory(self) -> str:
         try:
-            from opencontext_core.memory.local_store import LocalMemoryStore
+            # NOTE: local_store is an optional backend; may not be present in all deployments.
+            import importlib
 
-            store = LocalMemoryStore(".")
-            keys = store.list_keys() if hasattr(store, "list_keys") else []
+            _ls = importlib.import_module("opencontext_core.memory.local_store")
+            store = _ls.LocalMemoryStore(".")
+            keys: list[str] = store.list_keys() if hasattr(store, "list_keys") else []
             if not keys:
                 return "[dim]No memory keys found in local backend.[/dim]"
             lines = ["[bold]Memory keys:[/]"]
@@ -55,9 +52,11 @@ class MemoryBrowserScreen(Screen):  # type: ignore[misc,valid-type]
         except Exception:
             # NOTE: Fall back to engram bridge if local store is unavailable.
             try:
-                from opencontext_core.memory.engram_bridge import list_memory_keys
+                import opencontext_core.memory.engram_bridge as _bridge
 
-                keys = list_memory_keys()
+                # list_memory_keys is an optional helper; may not exist in all versions.
+                list_keys = getattr(_bridge, "list_memory_keys", None)
+                keys = list_keys() if callable(list_keys) else []
                 if not keys:
                     return "[dim]No memory keys found.[/dim]"
                 lines = ["[bold]Memory keys (Engram):[/]"]
@@ -67,5 +66,5 @@ class MemoryBrowserScreen(Screen):  # type: ignore[misc,valid-type]
             except Exception:
                 return "[dim]Memory backend unavailable.[/dim]"
 
-    def action_dismiss(self) -> None:
+    def action_dismiss(self, result: Any = None) -> None:  # type: ignore[override]
         self.app.pop_screen()

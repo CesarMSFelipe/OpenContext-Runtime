@@ -5,21 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-try:
-    from textual.app import ComposeResult
-    from textual.binding import Binding
-    from textual.screen import Screen
-    from textual.widgets import Footer, Static
-except ImportError:
-    Screen = object  # type: ignore[assignment,misc]
-    ComposeResult = Any  # type: ignore[assignment]
-    Binding = object  # type: ignore[assignment]
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.screen import Screen
+from textual.widgets import Footer, Static
 
 
-class LearningInbox(Screen):  # type: ignore[misc,valid-type]
+class LearningInbox(Screen[None]):
     """Lists pending evolution proposals from the learning engine."""
 
-    BINDINGS: ClassVar[list] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape,q", "dismiss", "Back"),
     ]
 
@@ -47,19 +42,21 @@ class LearningInbox(Screen):  # type: ignore[misc,valid-type]
         try:
             from opencontext_core.learning.evolution_store import EvolutionStore
 
-            store = EvolutionStore(project_root=self._project_root)
-            proposals = store.list_proposals()
+            store = EvolutionStore(root=self._project_root)
+            proposals = store.list()
             if not proposals:
                 return "[dim]No evolution proposals.[/dim]"
             lines = ["[bold]Evolution Proposals:[/]", ""]
             for p in proposals:
-                approved = getattr(p, "approved", False)
+                p_status = getattr(p, "status", "pending")
+                approved = p_status == "approved" or getattr(p, "approved", False)
                 status = "[green]approved[/green]" if approved else "[yellow]pending[/yellow]"
                 title = getattr(p, "title", None) or getattr(p, "kind", str(p))
-                lines.append(f"  [{status}] [bold]{p.id}[/bold]: {title}")
+                pid = getattr(p, "proposal_id", getattr(p, "id", str(p)))
+                lines.append(f"  [{status}] [bold]{pid}[/bold]: {title}")
             return "\n".join(lines)
         except Exception as exc:
             return f"[red]Error loading proposals: {exc}[/red]"
 
-    def action_dismiss(self) -> None:
+    def action_dismiss(self, result: Any = None) -> None:  # type: ignore[override]
         self.app.pop_screen()

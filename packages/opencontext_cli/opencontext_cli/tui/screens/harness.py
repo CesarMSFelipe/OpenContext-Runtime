@@ -5,21 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-try:
-    from textual.app import ComposeResult
-    from textual.binding import Binding
-    from textual.screen import Screen
-    from textual.widgets import Footer, Static
-except ImportError:
-    Screen = object  # type: ignore[assignment,misc]
-    ComposeResult = Any  # type: ignore[assignment]
-    Binding = object  # type: ignore[assignment]
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.screen import Screen
+from textual.widgets import Footer, Static
 
 
-class HarnessPanel(Screen):  # type: ignore[misc,valid-type]
+class HarnessPanel(Screen[None]):
     """Displays the latest harness-report.json for the current run."""
 
-    BINDINGS: ClassVar[list] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape,q", "dismiss", "Back"),
     ]
 
@@ -69,5 +64,5 @@ class HarnessPanel(Screen):  # type: ignore[misc,valid-type]
         except Exception as exc:
             return f"[red]Error reading harness report: {exc}[/red]"
 
-    def action_dismiss(self) -> None:
+    def action_dismiss(self, result: Any = None) -> None:  # type: ignore[override]
         self.app.pop_screen()

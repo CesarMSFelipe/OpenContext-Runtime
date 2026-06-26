@@ -8,16 +8,10 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-try:
-    from textual.app import ComposeResult
-    from textual.binding import Binding
-    from textual.screen import ModalScreen
-    from textual.widgets import Button, Input, Label, Select
-except ImportError:
-    # NOTE: If textual is not available, provide stubs so that import does not crash.
-    ModalScreen = object  # type: ignore[assignment,misc]
-    ComposeResult = Any  # type: ignore[assignment]
-    Binding = object  # type: ignore[assignment]
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.screen import ModalScreen
+from textual.widgets import Button, Input, Label, Select
 
 _FLOW_OPTIONS = [
     ("automatic", "Automatic — fully automated flow"),
@@ -48,10 +42,10 @@ _GIT_OPTIONS = [
 ]
 
 
-class NewChangeScreen(ModalScreen):  # type: ignore[misc,valid-type]
+class NewChangeScreen(ModalScreen[dict[str, str] | None]):
     """Modal for configuring and starting a new oc-new change."""
 
-    BINDINGS: ClassVar[list] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "cancel", "Cancel"),
     ]
 
