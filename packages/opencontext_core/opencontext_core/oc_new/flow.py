@@ -117,7 +117,11 @@ OC_NEW_FLOW: tuple[PhaseDefinition, ...] = (
         name="archive",
         persona="oc-archivist",
         skill="oc-archive",
-        required_artifacts=["review-report.json"],
+        required_artifacts=[
+            "review-report.json",
+            "compliance-matrix.json",
+            "harness-report.json",
+        ],
         expected_artifacts=["archive-report.json", "archive.artifact.json", "receipt.json"],
         required_tools=["opencontext_memory_context", "opencontext_memory_save"],
     ),
