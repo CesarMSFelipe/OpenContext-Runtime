@@ -64,6 +64,7 @@ def add_evolve_parser(subparsers: Any) -> None:
     )
     approve_parser.add_argument("proposal_id", help="Proposal ID to approve.")
     approve_parser.add_argument("--root", default=".", help="Project root.")
+    approve_parser.add_argument("--json", action="store_true", help="Output as JSON.")
 
     # reject
     reject_parser = evolve_sub.add_parser(
@@ -72,6 +73,7 @@ def add_evolve_parser(subparsers: Any) -> None:
     )
     reject_parser.add_argument("proposal_id", help="Proposal ID to reject.")
     reject_parser.add_argument("--root", default=".", help="Project root.")
+    reject_parser.add_argument("--json", action="store_true", help="Output as JSON.")
 
     # apply
     apply_parser = evolve_sub.add_parser(
@@ -80,6 +82,7 @@ def add_evolve_parser(subparsers: Any) -> None:
     )
     apply_parser.add_argument("proposal_id", help="Proposal ID to apply.")
     apply_parser.add_argument("--root", default=".", help="Project root.")
+    apply_parser.add_argument("--json", action="store_true", help="Output as JSON.")
 
 
 def handle_evolve(args: argparse.Namespace) -> None:
@@ -149,26 +152,38 @@ def _handle_proposals(args: argparse.Namespace) -> None:
 
 
 def _handle_approve(args: argparse.Namespace) -> None:
+    import json as _json
+
     store = _get_store(args)
     proposal_id = args.proposal_id
     updated = store.update_status(proposal_id, "approved")
     if updated is None:
         print(f"evolve approve: proposal '{proposal_id}' not found.")
         raise SystemExit(1)
+    if getattr(args, "json", False):
+        print(_json.dumps({"id": proposal_id, "status": "approved"}))
+        return
     print(f"Proposal {proposal_id} approved.")
 
 
 def _handle_reject(args: argparse.Namespace) -> None:
+    import json as _json
+
     store = _get_store(args)
     proposal_id = args.proposal_id
     updated = store.update_status(proposal_id, "rejected")
     if updated is None:
         print(f"evolve reject: proposal '{proposal_id}' not found.")
         raise SystemExit(1)
+    if getattr(args, "json", False):
+        print(_json.dumps({"id": proposal_id, "status": "rejected"}))
+        return
     print(f"Proposal {proposal_id} rejected.")
 
 
 def _handle_apply(args: argparse.Namespace) -> int:
+    import json as _json
+
     from opencontext_core.learning.evolution_apply import EvolutionApplier
 
     store = _get_store(args)
@@ -190,6 +205,11 @@ def _handle_apply(args: argparse.Namespace) -> int:
     root = Path(getattr(args, "root", ".")).resolve()
     applier = EvolutionApplier(project_root=root)
     result = applier.apply(proposal, approved=True)
+
+    if getattr(args, "json", False):
+        status = "applied" if result.applied else "not_applied"
+        print(_json.dumps({"id": proposal_id, "status": status}))
+        return 0 if result.applied else 1
 
     if result.applied:
         print(f"Applied: {proposal.proposal_id}")
