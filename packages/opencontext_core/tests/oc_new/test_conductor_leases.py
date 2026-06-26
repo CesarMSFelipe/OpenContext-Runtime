@@ -3,10 +3,12 @@
 Tests that conductor acquires a lease + emits STARTED on spawn, and releases
 the lease on mark_done. All lease operations must be fail-soft.
 """
+
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from opencontext_core.oc_new.conductor import OcNewConductor
 from opencontext_core.oc_new.flow import OC_NEW_FLOW
@@ -18,6 +20,16 @@ def _make_state(tmp_path: Path) -> OcNewRunState:
     identity = ChangeIdentity.from_task("lease-test")
     phases = [PhaseState(name=p.name) for p in OC_NEW_FLOW]
     return OcNewRunState(identity=identity, task="lease-test", phases=phases)
+
+
+def _patch_coord_store(conductor: OcNewConductor, mock_store: object) -> object:
+    """Return a context manager that replaces conductor._coord_store."""
+    return patch.object(
+        type(conductor),
+        "_coord_store",
+        new_callable=PropertyMock,
+        return_value=mock_store,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +47,7 @@ def test_spawn_acquires_lease_and_emits_started(tmp_path: Path) -> None:
     mock_lease.lease_id = "test-lease-id"
     mock_store.acquire.return_value = mock_lease
 
-    with patch.object(type(conductor), "_coord_store", new_callable=lambda: property(lambda self: mock_store)):
+    with _patch_coord_store(conductor, mock_store):
         result = conductor._advance(state)
 
     # The advance should have returned a spawn_subagent action
@@ -48,6 +60,7 @@ def test_spawn_acquires_lease_and_emits_started(tmp_path: Path) -> None:
     mock_store.signal.assert_called_once()
     call_args = mock_store.signal.call_args
     from opencontext_core.workflow.signals import AgentSignalKind
+
     assert call_args.args[1] == AgentSignalKind.STARTED or (
         len(call_args.args) >= 2 and str(call_args.args[1]) == "started"
     )
@@ -71,7 +84,6 @@ def test_mark_done_releases_lease(tmp_path: Path) -> None:
     # Write the required phase envelope so mark_done doesn't raise on missing file
     run_dir = tmp_path / ".opencontext" / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    import json
     envelope = {
         "run_id": run_id,
         "change_id": state.identity.change_id,
@@ -80,11 +92,9 @@ def test_mark_done_releases_lease(tmp_path: Path) -> None:
         "duration_s": 0.1,
         "artifacts": [],
     }
-    (run_dir / f"phase-result.{phase_name}.json").write_text(
-        json.dumps(envelope), encoding="utf-8"
-    )
+    (run_dir / f"phase-result.{phase_name}.json").write_text(json.dumps(envelope), encoding="utf-8")
 
-    with patch.object(type(conductor), "_coord_store", new_callable=lambda: property(lambda self: mock_store)):
+    with _patch_coord_store(conductor, mock_store):
         conductor.mark_done(run_id, phase_name)
 
     mock_store.release_by_run_phase.assert_called_once_with(run_id, phase_name)
@@ -96,14 +106,14 @@ def test_mark_done_releases_lease(tmp_path: Path) -> None:
 
 
 def test_lease_store_failure_does_not_raise(tmp_path: Path) -> None:
-    """If the lease store raises on acquire/signal, _advance must still return a valid NextAction."""
+    """If store raises on acquire/signal, _advance still returns a valid NextAction."""
     conductor = OcNewConductor(root=tmp_path)
     state = _make_state(tmp_path)
 
     mock_store = MagicMock(spec=AgentCoordinationStore)
     mock_store.acquire.side_effect = RuntimeError("db error")
 
-    with patch.object(type(conductor), "_coord_store", new_callable=lambda: property(lambda self: mock_store)):
+    with _patch_coord_store(conductor, mock_store):
         # Must NOT raise — error is logged and swallowed
         result = conductor._advance(state)
 
@@ -122,7 +132,7 @@ def test_sequential_phases_no_deadlock(tmp_path: Path) -> None:
     # Use an in-memory store so no file I/O deadlock can occur
     real_store = AgentCoordinationStore(":memory:")
 
-    with patch.object(type(conductor), "_coord_store", new_callable=lambda: property(lambda self: real_store)):
+    with _patch_coord_store(conductor, real_store):
         state = _make_state(tmp_path)
         result1 = conductor._advance(state)
 
@@ -130,7 +140,7 @@ def test_sequential_phases_no_deadlock(tmp_path: Path) -> None:
     assert result1.next_action.kind == "spawn_subagent"
 
     # Second call with the same state should also work without deadlock
-    with patch.object(type(conductor), "_coord_store", new_callable=lambda: property(lambda self: real_store)):
+    with _patch_coord_store(conductor, real_store):
         result2 = conductor._advance(state)
 
     assert result2.next_action is not None

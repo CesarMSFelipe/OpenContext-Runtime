@@ -130,6 +130,7 @@ class TestSignalStructuredPayloads:
             sigs = store.get_signals(lease.lease_id)
             assert len(sigs) == 1
             import json
+
             assert json.loads(sigs[0].payload) == {"step": 1}
 
     def test_signal_list_payload_roundtrip(self) -> None:
@@ -140,6 +141,7 @@ class TestSignalStructuredPayloads:
             assert sig.payload == "[1, 2, 3]"
             sigs = store.get_signals(lease.lease_id)
             import json
+
             assert json.loads(sigs[0].payload) == [1, 2, 3]
 
     def test_signal_str_payload_unchanged(self) -> None:

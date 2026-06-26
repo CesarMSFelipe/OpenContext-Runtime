@@ -53,9 +53,7 @@ def test_mark_done_blocked_when_declared_artifact_missing(tmp_path: Path) -> Non
     state = conductor.mark_done(state.identity.run_id, "explore")
 
     explore_phase = state.phase("explore")  # type: ignore[arg-type]
-    assert explore_phase.status == "blocked", (
-        f"Expected status=blocked, got {explore_phase.status}"
-    )
+    assert explore_phase.status == "blocked", f"Expected status=blocked, got {explore_phase.status}"
     warnings = explore_phase.warnings or []
     assert any(nonexistent in w for w in warnings), (
         f"Expected warning mentioning '{nonexistent}', got: {warnings}"
@@ -86,9 +84,7 @@ def test_mark_done_passes_when_declared_artifacts_present(tmp_path: Path) -> Non
     state = conductor.mark_done(state.identity.run_id, "explore")
 
     explore_phase = state.phase("explore")  # type: ignore[arg-type]
-    assert explore_phase.status == "passed", (
-        f"Expected status=passed, got {explore_phase.status}"
-    )
+    assert explore_phase.status == "passed", f"Expected status=passed, got {explore_phase.status}"
 
 
 def test_mark_done_blocked_when_required_artifact_missing(tmp_path: Path) -> None:

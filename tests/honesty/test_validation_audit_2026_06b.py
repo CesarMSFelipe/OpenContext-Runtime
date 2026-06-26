@@ -126,9 +126,7 @@ def test_t3_kind_map_symbol_kinds(kind: str) -> None:
     from opencontext_cli.tui.graph.models import GraphNodeKind
     from opencontext_cli.tui.screens.graph import _map_kind
 
-    assert _map_kind(kind) == GraphNodeKind.SYMBOL, (
-        f"Expected SYMBOL for kind={kind!r}"
-    )
+    assert _map_kind(kind) == GraphNodeKind.SYMBOL, f"Expected SYMBOL for kind={kind!r}"
 
 
 @pytest.mark.parametrize("kind", ["variable", "constant"])
@@ -137,9 +135,7 @@ def test_t3_kind_map_variable_constant(kind: str) -> None:
     from opencontext_cli.tui.graph.models import GraphNodeKind
     from opencontext_cli.tui.screens.graph import _map_kind
 
-    assert _map_kind(kind) == GraphNodeKind.FILE, (
-        f"Expected FILE for kind={kind!r}"
-    )
+    assert _map_kind(kind) == GraphNodeKind.FILE, f"Expected FILE for kind={kind!r}"
 
 
 def test_t3_kind_map_unknown_defaults_to_unknown() -> None:
@@ -242,13 +238,9 @@ def test_t6_conductor_metadata_no_lease_id() -> None:
             assert metadata["context_report_ref"] is not None, (
                 f"'context_report_ref' must be non-null, got: {metadata}"
             )
-            assert "result_schema" in metadata, (
-                f"'result_schema' missing from metadata: {metadata}"
-            )
+            assert "result_schema" in metadata, f"'result_schema' missing from metadata: {metadata}"
             # T6 extension: handoff block must be present with identity fields.
-            assert "handoff" in metadata, (
-                f"'handoff' missing from metadata: {metadata}"
-            )
+            assert "handoff" in metadata, f"'handoff' missing from metadata: {metadata}"
             h = metadata["handoff"]
             assert isinstance(h, dict), f"'handoff' must be a dict, got: {type(h)}"
             assert h.get("run_id"), f"handoff.run_id must be non-null: {h}"
@@ -302,9 +294,7 @@ def test_t8_oc_only_gitignore_excluded() -> None:
         root = Path(tmp)
         gitignore = root / ".gitignore"
         gitignore.write_text(
-            "# opencontext:storage:start\n"
-            ".storage/opencontext/\n"
-            "# opencontext:storage:end\n",
+            "# opencontext:storage:start\n.storage/opencontext/\n# opencontext:storage:end\n",
             encoding="utf-8",
         )
         assert _is_oc_only_gitignore(root, ".gitignore") is True

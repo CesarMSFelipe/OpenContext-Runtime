@@ -3,6 +3,7 @@
 When a ContextBenchEvaluator runs on a root that is NOT the OC repo,
 a coverage-below-threshold failure reason must include a --root hint.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,7 +58,9 @@ def test_coverage_hint_absent_for_oc_project() -> None:
     prepared.token_usage = {"final_context_pack": 100}
     runtime.prepare_context.return_value = prepared
     runtime.manifest.return_value = MagicMock(total_tokens=10000)
-    evaluator = ContextBenchEvaluator(runtime, root=oc_root, max_tokens=6000, min_token_reduction=0.0)
+    evaluator = ContextBenchEvaluator(
+        runtime, root=oc_root, max_tokens=6000, min_token_reduction=0.0
+    )
     case = ContextBenchCase(
         id="c2",
         query="test",
@@ -67,6 +70,4 @@ def test_coverage_hint_absent_for_oc_project() -> None:
     result = evaluator.evaluate_case(case)
     assert not result.passed
     full_reason = " ".join(result.reasons)
-    assert "--root" not in full_reason, (
-        f"Hint should be absent for OC root, got: {result.reasons}"
-    )
+    assert "--root" not in full_reason, f"Hint should be absent for OC root, got: {result.reasons}"

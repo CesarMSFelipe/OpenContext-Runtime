@@ -105,9 +105,7 @@ def _is_oc_only_gitignore(root: Path, source: str) -> bool:
         start_idx = next(
             i for i, ln in enumerate(lines) if ln.strip() == _OC_GITIGNORE_SENTINEL_START
         )
-        end_idx = next(
-            i for i, ln in enumerate(lines) if ln.strip() == _OC_GITIGNORE_SENTINEL_END
-        )
+        end_idx = next(i for i, ln in enumerate(lines) if ln.strip() == _OC_GITIGNORE_SENTINEL_END)
     except StopIteration:
         # No OC sentinel block present — user-only content; include in context.
         return False

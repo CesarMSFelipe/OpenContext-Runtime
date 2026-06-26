@@ -66,9 +66,7 @@ def test_dry_run_git_flag_honored(tmp_path: object, monkeypatch: object) -> None
         monkeypatch,
         tmp_path,  # type: ignore[arg-type]
     )
-    assert "stacked_prs" in stdout, (
-        f"Expected 'stacked_prs' in dry-run output, got: {stdout!r}"
-    )
+    assert "stacked_prs" in stdout, f"Expected 'stacked_prs' in dry-run output, got: {stdout!r}"
 
 
 def test_dry_run_git_none_honored(tmp_path: object, monkeypatch: object) -> None:
@@ -78,9 +76,7 @@ def test_dry_run_git_none_honored(tmp_path: object, monkeypatch: object) -> None
         monkeypatch,
         tmp_path,  # type: ignore[arg-type]
     )
-    assert "none" in stdout.lower(), (
-        f"Expected 'none' in dry-run output, got: {stdout!r}"
-    )
+    assert "none" in stdout.lower(), f"Expected 'none' in dry-run output, got: {stdout!r}"
 
 
 def test_install_parser_accepts_agentic_flags(tmp_path, monkeypatch) -> None:

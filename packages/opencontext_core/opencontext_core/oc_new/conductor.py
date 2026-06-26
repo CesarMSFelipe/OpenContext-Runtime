@@ -38,7 +38,7 @@ class _NoopCoordStore:
     underlying SQLite database is unavailable.
     """
 
-    def acquire(self, *args: object, **kwargs: object) -> object:  # noqa: ANN401
+    def acquire(self, *args: object, **kwargs: object) -> object:
         return type("_Lease", (), {"lease_id": "noop"})()
 
     def signal(self, *args: object, **kwargs: object) -> None:
@@ -60,7 +60,7 @@ class OcNewConductor:
         self.__coord_store: object | None = None  # backing attr for lazy property
 
     @property
-    def _coord_store(self) -> "AgentCoordinationStore":
+    def _coord_store(self) -> AgentCoordinationStore:
         """Lazy-initialized AgentCoordinationStore backed by .opencontext/coordination.db.
 
         Construction is guarded so absence of the db directory never raises into
@@ -74,7 +74,7 @@ class OcNewConductor:
                 self.__coord_store = AgentCoordinationStore(
                     self.root / ".opencontext" / "coordination.db"
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Return a no-op fallback object so callers can proceed.
                 self.__coord_store = _NoopCoordStore()
         return self.__coord_store  # type: ignore[return-value]
@@ -177,9 +177,7 @@ class OcNewConductor:
         # NOTE: REQ-P1.1 — disk-check envelope declared artifacts (D1: fail-closed).
         if status == "passed" and env.artifacts:
             run_dir = self.store.run_dir(run_id)
-            declared_missing = [
-                a for a in env.artifacts if not (run_dir / a).exists()
-            ]
+            declared_missing = [a for a in env.artifacts if not (run_dir / a).exists()]
             if declared_missing:
                 status = "blocked"
                 resolved_warnings = [
@@ -226,7 +224,7 @@ class OcNewConductor:
         # Fail-soft: any exception is logged and swallowed.
         try:
             self._coord_store.release_by_run_phase(run_id, phase_name)
-        except Exception as _e:  # noqa: BLE001
+        except Exception as _e:
             _logger.warning(
                 "Lease release failed for phase %s (run %s): %s",
                 phase_name,
@@ -418,7 +416,7 @@ class OcNewConductor:
                     phase_def.name,
                 )
                 self._coord_store.signal(_lease.lease_id, AgentSignalKind.STARTED)
-            except Exception as _e:  # noqa: BLE001
+            except Exception as _e:
                 _logger.warning(
                     "Lease acquire/signal failed for phase %s (run %s): %s",
                     phase_def.name,
