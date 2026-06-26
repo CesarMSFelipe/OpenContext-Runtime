@@ -10,6 +10,7 @@ ones suspend the app to run their existing guided handler, then resume.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 from textual import on
@@ -22,10 +23,10 @@ from textual.widgets import Footer, Label, ListItem, ListView, Static
 from opencontext_cli.tui.brand import DIM, PRIMARY, SUCCESS, WARNING, BrandBar
 
 
-class ConfigScreen(Screen):
+class ConfigScreen(Screen[None]):
     """Configuration as a 3-column Miller menu: Category · Setting · Options."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit_tui", "Quit"),
         Binding("escape", "quit_tui", "Quit", show=False),
         Binding("left", "focus_left", "◀ column", show=False),
@@ -166,7 +167,7 @@ class ConfigScreen(Screen):
         builder = NATIVE_SCREENS.get(getattr(leaf, "key", ""))
         if builder is not None:
             after = self._after_memory if leaf.key == "memory" else self._refresh_options
-            self.app.push_screen(builder(), lambda _r: self.run_worker(after()))
+            self.app.push_screen(builder(), lambda _r: self.run_worker(after()))  # type: ignore[arg-type]
             return
 
         if leaf.run is None:
@@ -214,10 +215,10 @@ class ConfigScreen(Screen):
         self.app.exit()
 
 
-class HomeScreen(Screen):
+class HomeScreen(Screen[None]):
     """The OpenContext home — one branded menu for every top-level action."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit_tui", "Quit"),
         Binding("escape", "quit_tui", "Quit", show=False),
     ]
@@ -321,7 +322,7 @@ class HomeScreen(Screen):
         self.app.exit()
 
 
-class OpenContextApp(App):  # type: ignore[misc]
+class OpenContextApp(App[None]):
     """The single OpenContext TUI application — every screen shares this shell."""
 
     CSS = """
@@ -338,7 +339,10 @@ class OpenContextApp(App):  # type: ignore[misc]
     Footer { background: #11161D; }
     """
 
-    SCREENS: ClassVar[dict[str, type]] = {"config": ConfigScreen, "home": HomeScreen}
+    SCREENS: ClassVar[dict[str, Callable[[], Screen[Any]]]] = {
+        "config": ConfigScreen,
+        "home": HomeScreen,
+    }
 
     def __init__(self, start: str = "config") -> None:
         super().__init__()

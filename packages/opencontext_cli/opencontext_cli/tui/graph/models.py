@@ -40,7 +40,7 @@ class GraphNodeView:
     kind: GraphNodeKind = GraphNodeKind.UNKNOWN
     x: float = 0.0
     y: float = 0.0
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass

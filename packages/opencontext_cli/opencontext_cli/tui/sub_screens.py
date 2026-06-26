@@ -25,7 +25,7 @@ from textual.widgets.selection_list import Selection
 from opencontext_cli.tui.brand import BrandBar
 
 
-class _ModalBase(ModalScreen):
+class _ModalBase(ModalScreen[bool]):
     DEFAULT_CSS = """
     _ModalBase { align: center middle; background: #0B0F14; }
     _ModalBase > Vertical {
@@ -42,7 +42,7 @@ class _ModalBase(ModalScreen):
 class MultiToggleScreen(_ModalBase):
     """A checkbox screen (space toggles, s saves) — used for features / agents."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("s", "save", "Save"),
         Binding("escape", "cancel", "Cancel"),
         Binding("q", "cancel", "Cancel", show=False),
@@ -84,7 +84,7 @@ class MultiToggleScreen(_ModalBase):
 class TextValueScreen(_ModalBase):
     """A single typed value (Enter saves) — used for token budgets."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "cancel", "Cancel"),
     ]
 
@@ -129,7 +129,7 @@ class TextValueScreen(_ModalBase):
 class PickOneScreen(_ModalBase):
     """A single-choice screen (Enter picks) — used for the memory backend."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "cancel", "Cancel"),
         Binding("q", "cancel", "Cancel", show=False),
     ]
@@ -243,7 +243,7 @@ def memory_screen() -> PickOneScreen:
 class ModelsScreen(_ModalBase):
     """Two-step provider → model pick (saved to prefs + mirrored to yaml)."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "cancel", "Cancel"),
         Binding("q", "cancel", "Cancel", show=False),
     ]
@@ -352,7 +352,7 @@ def plugins_screen() -> MultiToggleScreen:
 
 
 # Config leaf key → native screen builder. Keys not here keep their guided handler.
-NATIVE_SCREENS: dict[str, Callable[[], ModalScreen]] = {
+NATIVE_SCREENS: dict[str, Callable[[], ModalScreen[bool]]] = {
     "features": features_screen,
     "agents": agents_screen,
     "tokens": tokens_screen,

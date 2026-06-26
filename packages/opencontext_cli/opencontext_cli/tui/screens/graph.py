@@ -18,25 +18,16 @@ from opencontext_cli.tui.graph.models import (
     GraphViewState,
 )
 
-# NOTE: Guard Textual import — missing textual must not prevent CLI startup.
-try:
-    from textual.app import ComposeResult
-    from textual.binding import Binding
-    from textual.screen import Screen
-    from textual.widgets import Footer, Header
-
-    _TEXTUAL_AVAILABLE = True
-except ImportError:
-    Screen = object  # type: ignore[assignment, misc]
-    ComposeResult = Any  # type: ignore[assignment]
-    Binding = object  # type: ignore[assignment]
-    _TEXTUAL_AVAILABLE = False
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.screen import Screen
+from textual.widgets import Footer, Header
 
 
-class GraphScreen(Screen):  # type: ignore[misc, valid-type]
+class GraphScreen(Screen[None]):
     """Full-screen interactive graph display."""
 
-    BINDINGS: ClassVar[list] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape,q", "dismiss", "Back"),
     ]
 
@@ -55,8 +46,7 @@ class GraphScreen(Screen):  # type: ignore[misc, valid-type]
         run_id: str | None = None,
         **kwargs: Any,
     ) -> None:
-        if _TEXTUAL_AVAILABLE:
-            super().__init__(**kwargs)
+        super().__init__(**kwargs)
         # When no explicit view_state is given, load it from disk by mode:
         # RUN+run_id → the oc-new run graph; KG → the knowledge graph; else empty.
         if view_state is None:
@@ -70,21 +60,18 @@ class GraphScreen(Screen):  # type: ignore[misc, valid-type]
         self._title = title
         self._no_tui = not sys.stdout.isatty()
 
-    def compose(self) -> ComposeResult:  # type: ignore[misc]
-        if _TEXTUAL_AVAILABLE:
-            from opencontext_cli.tui.widgets.graph_canvas import GraphCanvas
+    def compose(self) -> ComposeResult:
+        from opencontext_cli.tui.widgets.graph_canvas import GraphCanvas
 
-            yield Header(show_clock=False)
-            canvas = GraphCanvas(
-                nodes=self._view_state.nodes,
-                edges=self._view_state.edges,
-                mode=self._view_state.mode,
-                id="graph-content",
-            )
-            yield canvas
-            yield Footer()
-        else:
-            yield type("Static", (), {"__init__": lambda s, *a, **kw: None})()  # type: ignore
+        yield Header(show_clock=False)
+        canvas = GraphCanvas(
+            nodes=self._view_state.nodes,
+            edges=self._view_state.edges,
+            mode=self._view_state.mode,
+            id="graph-content",
+        )
+        yield canvas
+        yield Footer()
 
     def render_text(self) -> str:
         """Render the graph as plain text — available in non-TTY / --no-tui mode."""
@@ -96,6 +83,9 @@ class GraphScreen(Screen):  # type: ignore[misc, valid-type]
             self._view_state.edges,
             text_fallback=True,
         )
+
+    def action_dismiss(self, result: Any = None) -> None:  # type: ignore[override]
+        self.app.pop_screen()
 
 
 def load_graph_for_run(run_id: str, root: Path | str = ".") -> GraphViewState:

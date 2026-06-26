@@ -111,7 +111,7 @@ def build_config_model() -> list[Category]:
                 "Full setup wizard",
                 "launch",
                 "Walk every step: security, features, budgets, agents, plugins.",
-                run=wizard.run_wizard,
+                run=wizard.run_wizard,  # type: ignore[arg-type]
             ),
         ),
     )

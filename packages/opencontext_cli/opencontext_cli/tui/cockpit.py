@@ -28,10 +28,10 @@ _PHASE_ICONS: dict[str, str] = {
 }
 
 
-class CockpitScreen(Screen):  # type: ignore[misc]
+class CockpitScreen(Screen[None]):
     """Live dashboard showing the current oc-new run state."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("n", "new_change", "New change"),
         Binding("m", "memory", "Memory"),
         Binding("k", "context", "KG/Context"),
@@ -110,7 +110,7 @@ class CockpitScreen(Screen):  # type: ignore[misc]
         """Open NewChangeScreen and start an oc-new run on submit."""
         from opencontext_cli.tui.screens.new_change import NewChangeScreen
 
-        def _start(result: dict | None) -> None:
+        def _start(result: dict[str, str] | None) -> None:
             if not result:
                 return
             try:
