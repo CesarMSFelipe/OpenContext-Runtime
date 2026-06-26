@@ -278,7 +278,7 @@ class AgentCoordinationStore:
                         "UPDATE agent_leases SET status = 'released' WHERE lease_id = ?",
                         (row["lease_id"],),
                     )
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def get_signals(self, lease_id: str) -> list[AgentSignal]:

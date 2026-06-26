@@ -1335,8 +1335,8 @@ class ApplyPhase(HarnessPhase):
                     root: Path = getattr(state, "root", Path("."))
                     # apply_edit writes to disk; we want in-memory only, so we
                     # work on a temp copy and then read the result back.
-                    import tempfile
                     import shutil
+                    import tempfile
 
                     file_path = root / item.path
                     if not file_path.exists():
@@ -1356,7 +1356,7 @@ class ApplyPhase(HarnessPhase):
                             apply_edit(tmp_root, item)
                             result_content = tmp_file.read_text(encoding="utf-8")
                         edits.append(FileEdit(path=item.path, content=result_content))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     # Silently skip unapplied ApplyEdit; the run continues with
                     # whatever edits DID materialise.
                     pass

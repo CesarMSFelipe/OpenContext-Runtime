@@ -214,8 +214,7 @@ class MetaHarnessScanner:
                 return False, f"Context substrate warnings: {'; '.join(report.warnings)}"
             return (
                 True,
-                f"substrate ok: hash={report.context_pack_hash},"
-                f" tokens={report.used_tokens}",
+                f"substrate ok: hash={report.context_pack_hash}, tokens={report.used_tokens}",
             )
         except Exception as exc:
             return False, f"Context substrate build failed: {exc}"

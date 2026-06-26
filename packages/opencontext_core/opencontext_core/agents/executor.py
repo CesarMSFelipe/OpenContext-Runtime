@@ -230,10 +230,11 @@ def parse_file_edits(text: str) -> list[dict[str, str] | ApplyEdit]:
 
 def generate_apply_edits(
     gateway: LLMGateway, context: dict[str, Any], *, provider: str, model: str
-) -> list[dict[str, str]]:
+) -> list[dict[str, str] | ApplyEdit]:
     """Ask the model to produce concrete file edits for the apply phase.
 
-    Returns ``[{"path","content"}]`` dicts for ApplyPhase to write (it enforces
+    Returns a list of ``{"path","content"}`` dicts (legacy whole-file) or
+    :class:`ApplyEdit` objects (surgical) for ApplyPhase to write (it enforces
     forbidden_paths and rolls back on error). The builder persona drives it.
     """
     from opencontext_core.personas import persona_for_phase

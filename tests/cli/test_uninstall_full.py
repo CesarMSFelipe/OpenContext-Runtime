@@ -403,7 +403,5 @@ def test_nonempty_claude_parent_left_intact_after_full_uninstall(tmp_path, monke
 
     _run_full_uninstall(str(project), "local", json_output=True)
 
-    assert (project / ".claude").exists(), (
-        ".claude/ must remain when it contains user content"
-    )
+    assert (project / ".claude").exists(), ".claude/ must remain when it contains user content"
     assert user_file.exists(), "user's settings.json must not be deleted"

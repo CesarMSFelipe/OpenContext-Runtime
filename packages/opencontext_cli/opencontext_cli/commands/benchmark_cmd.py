@@ -28,9 +28,7 @@ from opencontext_core.runtime import OpenContextRuntime
 
 # NOTE: Resolve via importlib.resources so DEFAULT_SUITE works under editable install
 # and wheel alike. The yaml is packaged as opencontext_cli/data/contextbench.yaml.
-DEFAULT_SUITE = str(
-    importlib.resources.files("opencontext_cli").joinpath("data/contextbench.yaml")
-)
+DEFAULT_SUITE = str(importlib.resources.files("opencontext_cli").joinpath("data/contextbench.yaml"))
 
 
 def add_benchmark_parser(subparsers: Any) -> None:
