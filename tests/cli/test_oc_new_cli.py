@@ -98,9 +98,7 @@ def test_oc_new_done_advances_phase(tmp_path, monkeypatch, capsys):
         duration_s=0.0,
         artifacts=["explore.artifact.json"],
     )
-    (run_dir / "phase-result.explore.json").write_text(
-        envelope.model_dump_json(), encoding="utf-8"
-    )
+    (run_dir / "phase-result.explore.json").write_text(envelope.model_dump_json(), encoding="utf-8")
 
     rc = _run(
         ["oc-new", "done", "explore", "--run-id", run_id, "--artifact", "explore.artifact.json"],

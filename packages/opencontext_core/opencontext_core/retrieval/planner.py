@@ -574,9 +574,7 @@ class RetrievalPlanner:
 
         # Drop OC-generated / OC-configuration files from context results so
         # that OpenContext's own config never appears as context for user tasks.
-        context_items = [
-            item for item in context_items if not _is_oc_generated(item.source)
-        ]
+        context_items = [item for item in context_items if not _is_oc_generated(item.source)]
 
         evidence = [_context_item_to_evidence(item, request.surface) for item in context_items]
         fallback_actions = _fallback_actions_for(request, evidence)

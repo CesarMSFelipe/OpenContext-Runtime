@@ -92,7 +92,7 @@ def _compile(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
-def _plan_from_runtime(query: str, root: Path, risk: str, budget: int) -> "EvidencePlan | None":
+def _plan_from_runtime(query: str, root: Path, risk: str, budget: int) -> EvidencePlan | None:
     try:
         from opencontext_core.retrieval.contracts import EvidenceRequest, RetrievalSurface
         from opencontext_core.retrieval.planner import RetrievalPlanner
@@ -123,7 +123,7 @@ def _plan_from_runtime(query: str, root: Path, risk: str, budget: int) -> "Evide
         return None
 
 
-def _stub_plan(query: str, root: Path, risk: str, budget: int) -> "EvidencePlan":
+def _stub_plan(query: str, root: Path, risk: str, budget: int) -> EvidencePlan:
     from opencontext_core.retrieval.contracts import (
         EvidencePlan,
         EvidenceRequest,

@@ -76,9 +76,7 @@ class OcNewConductor:
 
         if not path.exists():
             if require:
-                raise RuntimeError(
-                    f"Phase envelope missing: phase-result.{phase_name}.json"
-                )
+                raise RuntimeError(f"Phase envelope missing: phase-result.{phase_name}.json")
             return PhaseResultEnvelope(
                 run_id=state.identity.run_id,
                 change_id=state.identity.change_id,
@@ -119,15 +117,11 @@ class OcNewConductor:
 
         # NOTE: REQ-05 — validate declared artifacts exist on disk before marking passed.
         if status == "passed":
-            phase_def = next(
-                (p for p in OC_NEW_FLOW if p.name == phase_name), None
-            )
+            phase_def = next((p for p in OC_NEW_FLOW if p.name == phase_name), None)
             if phase_def is not None:
                 run_dir = self.store.run_dir(run_id)
                 missing_artifacts = [
-                    a
-                    for a in phase_def.required_artifacts
-                    if not (run_dir / a).exists()
+                    a for a in phase_def.required_artifacts if not (run_dir / a).exists()
                 ]
                 if missing_artifacts:
                     missing_str = ", ".join(missing_artifacts)

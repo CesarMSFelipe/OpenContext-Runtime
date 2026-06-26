@@ -85,9 +85,7 @@ def _resolve_fixture(args: Any) -> Path:
     try:
         import importlib.resources as _ilr
 
-        fixture_ref = _ilr.files("opencontext_cli").joinpath(
-            f"fixtures/memory/{fixture_name}.json"
-        )
+        fixture_ref = _ilr.files("opencontext_cli").joinpath(f"fixtures/memory/{fixture_name}.json")
         if fixture_ref.is_file():
             # Materialise the resource as a real Path object via as_file().
             # For an editable install this is already a real path; for a zip
@@ -156,11 +154,7 @@ def _seed_backend(fixture_path: Path, backend: Any) -> int:
         for rel_id in relevant:
             # Content combines the query text and relevant ID so FTS5 can match
             # on either the domain term or the query keywords.
-            content = (
-                f"{query}. "
-                f"Key: {rel_id}. "
-                f"Domain: {domain}. Phase: {phase}."
-            )
+            content = f"{query}. Key: {rel_id}. Domain: {domain}. Phase: {phase}."
             record = MemoryRecord(
                 id=f"bench:{rel_id}",
                 layer=MemoryLayer.SEMANTIC,

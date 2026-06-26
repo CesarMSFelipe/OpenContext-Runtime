@@ -102,7 +102,7 @@ def handle_evolve(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_store(args: argparse.Namespace) -> "EvolutionStore":
+def _get_store(args: argparse.Namespace) -> EvolutionStore:
     """Return an EvolutionStore for the project root."""
     from opencontext_core.learning.evolution_store import EvolutionStore
 
