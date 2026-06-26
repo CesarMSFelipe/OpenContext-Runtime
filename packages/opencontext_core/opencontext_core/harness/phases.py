@@ -1323,6 +1323,43 @@ class ApplyPhase(HarnessPhase):
                 edits.append(item)
             elif isinstance(item, dict) and "path" in item and "content" in item:
                 edits.append(FileEdit(path=str(item["path"]), content=str(item["content"])))
+            else:
+                # Attempt ApplyEdit materialisation: read the current file, apply
+                # the surgical op in-memory, and emit a whole-file FileEdit.
+                # This preserves the checkpoint/forbidden/rollback machinery intact.
+                try:
+                    from opencontext_core.agents.executor import ApplyEdit, apply_edit
+
+                    if not isinstance(item, ApplyEdit):
+                        continue
+                    root: Path = getattr(state, "root", Path("."))
+                    # apply_edit writes to disk; we want in-memory only, so we
+                    # work on a temp copy and then read the result back.
+                    import tempfile
+                    import shutil
+
+                    file_path = root / item.path
+                    if not file_path.exists():
+                        # CREATE_FILE op — apply directly, emit result.
+                        with tempfile.TemporaryDirectory() as tmp:
+                            tmp_root = Path(tmp)
+                            apply_edit(tmp_root, item)
+                            result_content = (tmp_root / item.path).read_text(encoding="utf-8")
+                        edits.append(FileEdit(path=item.path, content=result_content))
+                    else:
+                        # Existing file: copy to temp dir, apply op, read result.
+                        with tempfile.TemporaryDirectory() as tmp:
+                            tmp_root = Path(tmp)
+                            tmp_file = tmp_root / item.path
+                            tmp_file.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(file_path, tmp_file)
+                            apply_edit(tmp_root, item)
+                            result_content = tmp_file.read_text(encoding="utf-8")
+                        edits.append(FileEdit(path=item.path, content=result_content))
+                except Exception:  # noqa: BLE001
+                    # Silently skip unapplied ApplyEdit; the run continues with
+                    # whatever edits DID materialise.
+                    pass
         return edits
 
     @staticmethod
