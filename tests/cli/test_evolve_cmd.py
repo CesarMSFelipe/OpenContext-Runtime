@@ -99,3 +99,15 @@ def test_evolve_apply_json(tmp_path: Path, monkeypatch: object) -> None:
     assert "status" in data, f"Missing 'status' key in JSON output: {data}"
     assert data["id"] == "test-apply-1"
     assert data["status"] == "applied"
+
+
+def test_evolve_apply_json_not_found(tmp_path: Path, monkeypatch: object) -> None:
+    """apply --json on a missing proposal must emit JSON, not plain text (automation)."""
+    rc, stdout, _stderr = _run_evolve(
+        ["evolve", "apply", "does-not-exist", "--json"],
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 1
+    data = json.loads(stdout)
+    assert data == {"id": "does-not-exist", "status": "not_found"}
