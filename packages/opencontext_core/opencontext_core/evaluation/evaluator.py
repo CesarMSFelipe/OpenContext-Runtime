@@ -140,10 +140,20 @@ class ContextBenchEvaluator:
         token_reduction = max(0.0, 1.0 - (context_tokens / baseline)) if baseline > 0 else 0.0
         reasons: list[str] = []
         if source_coverage < case.min_source_coverage:
-            reasons.append(
+            _cov_reason = (
                 f"source coverage {source_coverage:.2f} below required "
                 f"{case.min_source_coverage:.2f}"
             )
+            # Append a hint when the evaluated root is not the OC project itself.
+            # Detection: the OC repo contains packages/opencontext_core; a generic
+            # project typically does not.
+            _is_oc_root = (self.root / "packages" / "opencontext_core").exists()
+            if not _is_oc_root:
+                _cov_reason += (
+                    " (hint: run with --root <project> or a project-appropriate suite;"
+                    " default suite targets OpenContext sources)"
+                )
+            reasons.append(_cov_reason)
         if forbidden_hits:
             reasons.append(f"forbidden sources included: {', '.join(forbidden_hits)}")
         if token_reduction < self.min_token_reduction:
