@@ -33,7 +33,6 @@ def test_lease_symbols_importable_from_module() -> None:
 
 def test_star_import_excludes_lease_symbols() -> None:
     """from opencontext_core.workflow import * must not expose lease symbols."""
-    import importlib
     import types
 
     tmp = types.ModuleType("_test_star_import")

@@ -646,11 +646,13 @@ def _choose_preset() -> str:
         )
     console.print(table)
 
-    return str(prompts.select(
-        "Select preset",
-        [(p.id, f"{p.name} — {p.description}") for p in sorted_presets],
-        default=sorted_presets[0].id,
-    ))
+    return str(
+        prompts.select(
+            "Select preset",
+            [(p.id, f"{p.name} — {p.description}") for p in sorted_presets],
+            default=sorted_presets[0].id,
+        )
+    )
 
 
 def _choose_profile(preset: str | None = None) -> str:
@@ -667,17 +669,19 @@ def _choose_profile(preset: str | None = None) -> str:
     default = suggestions.get(preset or "", "developer")
     default_idx = next((i for i, p in enumerate(profiles) if p.id == default), 0)
 
-    return str(prompts.select(
-        "Select profile",
-        [
-            (
-                p.id,
-                f"{p.name} — {p.description}" + (" (recommended)" if p.id == default else ""),
-            )
-            for p in profiles
-        ],
-        default=profiles[default_idx].id,
-    ))
+    return str(
+        prompts.select(
+            "Select profile",
+            [
+                (
+                    p.id,
+                    f"{p.name} — {p.description}" + (" (recommended)" if p.id == default else ""),
+                )
+                for p in profiles
+            ],
+            default=profiles[default_idx].id,
+        )
+    )
 
 
 def _parse_agents(values: list[str] | None) -> list[str]:
@@ -710,11 +714,13 @@ def _choose_tdd_mode(default: str) -> str:
         "strict": "strict — tests first whenever a harness exists",
         "off": "off — SDD still works but TDD is optional",
     }
-    return str(prompts.select(
-        "TDD behavior",
-        [(mode, label) for mode, label in labels.items()],
-        default=default if default in labels else "ask",
-    ))
+    return str(
+        prompts.select(
+            "TDD behavior",
+            [(mode, label) for mode, label in labels.items()],
+            default=default if default in labels else "ask",
+        )
+    )
 
 
 def _choose_sdd_profile() -> str:
@@ -724,11 +730,13 @@ def _choose_sdd_profile() -> str:
         "hybrid": "hybrid — mix of cheap and premium models per phase",
         "premium": "premium — strongest models for all phases",
     }
-    return str(prompts.select(
-        "SDD model profile",
-        [(p, label) for p, label in labels.items()],
-        default="default",
-    ))
+    return str(
+        prompts.select(
+            "SDD model profile",
+            [(p, label) for p, label in labels.items()],
+            default="default",
+        )
+    )
 
 
 def _choose_components() -> list[str]:

@@ -114,9 +114,7 @@ def test_archive_blocked_when_harness_report_missing(tmp_path: Path) -> None:
     run_dir = tmp_path / ".opencontext" / "runs" / state.identity.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    state = _drive_to_archive(
-        conductor, run_dir, state.identity.run_id, state.identity.change_id
-    )
+    state = _drive_to_archive(conductor, run_dir, state.identity.run_id, state.identity.change_id)
 
     # Remove harness-report.json to simulate a failed harness.
     harness_path = run_dir / "harness-report.json"
@@ -125,7 +123,10 @@ def test_archive_blocked_when_harness_report_missing(tmp_path: Path) -> None:
 
     # Write archive envelope claiming passed status.
     _write_envelope(
-        run_dir, state.identity.run_id, state.identity.change_id, "archive",
+        run_dir,
+        state.identity.run_id,
+        state.identity.change_id,
+        "archive",
         artifacts=["archive-report.json"],
     )
 
@@ -133,8 +134,7 @@ def test_archive_blocked_when_harness_report_missing(tmp_path: Path) -> None:
 
     archive_phase = state.phase("archive")  # type: ignore[arg-type]
     assert archive_phase.status == "blocked", (
-        f"Expected blocked, got {archive_phase.status!r}. "
-        f"Warnings: {archive_phase.warnings}"
+        f"Expected blocked, got {archive_phase.status!r}. Warnings: {archive_phase.warnings}"
     )
     warnings = archive_phase.warnings or []
     assert any("harness-report.json" in w for w in warnings), (

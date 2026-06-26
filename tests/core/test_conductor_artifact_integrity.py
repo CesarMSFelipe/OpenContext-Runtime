@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from opencontext_core.oc_new.conductor import OcNewConductor
 from opencontext_core.workflow.phase_result import PhaseResultEnvelope
 
@@ -44,7 +42,10 @@ def test_mark_done_blocked_when_required_artifact_missing(tmp_path: Path) -> Non
     for a in explore_artifacts:
         (run_dir / a).write_text("{}", encoding="utf-8")
     _write_envelope(
-        run_dir, state.identity.run_id, state.identity.change_id, "explore",
+        run_dir,
+        state.identity.run_id,
+        state.identity.change_id,
+        "explore",
         artifacts=explore_artifacts,
     )
     state = conductor.mark_done(state.identity.run_id, "explore")
@@ -55,7 +56,10 @@ def test_mark_done_blocked_when_required_artifact_missing(tmp_path: Path) -> Non
     (run_dir / "explore.artifact.json").unlink()
 
     _write_envelope(
-        run_dir, state.identity.run_id, state.identity.change_id, "propose",
+        run_dir,
+        state.identity.run_id,
+        state.identity.change_id,
+        "propose",
         artifacts=[],
     )
 
@@ -85,7 +89,10 @@ def test_mark_done_passes_when_required_artifacts_present(tmp_path: Path) -> Non
     for a in explore_artifacts:
         (run_dir / a).write_text("{}", encoding="utf-8")
     _write_envelope(
-        run_dir, state.identity.run_id, state.identity.change_id, "explore",
+        run_dir,
+        state.identity.run_id,
+        state.identity.change_id,
+        "explore",
         artifacts=explore_artifacts,
     )
     state = conductor.mark_done(state.identity.run_id, "explore")
@@ -94,7 +101,10 @@ def test_mark_done_passes_when_required_artifacts_present(tmp_path: Path) -> Non
     assert (run_dir / "explore.artifact.json").exists()
 
     _write_envelope(
-        run_dir, state.identity.run_id, state.identity.change_id, "propose",
+        run_dir,
+        state.identity.run_id,
+        state.identity.change_id,
+        "propose",
         artifacts=[],
     )
     state = conductor.mark_done(state.identity.run_id, "propose")

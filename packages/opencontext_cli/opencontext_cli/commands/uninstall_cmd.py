@@ -333,9 +333,7 @@ def handle_uninstall(args: Any) -> None:
                     for p in global_residue:
                         console.print(f"  [dim]{p}[/]")
                 if residue or global_residue:
-                    console.print(
-                        "[dim]Run 'opencontext uninstall --full --yes' to clean up.[/]"
-                    )
+                    console.print("[dim]Run 'opencontext uninstall --full --yes' to clean up.[/]")
         sys.exit(0 if passed else 1)
 
     # --full: complete trace removal

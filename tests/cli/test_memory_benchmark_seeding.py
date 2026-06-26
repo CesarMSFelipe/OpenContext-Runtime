@@ -11,7 +11,6 @@ from __future__ import annotations
 import io
 import json
 from contextlib import redirect_stderr, redirect_stdout
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -53,8 +52,8 @@ def test_seeded_benchmark_achieves_nonzero_recall() -> None:
 
 def test_seeded_benchmark_exit_1_on_zero_recall() -> None:
     """When recall == 0.0 after seeding, process exits non-zero with invalid-state message."""
-    from opencontext_core.memory.benchmark import MemoryBenchmarkResult
     from opencontext_cli.commands.memory_benchmark_cmd import handle_memory_benchmark
+    from opencontext_core.memory.benchmark import MemoryBenchmarkResult
 
     # Patch run_benchmark to return 0.0 recall to test the guard path.
     zero_result = MemoryBenchmarkResult(

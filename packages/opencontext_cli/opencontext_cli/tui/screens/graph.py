@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.screen import Screen
+from textual.widgets import Footer, Header
+
 from opencontext_cli.tui.graph.models import (
     GraphEdgeView,
     GraphMode,
@@ -17,11 +22,6 @@ from opencontext_cli.tui.graph.models import (
     GraphNodeView,
     GraphViewState,
 )
-
-from textual.app import ComposeResult
-from textual.binding import Binding
-from textual.screen import Screen
-from textual.widgets import Footer, Header
 
 
 class GraphScreen(Screen[None]):
@@ -175,9 +175,7 @@ def load_graph_for_kg(root: Path | str = ".") -> GraphViewState:
 
             db = GraphDatabase(db_path)
             conn = db._connect()
-            node_rows = conn.execute(
-                "SELECT id, name, kind FROM nodes LIMIT 60"
-            ).fetchall()
+            node_rows = conn.execute("SELECT id, name, kind FROM nodes LIMIT 60").fetchall()
             edge_rows = conn.execute(
                 "SELECT source_node_id, target_node_id FROM edges "
                 "WHERE target_node_id IS NOT NULL LIMIT 120"

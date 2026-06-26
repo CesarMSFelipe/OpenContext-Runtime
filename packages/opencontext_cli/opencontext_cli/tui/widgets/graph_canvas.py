@@ -10,7 +10,6 @@ from __future__ import annotations
 import sys
 from typing import Any, ClassVar
 
-from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widget import Widget
 

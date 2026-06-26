@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import sys
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 
