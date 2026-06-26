@@ -140,7 +140,7 @@ def add_uninstall_parser(subparsers: Any) -> None:
     )
 
 
-def _run_full_uninstall(root: object, scope: str, json_output: bool) -> None:
+def _run_full_uninstall(root: str | Path, scope: str, json_output: bool) -> None:
     """Execute the --full uninstall: deconfigure, ledger delete, purge, glob sweep."""
     from pathlib import Path
 
@@ -216,8 +216,8 @@ def _run_full_uninstall(root: object, scope: str, json_output: bool) -> None:
         console.print(f"  [dim]purged: {', '.join(report['purged'])}[/]")
     if residue:
         console.print("[yellow]Traces remain:[/]")
-        for p in residue:
-            console.print(f"  [dim]{p}[/]")
+        for trace in residue:
+            console.print(f"  [dim]{trace}[/]")
     else:
         console.print("[green]verify passed[/]: no traces remain.")
 

@@ -65,15 +65,15 @@ def handle_persona(args: Any) -> int:
         return 0
 
     if args.persona_command == "show":
-        persona = get_persona(args.id)
-        if persona is None:
+        found = get_persona(args.id)
+        if found is None:
             console.print(f"[red]Unknown persona:[/] {args.id}")
             console.print(f"  Available: {', '.join(p.id for p in PERSONAS)}")
             return 1
-        console.print(f"[bold]{persona.name}[/] [dim]({persona.id})[/]")
-        console.print(persona.description)
+        console.print(f"[bold]{found.name}[/] [dim]({found.id})[/]")
+        console.print(found.description)
         console.print()
-        console.print(persona.system_prompt)
+        console.print(found.system_prompt)
         return 0
 
     if args.persona_command == "models":
