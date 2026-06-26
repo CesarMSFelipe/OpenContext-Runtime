@@ -289,10 +289,11 @@ class MetaHarnessScanner:
 
     def _check_uninstall_cmd(self) -> tuple[bool, str]:
         try:
-            from opencontext_cli.commands.uninstall_cmd import (
-                handle_uninstall,  # noqa: F401
-            )
+            import importlib
 
+            mod = importlib.import_module("opencontext_cli.commands.uninstall_cmd")
+            if not hasattr(mod, "handle_uninstall"):
+                return False, "handle_uninstall not found in uninstall_cmd"
             return True, "uninstall_cmd importable"
         except Exception as exc:
             return False, f"Import failed: {exc}"
