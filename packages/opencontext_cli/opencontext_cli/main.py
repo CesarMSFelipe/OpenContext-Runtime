@@ -1940,8 +1940,8 @@ def _install_dry_run(args: argparse.Namespace) -> None:
         overlay["memory_mode"] = MemoryMode(args.memory_mode)
     if getattr(args, "budget_mode", None):
         overlay["budget_mode"] = BudgetMode(args.budget_mode)
-    if getattr(args, "git", None):
-        overlay["git_mode"] = GitMode(args.git)
+    if getattr(args, "git_mode", None):
+        overlay["git_mode"] = GitMode(args.git_mode)
     if getattr(args, "openspec", None):
         overlay["openspec_mode"] = OpenSpecMode(args.openspec)
     if overlay:
