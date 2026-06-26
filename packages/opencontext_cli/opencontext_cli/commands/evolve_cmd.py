@@ -158,7 +158,10 @@ def _handle_approve(args: argparse.Namespace) -> None:
     proposal_id = args.proposal_id
     updated = store.update_status(proposal_id, "approved")
     if updated is None:
-        print(f"evolve approve: proposal '{proposal_id}' not found.")
+        if getattr(args, "json", False):
+            print(_json.dumps({"id": proposal_id, "status": "not_found"}))
+        else:
+            print(f"evolve approve: proposal '{proposal_id}' not found.")
         raise SystemExit(1)
     if getattr(args, "json", False):
         print(_json.dumps({"id": proposal_id, "status": "approved"}))
@@ -173,7 +176,10 @@ def _handle_reject(args: argparse.Namespace) -> None:
     proposal_id = args.proposal_id
     updated = store.update_status(proposal_id, "rejected")
     if updated is None:
-        print(f"evolve reject: proposal '{proposal_id}' not found.")
+        if getattr(args, "json", False):
+            print(_json.dumps({"id": proposal_id, "status": "not_found"}))
+        else:
+            print(f"evolve reject: proposal '{proposal_id}' not found.")
         raise SystemExit(1)
     if getattr(args, "json", False):
         print(_json.dumps({"id": proposal_id, "status": "rejected"}))
@@ -191,15 +197,21 @@ def _handle_apply(args: argparse.Namespace) -> int:
     proposal = store.load(proposal_id)
 
     if proposal is None:
-        print(f"Evolution proposal not found: {proposal_id}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(_json.dumps({"id": proposal_id, "status": "not_found"}))
+        else:
+            print(f"Evolution proposal not found: {proposal_id}", file=sys.stderr)
         return 1
 
     if proposal.status != "approved":
-        print(
-            f"Proposal {proposal_id} is not approved. "
-            f"Run: opencontext evolve approve {proposal_id}",
-            file=sys.stderr,
-        )
+        if getattr(args, "json", False):
+            print(_json.dumps({"id": proposal_id, "status": "not_approved"}))
+        else:
+            print(
+                f"Proposal {proposal_id} is not approved. "
+                f"Run: opencontext evolve approve {proposal_id}",
+                file=sys.stderr,
+            )
         return 1
 
     root = Path(getattr(args, "root", ".")).resolve()

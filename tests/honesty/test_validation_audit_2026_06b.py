@@ -82,6 +82,31 @@ def test_t2_sqlite_substrate_hash_and_tokens() -> None:
         assert report.used_tokens > 0, f"used_tokens must be > 0, got {report.used_tokens}"
 
 
+def test_t2_wrong_schema_degrades_honestly() -> None:
+    """A nodes table missing content_snippet must degrade to null hash + a warning,
+    never a fake hash. Guards the P0.1 regression (wrong column read silently)."""
+
+    from opencontext_core.agentic.context_substrate import ContextSubstrateBuilder
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        db_dir = root / ".storage" / "opencontext"
+        db_dir.mkdir(parents=True)
+        conn = sqlite3.connect(str(db_dir / "context_graph.db"))
+        # Legacy/wrong schema: a `content` column, no `content_snippet`.
+        conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY NOT NULL, content TEXT)")
+        conn.execute("INSERT INTO nodes (id, content) VALUES ('n1', 'hi')")
+        conn.commit()
+        conn.close()
+
+        report = ContextSubstrateBuilder(root=root).build_for_phase(
+            task="test", phase="explore", budget=8000
+        )
+
+        assert report.context_pack_hash is None, "must not fabricate a hash on wrong schema"
+        assert report.warnings, "must surface a warning when the schema read fails"
+
+
 # ---------------------------------------------------------------------------
 # T3: TUI graph kind mapping
 # ---------------------------------------------------------------------------
@@ -228,6 +253,7 @@ def test_t6_conductor_metadata_no_lease_id() -> None:
             assert isinstance(h, dict), f"'handoff' must be a dict, got: {type(h)}"
             assert h.get("run_id"), f"handoff.run_id must be non-null: {h}"
             assert h.get("change_id"), f"handoff.change_id must be non-null: {h}"
+            assert h.get("trace_id"), f"handoff.trace_id must be non-null: {h}"
             assert h.get("phase"), f"handoff.phase must be non-null: {h}"
             assert h.get("task") is not None, f"handoff.task must be present: {h}"
             return
