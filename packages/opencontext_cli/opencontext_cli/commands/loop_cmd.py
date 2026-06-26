@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 FLOWS = {
     "quick": "quick",
@@ -19,7 +20,7 @@ FLOWS = {
 COMPRESSION_MODES = ["terse", "compact", "efficient", "none"]
 
 
-def add_loop_commands(subparsers: argparse._SubParsersAction) -> None:
+def add_loop_commands(subparsers: argparse._SubParsersAction[Any]) -> None:
     loop = subparsers.add_parser(
         "loop",
         help="Interactive agentic workflow loop with user checkpoints.",
@@ -60,7 +61,7 @@ def add_loop_commands(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def handle_loop(args: argparse.Namespace, config=None) -> int:
+def handle_loop(args: argparse.Namespace, config: object = None) -> int:
     """Run the interactive agentic loop."""
     flow = "autonomous" if getattr(args, "autonomous", False) else getattr(args, "flow", "full")
     task = args.task
@@ -119,8 +120,8 @@ def _run_loop(
     task: str,
     workflow: str,
     root: Path,
-    config,
-    compressor,
+    config: object,
+    compressor: Any,
     autonomous: bool,
 ) -> bool:
     """Execute one loop iteration. Returns True if all phases completed."""
@@ -156,7 +157,7 @@ def _print_header(task: str, flow: str, compress: str) -> None:
     print("-" * width)
 
 
-def _print_run_summary(result) -> None:
+def _print_run_summary(result: Any) -> None:
     """Print a human-readable run summary with per-phase breakdown."""
     if result is None:
         print("  no result")
@@ -166,16 +167,16 @@ def _print_run_summary(result) -> None:
     artifacts = getattr(result, "artifacts", [])
     warnings = getattr(result, "warnings", [])
     gates = getattr(result, "gates", [])
-    status = getattr(result, "status", None)
+    status: Any = getattr(result, "status", None)
     status_str = status.value if hasattr(status, "value") else str(status)
 
     # Per-phase summary
-    artifacts_by_phase: dict[str, list] = {}
+    artifacts_by_phase: dict[str, list[Any]] = {}
     for a in artifacts:
         phase = getattr(a, "phase", "?")
         artifacts_by_phase.setdefault(phase, []).append(a)
 
-    gates_by_phase: dict[str, list] = {}
+    gates_by_phase: dict[str, list[Any]] = {}
     for g in gates:
         phase = getattr(g, "phase", "?")
         gates_by_phase.setdefault(phase, []).append(g)
@@ -229,7 +230,7 @@ def _print_run_summary(result) -> None:
     print(f"\n  Status: {status_str}  |  {len(artifacts)} artifact(s)  |  {len(gates)} gate(s)")
 
 
-def _apply_outcome(artifacts: list) -> str | None:
+def _apply_outcome(artifacts: list[Any]) -> str | None:
     """Report whether the apply phase wrote real source, read from its manifest."""
     import json
 

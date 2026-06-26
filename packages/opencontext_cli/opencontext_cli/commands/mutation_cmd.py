@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 
-def add_mutation_commands(subparsers: argparse._SubParsersAction) -> None:
+def add_mutation_commands(subparsers: argparse._SubParsersAction[Any]) -> None:
     mut = subparsers.add_parser("mutation", help="Mutation analysis operations")
     sub = mut.add_subparsers(dest="mutation_cmd")
 
@@ -17,7 +18,7 @@ def add_mutation_commands(subparsers: argparse._SubParsersAction) -> None:
     run_cmd.add_argument("--root", default=".")
 
 
-def handle_mutation(args: argparse.Namespace, config=None) -> int:
+def handle_mutation(args: argparse.Namespace, config: object = None) -> int:
     cmd = getattr(args, "mutation_cmd", None)
     if cmd == "run":
         return _handle_mutation_run(args)

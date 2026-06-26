@@ -6,9 +6,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from opencontext_core.retrieval.contracts import EvidencePlan
 
 
-def add_bytecode_commands(subparsers: argparse._SubParsersAction) -> None:
+def add_bytecode_commands(subparsers: argparse._SubParsersAction[Any]) -> None:
     p = subparsers.add_parser(
         "bytecode",
         help="AICX context bytecode tools",
@@ -88,7 +92,7 @@ def _compile(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
-def _plan_from_runtime(query: str, root: Path, risk: str, budget: int) -> object | None:
+def _plan_from_runtime(query: str, root: Path, risk: str, budget: int) -> "EvidencePlan | None":
     try:
         from opencontext_core.retrieval.contracts import EvidenceRequest, RetrievalSurface
         from opencontext_core.retrieval.planner import RetrievalPlanner
@@ -119,7 +123,7 @@ def _plan_from_runtime(query: str, root: Path, risk: str, budget: int) -> object
         return None
 
 
-def _stub_plan(query: str, root: Path, risk: str, budget: int):
+def _stub_plan(query: str, root: Path, risk: str, budget: int) -> "EvidencePlan":
     from opencontext_core.retrieval.contracts import (
         EvidencePlan,
         EvidenceRequest,
@@ -232,7 +236,7 @@ def _decode(args: argparse.Namespace) -> int:
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 
-def _load_bc(path: str | None):
+def _load_bc(path: str | None) -> Any:
     from opencontext_core.context.bytecode import ContextBytecode
 
     if path:
@@ -273,7 +277,7 @@ def _load_bc(path: str | None):
     return None
 
 
-def _normalize_bc_json(data: dict) -> dict:
+def _normalize_bc_json(data: dict[str, Any]) -> dict[str, Any]:
     """Accept both verbose (version/request_id) and compact (v/r) JSON formats."""
     if "v" in data and "version" not in data:
         from opencontext_core.context.bytecode.models import BytecodeInstruction
@@ -291,7 +295,7 @@ def _normalize_bc_json(data: dict) -> dict:
     return data
 
 
-def _print_metrics(metrics, report) -> None:
+def _print_metrics(metrics: Any, report: Any) -> None:
     print(f"instructions     : {metrics.instruction_count}")
     print(f"evidence items   : {metrics.evidence_count}")
     print(f"dictionary keys  : {metrics.dictionary_entries}")

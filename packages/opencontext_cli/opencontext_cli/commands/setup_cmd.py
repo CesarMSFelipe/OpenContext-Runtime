@@ -620,7 +620,7 @@ def _choose_preset() -> str:
     """Interactive preset selection."""
     presets = get_available_presets()
 
-    def preset_sort_key(p):
+    def preset_sort_key(p: Any) -> tuple[int, str]:
         if p.id == "context-first":
             return (0, p.id)
         return (1, p.id)
@@ -646,11 +646,11 @@ def _choose_preset() -> str:
         )
     console.print(table)
 
-    return prompts.select(
+    return str(prompts.select(
         "Select preset",
         [(p.id, f"{p.name} — {p.description}") for p in sorted_presets],
         default=sorted_presets[0].id,
-    )
+    ))
 
 
 def _choose_profile(preset: str | None = None) -> str:
@@ -667,7 +667,7 @@ def _choose_profile(preset: str | None = None) -> str:
     default = suggestions.get(preset or "", "developer")
     default_idx = next((i for i, p in enumerate(profiles) if p.id == default), 0)
 
-    return prompts.select(
+    return str(prompts.select(
         "Select profile",
         [
             (
@@ -677,7 +677,7 @@ def _choose_profile(preset: str | None = None) -> str:
             for p in profiles
         ],
         default=profiles[default_idx].id,
-    )
+    ))
 
 
 def _parse_agents(values: list[str] | None) -> list[str]:
@@ -710,11 +710,11 @@ def _choose_tdd_mode(default: str) -> str:
         "strict": "strict — tests first whenever a harness exists",
         "off": "off — SDD still works but TDD is optional",
     }
-    return prompts.select(
+    return str(prompts.select(
         "TDD behavior",
         [(mode, label) for mode, label in labels.items()],
         default=default if default in labels else "ask",
-    )
+    ))
 
 
 def _choose_sdd_profile() -> str:
@@ -724,11 +724,11 @@ def _choose_sdd_profile() -> str:
         "hybrid": "hybrid — mix of cheap and premium models per phase",
         "premium": "premium — strongest models for all phases",
     }
-    return prompts.select(
+    return str(prompts.select(
         "SDD model profile",
         [(p, label) for p, label in labels.items()],
         default="default",
-    )
+    ))
 
 
 def _choose_components() -> list[str]:

@@ -17,7 +17,10 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from opencontext_core.learning.evolution_store import EvolutionStore
 
 
 def add_evolve_parser(subparsers: Any) -> None:
@@ -99,7 +102,7 @@ def handle_evolve(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_store(args: argparse.Namespace):  # type: ignore[return]
+def _get_store(args: argparse.Namespace) -> "EvolutionStore":
     """Return an EvolutionStore for the project root."""
     from opencontext_core.learning.evolution_store import EvolutionStore
 

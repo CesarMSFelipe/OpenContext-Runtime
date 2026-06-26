@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import Any
 
 
-def add_contract_commands(subparsers: argparse._SubParsersAction) -> None:
+def add_contract_commands(subparsers: argparse._SubParsersAction[Any]) -> None:
     contract = subparsers.add_parser("contract", help="Context contract operations")
     sub = contract.add_subparsers(dest="contract_cmd", help="contract subcommands")
 
@@ -16,7 +17,7 @@ def add_contract_commands(subparsers: argparse._SubParsersAction) -> None:
     build.add_argument("--root", default=".", help="Project root")
 
 
-def handle_contract(args: argparse.Namespace, config=None) -> int:
+def handle_contract(args: argparse.Namespace, config: object = None) -> int:
     cmd = getattr(args, "contract_cmd", None)
     if cmd == "build":
         return _handle_contract_build(args, config)
@@ -24,7 +25,7 @@ def handle_contract(args: argparse.Namespace, config=None) -> int:
     return 1
 
 
-def _handle_contract_build(args: argparse.Namespace, config=None) -> int:
+def _handle_contract_build(args: argparse.Namespace, config: object = None) -> int:
     try:
         from opencontext_core.context.planning.classifier import TaskClassifier
         from opencontext_core.context.planning.contract import ContextContractBuilder
