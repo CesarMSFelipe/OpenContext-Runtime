@@ -13,8 +13,9 @@ from typing import Any, ClassVar
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Footer, Header
+from textual.widgets import Footer, Static
 
+from opencontext_cli.tui.brand import BrandBar
 from opencontext_cli.tui.graph.models import (
     GraphEdgeView,
     GraphMode,
@@ -80,12 +81,16 @@ class GraphScreen(Screen[None]):
                 view_state = GraphViewState(nodes=[], edges=[], mode=mode)
         self._view_state = view_state
         self._title = title
+        self._root = root
         self._no_tui = not sys.stdout.isatty()
 
     def compose(self) -> ComposeResult:
         from opencontext_cli.tui.widgets.graph_canvas import GraphCanvas
 
-        yield Header(show_clock=False)
+        yield BrandBar(root=self._root)
+        yield Static(
+            f"[bold]{self._title}[/]\n[dim]{self._view_state.mode.value} view[/]", markup=True
+        )
         canvas = GraphCanvas(
             nodes=self._view_state.nodes,
             edges=self._view_state.edges,

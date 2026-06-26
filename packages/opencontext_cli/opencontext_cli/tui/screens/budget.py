@@ -9,6 +9,8 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
+from opencontext_cli.tui.brand import BrandBar
+
 
 class BudgetScreen(Screen[None]):
     """Shows token budget usage for the active oc-new run."""
@@ -23,6 +25,8 @@ class BudgetScreen(Screen[None]):
     """
 
     def compose(self) -> ComposeResult:
+        yield BrandBar()
+        yield Static("[bold]Budget[/]\n[dim]Token ledger for active run[/]", markup=True)
         yield Static("", id="budget-content", markup=True)
         yield Footer()
 

@@ -10,6 +10,8 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
+from opencontext_cli.tui.brand import BrandBar
+
 
 class HarnessPanel(Screen[None]):
     """Displays the latest harness-report.json for the current run."""
@@ -28,6 +30,10 @@ class HarnessPanel(Screen[None]):
         self._run_dir = run_dir
 
     def compose(self) -> ComposeResult:
+        yield BrandBar()
+        yield Static(
+            "[bold]Harness & quality gates[/]\n[dim]Latest harness-report.json[/]", markup=True
+        )
         yield Static("", id="harness-content", markup=True)
         yield Footer()
 
