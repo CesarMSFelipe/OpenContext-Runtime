@@ -101,30 +101,69 @@ def build_config_model() -> list[Category]:
     def opt_list(*vals: str) -> Callable[[], list[tuple[str, str]]]:
         return lambda: [(v, v) for v in vals]
 
-    setup = Category(
-        "setup",
-        "Setup",
+    def desc(*lines: str) -> str:
+        return "\n".join(lines)
+
+    project_setup = Category(
+        "project_setup",
+        "Project setup",
         "1",
         (
             Leaf(
                 "wizard",
                 "Full setup wizard",
                 "launch",
-                "Walk every step: security, features, budgets, agents, plugins.",
+                desc(
+                    "Current: project-guided setup.",
+                    "Effect: writes opencontext.yaml and agent integration files.",
+                    "Recommended: run once per project, then use Settings for small changes.",
+                    "Risk / note: asks before destructive changes.",
+                    "CLI: opencontext config wizard",
+                ),
                 run=wizard.run_wizard,  # type: ignore[arg-type]
+            ),
+            Leaf(
+                "agents",
+                "Agent integrations",
+                "launch",
+                desc(
+                    "Current: configured agents for this workspace.",
+                    "Effect: controls Claude/Codex/OpenCode integration files.",
+                    "Recommended: enable only agents you actually use.",
+                    "Risk / note: workspace install should not write global agent config.",
+                    "CLI: opencontext install --agent <agent> --scope workspace",
+                ),
+            ),
+            Leaf(
+                "plugins",
+                "Plugins",
+                "launch",
+                desc(
+                    "Current: installed OpenContext plugins.",
+                    "Effect: adds optional commands, skills, and integrations.",
+                    "Recommended: keep minimal until a workflow needs a plugin.",
+                    "Risk / note: third-party plugins extend local tool surface.",
+                    "CLI: opencontext config reconfigure plugins",
+                ),
             ),
         ),
     )
-    settings = Category(
-        "settings",
-        "Settings",
+    runtime = Category(
+        "runtime",
+        "Runtime",
         "2",
         (
             Leaf(
                 "security",
                 "Security & privacy",
                 "select",
-                "Posture: how much OpenContext is allowed to reach out.",
+                desc(
+                    "Current: selected security posture.",
+                    "Effect: controls external access and provider safety defaults.",
+                    "Recommended: local/dev for solo work; enterprise for locked-down orgs.",
+                    "Risk / note: lower postures may allow more integrations.",
+                    "CLI: opencontext config set security_mode <mode>",
+                ),
                 options=sec_opts,
                 current=sec_cur,
                 apply=sec_apply,
@@ -133,52 +172,71 @@ def build_config_model() -> list[Category]:
                 "features",
                 "Features",
                 "launch",
-                "Toggle Knowledge Graph, Call Graph, Learning System.",
+                desc(
+                    "Current: feature toggles.",
+                    "Effect: enables KG, call graph, learning.",
+                    "Recommended: KG on.",
+                    "Risk / note: more features can add indexing work.",
+                    "CLI: opencontext config set features.<name> true",
+                ),
             ),
             Leaf(
                 "tokens",
                 "Token budgets",
                 "launch",
-                "Default per-operation token budget.",
+                desc(
+                    "Current: default token budget.",
+                    "Effect: caps context and agentic phase output.",
+                    "Recommended: 8k-16k for normal repos.",
+                    "Risk / note: too low can hide needed evidence.",
+                    "CLI: opencontext config set default_token_budget <n>",
+                ),
             ),
             Leaf(
                 "models",
                 "Providers & models",
                 "launch",
-                "Default provider + model, and per-SDD-phase routing.",
-            ),
-            Leaf(
-                "agents",
-                "Agent integrations",
-                "launch",
-                "Which AI coding agents OpenContext wires up.",
-            ),
-            Leaf(
-                "plugins",
-                "Plugins",
-                "launch",
-                "Browse and install plugins; set update behaviour.",
-            ),
-            Leaf(
-                "memory",
-                "Memory backend",
-                "launch",
-                "local / engram / auto — offers to install Engram if missing.",
+                desc(
+                    "Current: default provider/model and phase routing.",
+                    "Effect: used when host-agent/provider execution is enabled.",
+                    "Recommended: mock/host-agent for safe local QA.",
+                    "Risk / note: real providers can make network/API calls.",
+                    "CLI: opencontext models",
+                ),
             ),
             Leaf(
                 "language",
                 "Language",
                 "select",
-                "Interface language.",
+                desc(
+                    "Current: UI language.",
+                    "Effect: changes CLI/TUI copy where translations exist.",
+                    "Recommended: your team language.",
+                    "Risk / note: logs/artifacts may still contain English schema fields.",
+                    "CLI: opencontext config set ui_language <en|es>",
+                ),
                 options=lang_opts,
                 current=lang_cur,
                 apply=lang_apply,
             ),
+        ),
+    )
+    workflow = Category(
+        "agentic_workflow",
+        "Agentic workflow",
+        "3",
+        (
             Leaf(
                 "sdd_profile",
                 "SDD model profile",
                 "select",
-                "How models are routed across SDD phases.",
+                desc(
+                    "Current: SDD model profile.",
+                    "Effect: routes explore/propose/spec/design/tasks/apply/verify.",
+                    "Recommended: hybrid for balanced runs.",
+                    "Risk / note: premium may cost more; cheap may reduce quality.",
+                    "CLI: opencontext config set sdd.model_profile <profile>",
+                ),
                 options=opt_list("default", "cheap", "hybrid", "premium"),
                 current=prof_cur,
                 apply=prof_apply,
@@ -187,33 +245,70 @@ def build_config_model() -> list[Category]:
                 "tdd_mode",
                 "TDD mode",
                 "select",
-                "Whether SDD enforces test-first.",
+                desc(
+                    "Current: TDD enforcement.",
+                    "Effect: controls whether apply starts with tests.",
+                    "Recommended: strict for core code, ask for exploratory work.",
+                    "Risk / note: off can reduce regression coverage.",
+                    "CLI: opencontext config set sdd.tdd_mode <ask|strict|off>",
+                ),
                 options=opt_list("ask", "strict", "off"),
                 current=tdd_cur,
                 apply=tdd_apply,
             ),
         ),
     )
+    memory = Category(
+        "memory",
+        "Memory",
+        "4",
+        (
+            Leaf(
+                "memory",
+                "Memory backend",
+                "launch",
+                desc(
+                    "Current: local / engram / auto.",
+                    "Effect: controls what phase memory reads/writes.",
+                    "Recommended: auto if Engram is installed; local otherwise.",
+                    "Risk / note: Engram is external; local is project-scoped.",
+                    "CLI: opencontext config set memory.provider auto",
+                ),
+            ),
+        ),
+    )
     maintenance = Category(
         "maintenance",
         "Maintenance",
-        "3",
+        "5",
         (
             Leaf(
                 "show",
                 "Show current config",
                 "launch",
-                "Print the full resolved configuration.",
+                desc(
+                    "Current: resolved config view.",
+                    "Effect: prints what OpenContext will use now.",
+                    "Recommended: check before debugging installs/runs.",
+                    "Risk / note: may include local paths.",
+                    "CLI: opencontext config show",
+                ),
                 run=wizard.show_config,
             ),
             Leaf(
                 "reset",
                 "Reset to defaults",
                 "launch",
-                "Restore factory defaults (asks first).",
+                desc(
+                    "Current: reset action.",
+                    "Effect: restores user config defaults.",
+                    "Recommended: only when config is confusing.",
+                    "Risk / note: asks first; can remove preferences.",
+                    "CLI: opencontext config reset",
+                ),
                 run=wizard.reset_config,
             ),
             Leaf("quit", "Quit", "quit", "Leave configuration."),
         ),
     )
-    return [setup, settings, maintenance]
+    return [project_setup, runtime, workflow, memory, maintenance]

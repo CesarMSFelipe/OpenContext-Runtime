@@ -10,6 +10,8 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
+from opencontext_cli.tui.brand import BrandBar
+
 
 class ReceiptViewer(Screen[None]):
     """Displays receipt.json (PhaseResultEnvelope) for a completed run."""
@@ -28,6 +30,11 @@ class ReceiptViewer(Screen[None]):
         self._run_dir = run_dir
 
     def compose(self) -> ComposeResult:
+        yield BrandBar()
+        yield Static(
+            "[bold]Receipts / audit trail[/]\n[dim]Phase result envelope for active run[/]",
+            markup=True,
+        )
         yield Static("", id="receipt-content", markup=True)
         yield Footer()
 

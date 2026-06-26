@@ -9,6 +9,8 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
+from opencontext_cli.tui.brand import BrandBar
+
 
 class ContextViewerScreen(Screen[None]):
     """Shows the latest <phase>.context.json for the active oc-new run."""
@@ -23,6 +25,10 @@ class ContextViewerScreen(Screen[None]):
     """
 
     def compose(self) -> ComposeResult:
+        yield BrandBar()
+        yield Static(
+            "[bold]Context pack[/]\n[dim]Latest phase context for active run[/]", markup=True
+        )
         yield Static("", id="context-content", markup=True)
         yield Footer()
 

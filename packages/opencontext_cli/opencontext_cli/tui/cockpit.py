@@ -7,6 +7,7 @@ Idle state is shown when no run exists.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 from textual.app import ComposeResult
@@ -35,7 +36,10 @@ class CockpitScreen(Screen[None]):
         Binding("n", "new_change", "New change"),
         Binding("m", "memory", "Memory"),
         Binding("k", "context", "KG/Context"),
+        Binding("g", "graph", "Graph"),
         Binding("b", "budget", "Budget"),
+        Binding("h", "harness", "Harness"),
+        Binding("r", "receipt", "Receipt"),
         Binding("d", "doctor", "Doctor"),
         Binding("s", "settings", "Settings"),
         Binding("q", "quit", "Quit"),
@@ -108,33 +112,7 @@ class CockpitScreen(Screen[None]):
 
     def action_new_change(self) -> None:
         """Open NewChangeScreen and start an oc-new run on submit."""
-        from opencontext_cli.tui.screens.new_change import NewChangeScreen
-
-        def _start(result: dict[str, str] | None) -> None:
-            if not result:
-                return
-            try:
-                from opencontext_core.agentic.config import (
-                    AgenticFlowConfig,
-                    FlowMode,
-                    GitMode,
-                    MemoryMode,
-                    OpenSpecMode,
-                )
-                from opencontext_core.oc_new.conductor import OcNewConductor
-
-                cfg = AgenticFlowConfig(
-                    flow_mode=FlowMode(result["flow"]),
-                    memory_mode=MemoryMode(result["memory"]),
-                    openspec_mode=OpenSpecMode(result["openspec"]),
-                    git_mode=GitMode(result["git"]),
-                )
-                OcNewConductor(".").start(result["objective"], config=cfg)
-                self._refresh_state()
-            except Exception:
-                pass
-
-        self.app.push_screen(NewChangeScreen(), _start)
+        start_new_change(self.app, refresh=self._refresh_state)
 
     def action_memory(self) -> None:
         """Open the memory browser screen."""
@@ -148,14 +126,85 @@ class CockpitScreen(Screen[None]):
 
         self.app.push_screen(ContextViewerScreen())
 
+    def action_graph(self) -> None:
+        """Open graph viewer for the active run, else KG."""
+        from opencontext_cli.tui.graph.models import GraphMode
+        from opencontext_cli.tui.screens.graph import GraphScreen
+
+        run_id = _latest_run_id()
+        if run_id:
+            self.app.push_screen(GraphScreen(mode=GraphMode.RUN, run_id=run_id, root="."))
+        else:
+            self.app.push_screen(GraphScreen(mode=GraphMode.KG, root="."))
+
     def action_budget(self) -> None:
         """Open the budget ledger screen."""
         from opencontext_cli.tui.screens.budget import BudgetScreen
 
         self.app.push_screen(BudgetScreen())
 
+    def action_harness(self) -> None:
+        """Open harness report for the active run."""
+        from opencontext_cli.tui.app import _latest_run_dir
+        from opencontext_cli.tui.screens.harness import HarnessPanel
+
+        self.app.push_screen(HarnessPanel(run_dir=_latest_run_dir()))
+
+    def action_receipt(self) -> None:
+        """Open receipt for the active run."""
+        from opencontext_cli.tui.app import _latest_run_dir
+        from opencontext_cli.tui.screens.receipt import ReceiptViewer
+
+        self.app.push_screen(ReceiptViewer(run_dir=_latest_run_dir()))
+
     def action_doctor(self) -> None:
         """Placeholder — future: open doctor screen."""
+
+
+def start_new_change(app: object, *, refresh: Callable[[], None] | None = None) -> None:
+    """Open NewChangeScreen and start an oc-new run on submit."""
+    from opencontext_cli.tui.screens.new_change import NewChangeScreen
+
+    app_any = app
+    refresh_fn = refresh
+
+    # ponytail: object typing avoids importing Textual App just for one callback.
+    def _start(result: dict[str, str] | None) -> None:
+        if not result:
+            return
+        try:
+            from opencontext_core.agentic.config import (
+                AgenticFlowConfig,
+                FlowMode,
+                GitMode,
+                MemoryMode,
+                OpenSpecMode,
+            )
+            from opencontext_core.oc_new.conductor import OcNewConductor
+
+            cfg = AgenticFlowConfig(
+                flow_mode=FlowMode(result["flow"]),
+                memory_mode=MemoryMode(result["memory"]),
+                openspec_mode=OpenSpecMode(result["openspec"]),
+                git_mode=GitMode(result["git"]),
+            )
+            OcNewConductor(".").start(result["objective"], config=cfg)
+            if refresh_fn is not None:
+                refresh_fn()
+        except Exception:
+            pass
+
+    app_any.push_screen(NewChangeScreen(), _start)  # type: ignore[attr-defined]
+
+
+def _latest_run_id() -> str | None:
+    try:
+        from opencontext_core.oc_new.store import OcNewStore
+
+        state = OcNewStore(".").latest()
+        return None if state is None else state.identity.run_id
+    except Exception:
+        return None
 
 
 def _render_phases(state: object) -> str:

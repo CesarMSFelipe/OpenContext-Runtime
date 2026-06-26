@@ -9,6 +9,8 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
+from opencontext_cli.tui.brand import BrandBar
+
 
 class MemoryBrowserScreen(Screen[None]):
     """Lists memory keys from the local or Engram memory backend."""
@@ -23,6 +25,8 @@ class MemoryBrowserScreen(Screen[None]):
     """
 
     def compose(self) -> ComposeResult:
+        yield BrandBar()
+        yield Static("[bold]Memory[/]\n[dim]Backend keys and recall state[/]", markup=True)
         yield Static("", id="memory-content", markup=True)
         yield Footer()
 

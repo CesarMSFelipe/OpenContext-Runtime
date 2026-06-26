@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, ClassVar
 
 from textual import on
@@ -223,15 +224,19 @@ class HomeScreen(Screen[None]):
         Binding("escape", "quit_tui", "Quit", show=False),
     ]
     _ACTIONS: ClassVar[list[tuple[str, str]]] = [
-        ("install", "Install / reconfigure"),
-        ("upgrade", "Upgrade all packages"),
-        ("sync", "Re-sync environment"),
-        ("configure", "Settings — providers, agents, plugins, SDD, features…"),
-        ("verified", "Verified context for a task"),
-        ("memory", "Context memory"),
-        ("doctor", "Doctor — health check"),
-        ("backups", "Backups"),
-        ("uninstall", "Uninstall"),
+        ("cockpit", "Main · Cockpit / active run"),
+        ("new_change", "Main · Start new change"),
+        ("verified", "Main · Build verified context"),
+        ("graph", "Main · Knowledge graph"),
+        ("memory", "Main · Memory"),
+        ("harness", "Main · Harness & quality gates"),
+        ("receipt", "Main · Receipts / audit trail"),
+        ("install", "Setup · Install / reconfigure"),
+        ("configure", "Setup · Settings"),
+        ("doctor", "Setup · Doctor"),
+        ("benchmark", "Setup · Benchmark"),
+        ("backups", "Setup · Backups"),
+        ("uninstall", "Setup · Uninstall"),
         ("quit", "Quit"),
     ]
 
@@ -289,12 +294,39 @@ class HomeScreen(Screen[None]):
         if key == "configure":
             self.app.push_screen(ConfigScreen())
             return
+        if key == "cockpit":
+            from opencontext_cli.tui.cockpit import CockpitScreen
+
+            self.app.push_screen(CockpitScreen())
+            return
+        if key == "new_change":
+            from opencontext_cli.tui.cockpit import start_new_change
+
+            start_new_change(
+                self.app, refresh=lambda: self.query_one("#kg", Static).update(self._kg_line())
+            )
+            return
+        if key == "graph":
+            from opencontext_cli.tui.graph.models import GraphMode
+            from opencontext_cli.tui.screens.graph import GraphScreen
+
+            self.app.push_screen(GraphScreen(mode=GraphMode.KG, root=Path(".")))
+            return
+        if key in {"harness", "receipt"}:
+            run_dir = _latest_run_dir()
+            if key == "harness":
+                from opencontext_cli.tui.screens.harness import HarnessPanel
+
+                self.app.push_screen(HarnessPanel(run_dir=run_dir))
+            else:
+                from opencontext_cli.tui.screens.receipt import ReceiptViewer
+
+                self.app.push_screen(ReceiptViewer(run_dir=run_dir))
+            return
         from opencontext_cli.commands import menu_cmd
 
         handler = {
             "install": menu_cmd._run_install,
-            "upgrade": menu_cmd._run_upgrade,
-            "sync": menu_cmd._run_sync,
             "verified": menu_cmd._run_verified_context,
             "memory": menu_cmd._run_memory_tools,
             "doctor": menu_cmd._run_doctor,
@@ -302,6 +334,8 @@ class HomeScreen(Screen[None]):
             "uninstall": menu_cmd._run_uninstall,
         }.get(key)
         if handler is None:
+            if key == "benchmark":
+                self._run_cli(["benchmark", "list"])
             return
         from opencontext_core import prompts
         from opencontext_core.dx.console_styles import console
@@ -315,6 +349,31 @@ class HomeScreen(Screen[None]):
                 handler()
             except Exception as exc:  # one action must never kill the home menu
                 console.print(f"[red]{key} failed: {exc}[/]")
+            prompts.pause("Press Enter to return to the menu")
+        self.query_one("#kg", Static).update(self._kg_line())
+
+    def _run_cli(self, args: list[str]) -> None:
+        from opencontext_core import prompts
+        from opencontext_core.dx.console_styles import console
+
+        with self.app.suspend():
+            try:
+                console.clear()
+            except Exception:
+                pass
+            try:
+                from opencontext_cli.main import main
+
+                old_argv = sys.argv
+                sys.argv = ["opencontext", *args]
+                try:
+                    main()
+                finally:
+                    sys.argv = old_argv
+            except SystemExit:
+                pass
+            except Exception as exc:
+                console.print(f"[red]{' '.join(args)} failed: {exc}[/]")
             prompts.pause("Press Enter to return to the menu")
         self.query_one("#kg", Static).update(self._kg_line())
 
@@ -360,6 +419,18 @@ class OpenContextApp(App[None]):
 
 
 _DIM = "#6C757D"
+
+
+def _latest_run_dir() -> Path | None:
+    try:
+        from opencontext_core.oc_new.store import OcNewStore
+
+        state = OcNewStore(".").latest()
+        if state is None:
+            return None
+        return Path(".opencontext") / "runs" / state.identity.run_id
+    except Exception:
+        return None
 
 
 def run_config_tui(*, headless: bool = False) -> bool:

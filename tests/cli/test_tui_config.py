@@ -36,7 +36,7 @@ def _project(tmp_path):
     return tmp_path
 
 
-def test_config_screen_builds_three_categories(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_screen_builds_product_categories(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from textual.widgets import ListView
 
     from opencontext_cli.tui.app import OpenContextApp
@@ -54,7 +54,7 @@ def test_config_screen_builds_three_categories(tmp_path, monkeypatch: pytest.Mon
             await pilot.press("q")
 
     asyncio.run(scenario())
-    assert seen["cats"] == 3  # Setup · Settings · Maintenance
+    assert seen["cats"] == 5  # Project setup · Runtime · Workflow · Memory · Maintenance
 
 
 def test_config_screen_select_applies_and_persists(
@@ -72,7 +72,7 @@ def test_config_screen_select_applies_and_persists(
         app = OpenContextApp(start="config")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("down")  # category: Setup → Settings
+            await pilot.press("down")  # category: Project setup → Runtime
             await pilot.pause()
             await pilot.press("right")  # focus the settings column (Security)
             await pilot.pause()
@@ -104,7 +104,7 @@ def test_native_features_toggle_persists(tmp_path, monkeypatch: pytest.MonkeyPat
         app = OpenContextApp(start="config")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("down")  # Settings
+            await pilot.press("down")  # Runtime
             await pilot.pause()
             await pilot.press("right")  # settings column (Security)
             await pilot.pause()
@@ -134,11 +134,11 @@ def test_native_tokens_input_persists(tmp_path, monkeypatch: pytest.MonkeyPatch)
         app = OpenContextApp(start="config")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("down")
+            await pilot.press("down")  # Runtime
             await pilot.pause()
             await pilot.press("right")
             await pilot.pause()
-            await pilot.press("down")
+            await pilot.press("down")  # Runtime
             await pilot.press("down")  # Token budgets
             await pilot.pause()
             await pilot.press("enter")

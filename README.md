@@ -29,6 +29,16 @@
 </p>
 
 <p align="center">
+  <img src="docs/assets/release-candidate-status.svg" alt="OpenContext product status: stable, release candidate, host dependent, opt-in" width="720">
+</p>
+
+### Product status
+
+| Stable | Release candidate | Host dependent | Opt-in |
+|---|---|---|---|
+| index · KG · pack · verified-context · memory · uninstall | `oc-new` · TUI cockpit · graph · leases/signals | MCP sampling · generative phases | Engram · providers · semantic/vector |
+
+<p align="center">
   <img src="docs/assets/hero-runtime.svg" alt="From agent request to verified context in one call: an AI coding agent asks; OpenContext Runtime traces the call graph, ranks symbols, locks a token budget and checks gates; a verified context pack is returned in one call" width="720">
 </p>
 
@@ -73,6 +83,42 @@ OpenContext is the layer **between your coding agent and your codebase** — it 
 </table>
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/divider.svg" alt="" width="720">
+</p>
+
+<!-- ─────────────── PRODUCT UI ─────────────── -->
+
+<div id="product-ui" align="center">
+
+<table>
+<tr>
+<td width="760">
+
+<h3>The runtime UI shows state, not slogans</h3>
+
+The TUI and CLI use the same node logo as this README, then show live project
+state: install/index status, KG health, memory backend, active run, current
+phase, gates, and next action.
+
+</td>
+</tr>
+</table>
+
+</div>
+
+<p align="center">
+  <img src="docs/assets/tui-cockpit.svg" alt="TUI cockpit with runtime state, active run, phase and next action" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/assets/config-menu.svg" alt="Configuration menu with current value, effect, recommendation, risk and CLI equivalent" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/assets/graph-viewer.svg" alt="Graph viewer showing knowledge graph and run nodes" width="720">
+</p>
 
 <p align="center">
   <img src="docs/assets/divider.svg" alt="" width="720">

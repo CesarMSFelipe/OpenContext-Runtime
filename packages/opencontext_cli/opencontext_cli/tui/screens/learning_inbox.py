@@ -10,6 +10,8 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
+from opencontext_cli.tui.brand import BrandBar
+
 
 class LearningInbox(Screen[None]):
     """Lists pending evolution proposals from the learning engine."""
@@ -28,6 +30,8 @@ class LearningInbox(Screen[None]):
         self._project_root = project_root or Path.cwd()
 
     def compose(self) -> ComposeResult:
+        yield BrandBar()
+        yield Static("[bold]Learning inbox[/]\n[dim]Pending evolution proposals[/]", markup=True)
         yield Static("", id="proposals-content", markup=True)
         yield Footer()
 
