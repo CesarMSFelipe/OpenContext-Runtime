@@ -23,7 +23,7 @@ from opencontext_cli.tui.graph.models import (
     GraphViewState,
 )
 
-# NOTE: Maps KG node kind strings → GraphNodeKind enum; unknown → FILE default.
+# NOTE: Maps KG node kind strings → GraphNodeKind enum; truly unknown → UNKNOWN (D4).
 _KIND_MAP: dict[str, GraphNodeKind] = {
     "file": GraphNodeKind.FILE,
     "symbol": GraphNodeKind.SYMBOL,
@@ -31,12 +31,19 @@ _KIND_MAP: dict[str, GraphNodeKind] = {
     "agent": GraphNodeKind.AGENT,
     "phase": GraphNodeKind.PHASE,
     "unknown": GraphNodeKind.UNKNOWN,
+    # NOTE: Real indexer kinds — added to avoid silent FILE fallthrough (REQ-6).
+    "function": GraphNodeKind.SYMBOL,
+    "method": GraphNodeKind.SYMBOL,
+    "class": GraphNodeKind.SYMBOL,
+    "artifact": GraphNodeKind.SYMBOL,
+    "variable": GraphNodeKind.FILE,
+    "constant": GraphNodeKind.FILE,
 }
 
 
 def _map_kind(raw: str) -> GraphNodeKind:
-    """Return the GraphNodeKind for *raw*, defaulting to FILE for unknown values."""
-    return _KIND_MAP.get(raw, GraphNodeKind.FILE)
+    """Return the GraphNodeKind for *raw*, defaulting to UNKNOWN for unrecognized values."""
+    return _KIND_MAP.get(raw, GraphNodeKind.UNKNOWN)
 
 
 class GraphScreen(Screen[None]):

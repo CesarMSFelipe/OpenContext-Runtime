@@ -93,12 +93,37 @@ def test_t3_kind_map_symbol() -> None:
     assert _map_kind("symbol") == GraphNodeKind.SYMBOL
 
 
-def test_t3_kind_map_unknown_defaults_to_file() -> None:
-    """_map_kind with unknown value must return GraphNodeKind.FILE without error."""
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("kind", ["function", "method", "class", "artifact"])
+def test_t3_kind_map_symbol_kinds(kind: str) -> None:
+    """function/method/class/artifact must all map to GraphNodeKind.SYMBOL."""
     from opencontext_cli.tui.graph.models import GraphNodeKind
     from opencontext_cli.tui.screens.graph import _map_kind
 
-    assert _map_kind("unknown_xyz_not_in_enum") == GraphNodeKind.FILE
+    assert _map_kind(kind) == GraphNodeKind.SYMBOL, (
+        f"Expected SYMBOL for kind={kind!r}"
+    )
+
+
+@_pytest.mark.parametrize("kind", ["variable", "constant"])
+def test_t3_kind_map_variable_constant(kind: str) -> None:
+    """variable/constant must map to GraphNodeKind.FILE."""
+    from opencontext_cli.tui.graph.models import GraphNodeKind
+    from opencontext_cli.tui.screens.graph import _map_kind
+
+    assert _map_kind(kind) == GraphNodeKind.FILE, (
+        f"Expected FILE for kind={kind!r}"
+    )
+
+
+def test_t3_kind_map_unknown_defaults_to_unknown() -> None:
+    """_map_kind with truly unknown value must return GraphNodeKind.UNKNOWN."""
+    from opencontext_cli.tui.graph.models import GraphNodeKind
+    from opencontext_cli.tui.screens.graph import _map_kind
+
+    assert _map_kind("unknown_xyz_not_in_enum") == GraphNodeKind.UNKNOWN
 
 
 # ---------------------------------------------------------------------------
