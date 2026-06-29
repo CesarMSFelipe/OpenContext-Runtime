@@ -1,0 +1,10 @@
+{
+  "schema_version": "opencontext.plugin.v1",
+  "id": "opencontext.sample_compat",
+  "name": "sample-compat",
+  "version": "1.0.0",
+  "type": "analyzer",
+  "description": "Minimal no-op plugin used by the plugin-compatibility golden gate.",
+  "entry_point": "plugin.py",
+  "requires": {"runtime": ">=0.0", "api": "v1"}
+}

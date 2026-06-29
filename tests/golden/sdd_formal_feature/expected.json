@@ -1,0 +1,5 @@
+{
+  "workflow": "sdd",
+  "phases_min": 5,
+  "artifacts_exist": true
+}

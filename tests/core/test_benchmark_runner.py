@@ -39,15 +39,20 @@ def test_registry_lists_the_ten_mandatory_gates() -> None:
     assert len(MANDATORY_GATES) == 10
 
 
-# The five 1.0-minimum golden gates that MEASURE off real fixtures (B4/B5/AVH-006);
-# the other five stay framed / provider-gated and report NOT_MEASURED honestly.
-_GOLDEN_GATES = {
+# The eight gates that MEASURE off real fixtures / seeded backend without a live
+# provider (B4/B5/AVH-006/VDM-008): seven golden suites + the seeded memory gate.
+_MEASURED_GATES = {
     "first-run",
     "oc-flow-localized-bugfix",
     "policy-security",
     "resume-rollback",
     "provider-fallback",
+    "sdd-formal-feature",
+    "plugin-compatibility",
+    "memory-usefulness",
 }
+# The two provider-CI gates stay NOT_MEASURED without a provider hook (Option A).
+_PROVIDER_CI_GATES = {"context-token-efficiency", "kg-retrieval-precision"}
 
 
 def test_default_runner_measures_golden_gates_and_versions_all() -> None:
@@ -56,14 +61,15 @@ def test_default_runner_measures_golden_gates_and_versions_all() -> None:
     for r in reports:
         assert r.suite and r.version  # REL-09: every report stamped suite + semver
     measured = {r.suite for r in reports if r.status is not GateStatus.NOT_MEASURED}
-    # The five golden gates MEASURE (MET/FAILED), never NOT_MEASURED.
-    assert _GOLDEN_GATES <= measured
+    # The eight provider-free gates MEASURE (MET/FAILED), never NOT_MEASURED.
+    assert _MEASURED_GATES <= measured
     for r in reports:
-        if r.suite in _GOLDEN_GATES:
+        if r.suite in _MEASURED_GATES:
             assert r.status in {GateStatus.MET, GateStatus.FAILED}
             assert r.measured is True
         else:
-            # The remaining five stay honestly NOT_MEASURED — never a fake pass.
+            # The two provider-CI gates stay honestly NOT_MEASURED — never a fake pass.
+            assert r.suite in _PROVIDER_CI_GATES
             assert r.status is GateStatus.NOT_MEASURED
             assert r.measured is False and r.success is False
             assert r.notes.startswith("not measured")
@@ -108,11 +114,20 @@ def test_recall_and_memory_suites_wire_real_thresholds(tmp_path: Path) -> None:
     assert bad.status is GateStatus.FAILED
 
 
-def test_wired_suites_are_honest_not_measured_without_providers(tmp_path: Path) -> None:
-    """A wired gate without its inputs is NOT_MEASURED — never a fake pass."""
-    runner = build_default_runner(RunnerConfig())  # no providers
-    for name in ("context-token-efficiency", "kg-retrieval-precision", "memory-usefulness"):
+def test_provider_ci_gates_are_honest_not_measured_without_providers(tmp_path: Path) -> None:
+    """The two deferred provider-CI gates without their inputs are NOT_MEASURED — never
+    a fake pass (Option A; VDM-008)."""
+    runner = build_default_runner(RunnerConfig())  # no efficiency/recall provider
+    for name in ("context-token-efficiency", "kg-retrieval-precision"):
         assert runner.run(name, tmp_path).status is GateStatus.NOT_MEASURED
+
+
+def test_memory_usefulness_measures_provider_free_by_default() -> None:
+    """memory-usefulness MEASURES via the deterministic seeded backend (VDM-008)."""
+    runner = build_default_runner(RunnerConfig())  # no explicit memory provider
+    report = runner.run("memory-usefulness", ".")
+    assert report.status is GateStatus.MET, report.notes
+    assert report.measured is True
 
 
 def test_run_all_reports_carry_versioned_methodology() -> None:
