@@ -117,7 +117,7 @@ def _surgical_coverage(pack: Any, existing_required: list[str]) -> float:
     return hits / len(existing_required)
 
 
-def _guardrail_gate(phase: str, content: str) -> PhaseGate:
+def _guardrail_gate(phase: str, content: str, *, strict: bool = False) -> PhaseGate:
     """Surface SDD anti-pattern guardrail hits on a phase's produced content as an
     advisory gate — this makes the guardrail subsystem LIVE in the harness (it was dead
     behind the unused SDDOrchestrator). Advisory (WARNING) so it never breaks a flow;
@@ -128,17 +128,25 @@ def _guardrail_gate(phase: str, content: str) -> PhaseGate:
     model produced the artifact (``# SCAFFOLD —``… or the JSON ``"_scaffold": True``
     on tasks.json). A scaffold passes the superficial pattern checks
     (GIVEN/WHEN/THEN, ### Requirement:) but is a planning placeholder, not a
-    completed artifact — so the gate now reports a dedicated WARNING that names
-    it as such.
+    completed artifact — so the gate reports a dedicated WARNING that names it as
+    such. In ``strict`` mode (``runtime.sdd_strict``) a detected scaffold is
+    FAILED instead of WARNING so the phase is BLOCKED and the run does not advance
+    (spec PR-004 SDD-CONV: scaffold blocking in strict mode).
     """
     if _is_scaffold_content(content or ""):
         return PhaseGate(
             id="guardrails",
             phase=phase,
-            status=GateStatus.WARNING,
+            status=GateStatus.FAILED if strict else GateStatus.WARNING,
             message=(
                 "Phase produced a SCAFFOLD — no real executor generated this artifact. "
-                "Wire an executor (state.delegate) or run inside your AI agent "
+                + (
+                    "Strict mode (runtime.sdd_strict) blocks the phase until a real "
+                    "executor produces it. "
+                    if strict
+                    else ""
+                )
+                + "Wire an executor (state.delegate) or run inside your AI agent "
                 "(Claude Code / Codex / OpenCode) so the phase produces a real artifact."
             ),
         )
@@ -549,9 +557,12 @@ class ArchivePhase(HarnessPhase):
         config: PhaseConfig,
         budget_mode: BudgetMode = BudgetMode.WARN,
         memory_store: Any = None,
+        memory_v2: bool = False,
     ) -> None:
         super().__init__(config, budget_mode)
         self._memory_store = memory_store
+        # PR-009: when True, harvested writes route through the MemoryHarness.
+        self._memory_v2 = memory_v2
 
     def run(self, state: Any) -> PhaseResult:
         run_dir = state.root / ".opencontext" / "runs" / state.run_id
@@ -665,7 +676,12 @@ class ArchivePhase(HarnessPhase):
                     warnings=state.warnings,
                     context_omitted_paths=list(getattr(state, "context_omitted_paths", []) or []),
                 )
-                harvester = MemoryHarvester(self._memory_store)
+                harness = None
+                if getattr(self, "_memory_v2", False):
+                    from opencontext_core.memory.harness import MemoryHarness
+
+                    harness = MemoryHarness(self._memory_store)
+                harvester = MemoryHarvester(self._memory_store, harness=harness)
                 harvester.harvest(run_result)
             except Exception:
                 pass  # harvesting is optional, never block archive
@@ -864,19 +880,39 @@ class ProposePhase(HarnessPhase):
                 }
             ],
         }
+        # Honesty parity with SpecPhase/DesignPhase/TasksPhase (spec PR-004 REQ-08):
+        # when no real executor produced the proposal, mark it as a scaffold so the
+        # guardrail gate surfaces it as a non-PASS (and FAILs it in strict mode) and
+        # append the "no model bound" warning. Without this, a static proposal was
+        # reported as a PASSED success — the one honesty gap among the work phases.
+        if not real:
+            proposal["_scaffold"] = True
+            if getattr(state, "delegate", None) is None:
+                state.warnings.append(
+                    "Phase 'ProposePhase': no model bound — emitted a structured plan for "
+                    "your agent's model to complete. Run OpenContext inside your AI agent "
+                    "(Claude Code, Codex, OpenCode, …) to use its selected model, or set a "
+                    "provider for standalone generation."
+                )
         proposal_path.write_text(json.dumps(proposal, indent=2), encoding="utf-8")
 
+        strict = bool(getattr(state, "sdd_strict", False))
         gates: list[PhaseGate] = [
             ArtifactPersistedGate().evaluate(proposal_path),
+            _guardrail_gate("propose", json.dumps(proposal), strict=strict),
         ]
 
         ledger = self._token_ledger("propose", used)
         gates.append(TokenBudgetGate().evaluate(ledger))
 
+        manifest_path = _write_phase_manifest(
+            run_dir, "propose", proposal_path, state.task, outcome
+        )
+
         status = (
             GateStatus.FAILED
             if any(g.status == GateStatus.FAILED for g in gates)
-            else GateStatus.PASSED
+            else outcome.gate_status
         )
 
         return PhaseResult(
@@ -893,7 +929,11 @@ class ProposePhase(HarnessPhase):
                     description=f"SDD proposal: {state.task}",
                 )
             ],
-            metadata={"proposal_path": str(proposal_path)},
+            metadata={
+                "proposal_path": str(proposal_path),
+                "manifest_path": str(manifest_path),
+                "executor": outcome.executor,
+            },
         )
 
 
@@ -1034,6 +1074,41 @@ def _render_health_for_design(snapshot: dict[str, Any]) -> str:
     )
 
 
+def _render_program_plan(plan: Any) -> str:
+    """Render a compact PR-000 ``ProgramPlan`` block for a phase's executor context.
+
+    Meta-plan awareness (spec PR-004 SDD-CONV): when a ``ProgramPlan`` is present
+    the SDD flow seeds phase scope from it (the program intent + the slices this
+    change covers) while the canonical phase order is preserved by the scheduler.
+    Pure, defensive string formatting — never raises; returns ``""`` when absent.
+    """
+    if plan is None:
+        return ""
+    try:
+        intent = getattr(plan, "intent", None)
+        summary = ""
+        if intent is not None:
+            summary = (
+                getattr(intent, "summary", "")
+                or getattr(intent, "title", "")
+                or getattr(intent, "raw_text", "")
+            )
+        slices = getattr(plan, "slices", []) or []
+        slice_titles = [
+            str(getattr(s, "title", None) or getattr(s, "slice_id", "")) for s in slices
+        ]
+        lines = ["## Program plan (meta-plan)"]
+        if summary:
+            lines.append(f"This change is part of program intent: {summary}")
+        if slice_titles:
+            lines.append("Program slices: " + ", ".join(t for t in slice_titles if t))
+        if len(lines) == 1:
+            return ""
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def run_phase_executor(state: Any, phase: str) -> ExecutorOutcome:
     """Invoke the wired executor for a work-producing phase, honestly.
 
@@ -1064,6 +1139,11 @@ def run_phase_executor(state: Any, phase: str) -> ExecutorOutcome:
     skill_rules = _phase_skill_rules(phase)
     if skill_rules:
         base_context = f"{base_context}\n\n{skill_rules}" if base_context else skill_rules
+    # Meta-plan awareness: when a PR-000 ProgramPlan is attached to the run state,
+    # seed phase scope from it (prepended so it frames the rest of the context).
+    plan_block = _render_program_plan(getattr(state, "program_plan", None))
+    if plan_block:
+        base_context = f"{plan_block}\n\n{base_context}" if base_context else plan_block
     # Architect@design surfacing (Phase-3, seam 4): the design persona sees the
     # current architecture-health snapshot (captured at explore) so design
     # decisions are grounded in real duplication/nesting/cycle/god-file signals.
@@ -1381,10 +1461,25 @@ class ApplyPhase(HarnessPhase):
         checkpoint = None
         diff_changes: list[dict[str, str]] = []
 
+        durable = bool(getattr(state, "durable_artifacts", False)) and bool(
+            getattr(state, "session_id", "")
+        )
+
         if edits:
             # Snapshot exactly the files about to change BEFORE touching them, so
             # a post-apply rejection (or error) can restore them byte-for-byte.
-            checkpoint = CheckpointStore(state.root).create(self._edit_targets(state, edits))
+            # On the durable path use CheckpointManager so per-file pre-apply
+            # checksums are recorded (CHK-02) for the ApplyReceipt before/after.
+            if durable:
+                from opencontext_core.harness.checkpoint import CheckpointManager
+
+                checkpoint = CheckpointManager(state.root).create(
+                    self._edit_targets(state, edits),
+                    session_id=state.session_id,
+                    run_id=state.run_id,
+                )
+            else:
+                checkpoint = CheckpointStore(state.root).create(self._edit_targets(state, edits))
             executor = CodeEditExecutor(state.root, forbidden_paths=self._forbidden_paths)
             try:
                 applied = executor.apply(edits)
@@ -1444,6 +1539,19 @@ class ApplyPhase(HarnessPhase):
             apply_manifest["error"] = error
         apply_manifest_path.write_text(json.dumps(apply_manifest, indent=2), encoding="utf-8")
 
+        # PR-002 durable evidence (flag-guarded). Additive: writes the patch
+        # artifact, per-file ApplyReceipts and the checkpoint record under the
+        # session run tree, and routes rollback through harness/rollback.py. The
+        # non-durable path above is byte-identical to PR-001.
+        durable_meta: dict[str, Any] = {}
+        if durable and checkpoint is not None and edits:
+            try:
+                durable_meta = self._emit_durable_evidence(
+                    state, checkpoint, changes, apply_status, error
+                )
+            except Exception as _dur_exc:  # evidence is additive — never fail apply
+                durable_meta = {"durable_error": str(_dur_exc)}
+
         # Keep the KG fresh mid-flow: incrementally re-index the files this phase changed
         # so verify/review reason over the POST-change graph, not the stale explore-time
         # snapshot. Best-effort — a reindex failure never fails apply.
@@ -1502,8 +1610,109 @@ class ApplyPhase(HarnessPhase):
                 "changed_files": [c["path"] for c in changes],
                 "checkpoint_id": checkpoint.id if checkpoint is not None else None,
                 "diff": diff_changes,
+                **durable_meta,
             },
         )
+
+    @staticmethod
+    def _emit_durable_evidence(
+        state: Any,
+        checkpoint: Any,
+        changes: list[dict[str, Any]],
+        apply_status: str,
+        error: str | None,
+    ) -> dict[str, Any]:
+        """Write the PR-002 evidence for one apply: patch + ApplyReceipts +
+        checkpoint record, or rollback receipt/report/events on failure.
+
+        Returns metadata merged into the phase result. Assumes ``state`` carries
+        ``session_id``; ``apply`` is the only mutating phase, so this is its seam.
+        """
+        from opencontext_core.agentic.receipt import sha256_file
+        from opencontext_core.harness.artifact_store import ArtifactStore
+        from opencontext_core.harness.checkpoint import CheckpointManager
+        from opencontext_core.harness.receipt_store import ReceiptStore
+        from opencontext_core.harness.rollback import rollback as do_rollback
+        from opencontext_core.harness.sessions import (
+            build_unified_diff,
+            ensure_layout,
+            next_patch_path,
+        )
+        from opencontext_core.models.receipt import ApplyReceipt
+
+        session_id = state.session_id
+        run_id = state.run_id
+        run_dir = ensure_layout(state.root, session_id, run_id)
+        artifact_store = ArtifactStore(run_dir)
+        receipt_store = ReceiptStore(run_dir)
+
+        # Persist the checkpoint record so it links into the run manifest (CHK-02).
+        cp_model = CheckpointManager(state.root).model(
+            checkpoint, session_id=session_id, run_id=run_id
+        )
+        (run_dir / "checkpoints" / f"{cp_model.checkpoint_id}.json").write_text(
+            cp_model.model_dump_json(indent=2), encoding="utf-8"
+        )
+        before = cp_model.checksums
+        meta: dict[str, Any] = {
+            "durable_run_dir": str(run_dir),
+            "durable_checkpoint_id": cp_model.checkpoint_id,
+        }
+
+        if apply_status == "applied" and changes:
+            patch_text = build_unified_diff(checkpoint)
+            patch_path = next_patch_path(run_dir)
+            patch_path.write_text(patch_text, encoding="utf-8")
+            diff_rel = patch_path.relative_to(run_dir).as_posix()
+            patch_ref = artifact_store.register_file(
+                patch_path,
+                kind="patch",
+                run_id=run_id,
+                session_id=session_id,
+                media_type="text/x-diff",
+                produced_by="apply",
+                metadata={"checkpoint_id": cp_model.checkpoint_id},
+            )
+            receipt_ids: list[str] = []
+            for change in changes:
+                path = change["path"]
+                created = bool(change.get("created"))
+                checksum_after = sha256_file(path)
+                checksum_before = before.get(path)
+                changed = created or (checksum_before != checksum_after)
+                receipt = ApplyReceipt(
+                    path=path,
+                    operation="create" if created else "modify",
+                    changed=changed,
+                    checksum_before=checksum_before,
+                    checksum_after=checksum_after,
+                    diff_path=diff_rel,
+                    reason=state.task,
+                )
+                receipt_store.write(receipt)
+                receipt_ids.append(receipt.receipt_id)
+            meta["patch_path"] = diff_rel
+            meta["patch_artifact_id"] = patch_ref.artifact_id
+            meta["apply_receipt_ids"] = receipt_ids
+        elif apply_status in ("rolled_back", "failed"):
+            # The inline restore already ran above; emit evidence only.
+            events: list[Any] = []
+            rb = do_rollback(
+                checkpoint,
+                run_dir=run_dir,
+                reason=error or f"apply {apply_status}",
+                session_id=session_id,
+                run_id=run_id,
+                artifact_store=artifact_store,
+                receipt_store=receipt_store,
+                events=events,
+                restore=False,
+            )
+            meta["rollback_receipt_id"] = rb.receipt_id
+            meta["rollback_report_artifact_id"] = rb.report_artifact_id
+            meta["rollback_events"] = [e.model_dump(mode="json") for e in events]
+
+        return meta
 
 
 class SpecPhase(HarnessPhase):
@@ -1590,7 +1799,7 @@ _None._
 
         gates: list[PhaseGate] = [
             ArtifactPersistedGate().evaluate(spec_path),
-            _guardrail_gate("spec", spec_content),
+            _guardrail_gate("spec", spec_content, strict=bool(getattr(state, "sdd_strict", False))),
         ]
         ledger = self._token_ledger(
             "spec", estimate_tokens(outcome.output or "") if outcome.is_real else 0
@@ -1718,7 +1927,9 @@ This section describes the high-level architecture for implementing: {task}.
 
         gates: list[PhaseGate] = [
             ArtifactPersistedGate().evaluate(design_path),
-            _guardrail_gate("design", design_content),
+            _guardrail_gate(
+                "design", design_content, strict=bool(getattr(state, "sdd_strict", False))
+            ),
         ]
         ledger = self._token_ledger(
             "design", estimate_tokens(outcome.output or "") if outcome.is_real else 0
@@ -1866,6 +2077,11 @@ class TasksPhase(HarnessPhase):
 
         gates: list[PhaseGate] = [
             ArtifactPersistedGate().evaluate(tasks_path),
+            _guardrail_gate(
+                "tasks",
+                tasks_path.read_text(encoding="utf-8"),
+                strict=bool(getattr(state, "sdd_strict", False)),
+            ),
         ]
         ledger = self._token_ledger(
             "tasks", estimate_tokens(outcome.output or "") if outcome.is_real else 0
@@ -1920,16 +2136,29 @@ class VerifyPhase(HarnessPhase):
             for e in (getattr(state, "apply_edits", None) or [])
         ]
         test_result = self._run_tests(state.root, changed_files=changed)
+        # REQ-12: distinguish "no tests executed" from "all checks passed". A
+        # vacuous exit_code==0 over zero scoped tests is NOT a real green — report
+        # it honestly so a reader never mistakes "nothing ran" for "everything
+        # passed". ``had_changes`` separates the genuine REQ-12 case (changed files
+        # mapped to no test → advisory WARNING) from a benign no-op run (no edits
+        # to verify → stays a neutral pass).
+        tests_executed = bool(test_result.get("tests_executed", True))
+        had_changes = bool(changed)
+        if test_result["exit_code"] != 0:
+            summary = f"Tests failed ({test_result['exit_code']})"
+        elif not tests_executed:
+            summary = (
+                "No tests executed for changed files" if had_changes else "No changes to verify"
+            )
+        else:
+            summary = "All checks passed"
         verify_report = {
             "run_id": state.run_id,
             "task": state.task,
             "created_at": datetime.now(UTC).isoformat(),
             "test_result": test_result,
-            "summary": (
-                "All checks passed"
-                if test_result["exit_code"] == 0
-                else f"Tests failed ({test_result['exit_code']})"
-            ),
+            "tests_executed": tests_executed,
+            "summary": summary,
         }
         verify_report_path.write_text(json.dumps(verify_report, indent=2), encoding="utf-8")
 
@@ -1953,6 +2182,20 @@ class VerifyPhase(HarnessPhase):
                     phase="verify",
                     status=GateStatus.WARNING,
                     message=f"Tests exited with code {test_result['exit_code']}",
+                )
+            )
+        elif not tests_executed and had_changes:
+            # REQ-12: changed files mapped to no test file — verify did not actually
+            # run any test, so surface a non-PASS advisory instead of a silent green.
+            gates.append(
+                PhaseGate(
+                    id="verify_no_tests",
+                    phase="verify",
+                    status=GateStatus.WARNING,
+                    message=(
+                        "No scoped tests executed for the changed files — verify ran zero "
+                        "tests, so this is not a verified pass."
+                    ),
                 )
             )
 
@@ -2145,10 +2388,31 @@ class VerifyPhase(HarnessPhase):
                 "passed": 0,
                 "failed": 0,
                 "errors": 0,
+                "tests_executed": False,
                 "output": "no scoped tests for changed files",
                 "error_output": "",
             }
         args = [sys.executable, "-m", "pytest", "-q", "--tb=short", *targets]
+        # CMD-1: route the command through the policy deny-list before executing.
+        # Until PR-005 ``forbidden_commands`` was loaded but read by no execution
+        # path; this is the wiring that makes it actually enforce. The harness only
+        # ever runs pytest here (never a forbidden command), so legitimate flows are
+        # unchanged — but any forbidden command is now refused instead of run.
+        from opencontext_core.harness.config import HarnessConfig
+        from opencontext_core.policy.commands import CommandClassifier
+
+        harness_cfg = HarnessConfig()
+        if harness_cfg.command_enforcement and CommandClassifier().is_forbidden(
+            " ".join(args), harness_cfg.forbidden_commands
+        ):
+            return {
+                "exit_code": -3,
+                "passed": 0,
+                "failed": 0,
+                "errors": 1,
+                "output": "",
+                "error_output": "command blocked by policy: forbidden_command",
+            }
         try:
             result = subprocess.run(
                 args,
@@ -2162,6 +2426,7 @@ class VerifyPhase(HarnessPhase):
                 "passed": passed,
                 "failed": failed,
                 "errors": errors,
+                "tests_executed": True,
                 "output": result.stdout[-2000:],
                 "error_output": result.stderr[-1000:],
             }

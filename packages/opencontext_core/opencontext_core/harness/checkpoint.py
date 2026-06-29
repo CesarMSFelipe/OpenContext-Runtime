@@ -29,6 +29,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from opencontext_core.agentic.receipt import sha256_file
+from opencontext_core.models.artifact import Checkpoint as CheckpointModel
+
 
 @dataclass(frozen=True)
 class CheckpointFile:
@@ -179,3 +182,83 @@ class CheckpointStore:
             (json.dumps(manifest, indent=2) + "\n").encode("utf-8"),
         )
         return Checkpoint(checkpoint_dir, snapshots)
+
+
+class CheckpointManager:
+    """Wraps :class:`CheckpointStore` to record per-file checksums (CHK-02).
+
+    The existing :class:`CheckpointStore`/:class:`Checkpoint` keep doing the
+    atomic snapshot/restore (CHK-01 untouched). This manager additionally embeds,
+    per captured file, the sha256 of its *pre-apply* bytes (the snapshot blob) and
+    the blob path into the checkpoint ``manifest.json``, and can project the
+    on-disk checkpoint onto the durable :class:`CheckpointModel`
+    (schema ``opencontext.checkpoint.v1``) so it links into the run manifest.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self._store = CheckpointStore(root)
+
+    def create(
+        self,
+        paths: Iterable[Path],
+        *,
+        session_id: str = "",
+        run_id: str = "",
+        source: str = "apply",
+    ) -> Checkpoint | None:
+        """Snapshot ``paths`` and record per-file checksums. ``None`` if empty."""
+        checkpoint = self._store.create(paths, source=source)
+        if checkpoint is None:
+            return None
+        self._augment_manifest(checkpoint, session_id=session_id, run_id=run_id)
+        return checkpoint
+
+    @staticmethod
+    def _checksums(checkpoint: Checkpoint) -> tuple[dict[str, str], dict[str, str]]:
+        content_dir = checkpoint.dir / "files"
+        checksums: dict[str, str] = {}
+        snapshot_paths: dict[str, str] = {}
+        for snap in checkpoint.files:
+            if snap.existed and snap.blob:
+                blob_path = content_dir / snap.blob
+                digest = sha256_file(blob_path)
+                if digest is not None:
+                    checksums[str(snap.path)] = digest
+                snapshot_paths[str(snap.path)] = str(blob_path)
+        return checksums, snapshot_paths
+
+    def _augment_manifest(
+        self, checkpoint: Checkpoint, *, session_id: str, run_id: str
+    ) -> None:
+        manifest_path = checkpoint.dir / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {"id": checkpoint.id, "files": []}
+        checksums, snapshot_paths = self._checksums(checkpoint)
+        manifest["checksums"] = checksums
+        manifest["snapshot_paths"] = snapshot_paths
+        manifest["session_id"] = session_id
+        manifest["run_id"] = run_id
+        _atomic_write_bytes(
+            manifest_path, (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+        )
+
+    def model(
+        self, checkpoint: Checkpoint, *, session_id: str = "", run_id: str = ""
+    ) -> CheckpointModel:
+        """Project the on-disk checkpoint onto the durable Checkpoint model."""
+        manifest_path = checkpoint.dir / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+        return CheckpointModel(
+            checkpoint_id=str(manifest.get("id", checkpoint.id)),
+            session_id=session_id or str(manifest.get("session_id", "")),
+            run_id=run_id or str(manifest.get("run_id", "")),
+            files=[str(f.path) for f in checkpoint.files],
+            checksums=manifest.get("checksums", {}),
+            snapshot_paths=manifest.get("snapshot_paths", {}),
+            created_at=str(manifest.get("created_at", datetime.now(UTC).isoformat())),
+        )

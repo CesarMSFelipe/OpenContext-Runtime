@@ -1,0 +1,19 @@
+# Protocol Harness (PR-006, book doc 07 §12) — validate structured agent output.
+schema_version: opencontext.harness.v1
+id: protocol
+version: "1.0"
+type: governance
+description: Validate structured outputs from agents; reject freeform.
+default_mode: warn
+required_capabilities: [parse]
+inputs: [agent_output]
+outputs: [typed_artifact]
+gates:
+  - output_parseable
+  - schema_valid
+  - required_sections_present
+  - no_forbidden_fields
+  - runtime_contract_created
+metrics: [parse_failures]
+receipts: [protocol_receipt]
+failure_modes: [unparseable_output, schema_invalid]

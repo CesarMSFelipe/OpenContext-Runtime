@@ -1,0 +1,21 @@
+# Inspection Harness (PR-006, book doc 07 §14) — local validation before more LLM.
+schema_version: opencontext.harness.v1
+id: inspection
+version: "1.0"
+type: inspection
+description: Verify changes locally — syntax, secrets, lint, typecheck, tests.
+default_mode: warn
+required_capabilities: [run_targeted_tests, lint]
+inputs: [apply_edit]
+outputs: [inspection_report]
+gates:
+  - syntax_valid
+  - no_secret_leakage
+  - lint_passed_or_recorded
+  - typecheck_passed_or_recorded
+  - tests_passed_or_recorded
+  - srp_guard
+  - dip_guard
+metrics: [tests_run, lint_findings]
+receipts: [inspection_receipt]
+failure_modes: [tests_failed, lint_failed]

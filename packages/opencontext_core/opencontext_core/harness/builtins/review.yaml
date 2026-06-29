@@ -1,0 +1,19 @@
+# Review Harness (PR-006, book doc 07 §16) — grounded independent review.
+schema_version: opencontext.harness.v1
+id: review
+version: "1.0"
+type: review
+description: Grounded independent review of the changed scope with cited evidence.
+default_mode: strict
+required_capabilities: [kg_query, reason]
+inputs: [changed_scope]
+outputs: [ReviewReport]
+gates:
+  - review_artifact_created
+  - findings_grounded
+  - severity_present
+  - no_unverified_claims
+  - changed_scope_respected
+metrics: [findings]
+receipts: [review_receipt]
+failure_modes: [unverified_claim, praise_only]

@@ -50,3 +50,42 @@ class RunStore:
         index = self._read()
         index[run_id] = str(artifact_dir)
         self._write(index)
+
+    def passed_phase_artifacts(self, run_id: str, completed_phases: set[str]) -> list[Path]:
+        """Return on-disk artifact files produced by ``completed_phases`` of a run.
+
+        Reads the run's ``artifacts.json`` ledger and returns the existing files
+        whose producing ``phase`` is in ``completed_phases`` — the set a resumed
+        run rehydrates so a downstream phase finds its inputs (spec PR-004 REQ-10).
+        Absolute artifact paths are honoured; relative ones resolve under the run
+        dir. Missing ledger / files are skipped. Never raises.
+        """
+        import json
+
+        run_dir = self.run_dir(run_id)
+        artifacts_json = run_dir / "artifacts.json"
+        out: list[Path] = []
+        if not artifacts_json.exists():
+            return out
+        try:
+            data = json.loads(artifacts_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return out
+        seen: set[str] = set()
+        for entry in data.get("artifacts", []) if isinstance(data, dict) else []:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("phase") not in completed_phases:
+                continue
+            raw = str(entry.get("path") or "")
+            if not raw:
+                continue
+            path = Path(raw)
+            if not path.is_absolute():
+                path = run_dir / path
+            key = str(path)
+            if key in seen or not path.exists() or not path.is_file():
+                continue
+            seen.add(key)
+            out.append(path)
+        return out

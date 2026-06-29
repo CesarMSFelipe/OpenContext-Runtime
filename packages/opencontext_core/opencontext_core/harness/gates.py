@@ -467,6 +467,36 @@ class ProviderPolicyPassedGate:
         )
 
 
+class PolicyEnginePassedGate:
+    """Harness gate that consumes a unified PolicyEngine decision (HARNESS-1).
+
+    Translates a canonical :class:`~opencontext_core.policy.models.PolicyDecision`
+    into a :class:`PhaseGate`: ``allow`` → PASSED, ``warn``/``ask`` → WARNING,
+    ``deny`` → FAILED (blocking). Keeps :class:`ProviderPolicyPassedGate` for the
+    provider-specific path.
+    """
+
+    id = "policy_engine_passed"
+
+    def evaluate(self, decision: Any) -> PhaseGate:
+        verb = getattr(decision, "decision", "deny")
+        reason = getattr(decision, "reason", "")
+        policy_id = getattr(decision, "policy_id", "")
+        if verb == "allow":
+            status = GateStatus.PASSED
+            message = f"Policy {policy_id} allowed: {reason}"
+        elif verb in ("warn", "ask"):
+            status = GateStatus.WARNING
+            message = f"Policy {policy_id} {verb}: {reason}"
+        else:
+            status = GateStatus.FAILED
+            remediation = getattr(decision, "remediation", "")
+            message = f"Policy {policy_id} denied: {reason}"
+            if remediation:
+                message = f"{message} — {remediation}"
+        return PhaseGate(id=self.id, phase="any", status=status, message=message)
+
+
 class ApprovalRequiredForWritesGate:
     """Human-approval pre-gate for write operations.
 

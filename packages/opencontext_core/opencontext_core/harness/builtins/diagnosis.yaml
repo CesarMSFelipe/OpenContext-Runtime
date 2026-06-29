@@ -1,0 +1,20 @@
+# Diagnosis Harness (PR-006, book doc 07 §15) — methodical failure repair.
+schema_version: opencontext.harness.v1
+id: diagnosis
+version: "1.0"
+type: diagnosis
+description: Repair recoverable failures with three hypotheses and an attempt budget.
+default_mode: warn
+required_capabilities: [reason, run_targeted_tests]
+inputs: [failure]
+outputs: [DiagnosisAttempt]
+gates:
+  - reproduction_recorded
+  - hypothesis_count_valid
+  - selected_hypothesis_has_evidence
+  - failed_strategy_not_repeated
+  - attempt_budget_respected
+  - compression_applied_when_required
+metrics: [attempts, hypotheses]
+receipts: [diagnosis_receipt]
+failure_modes: [wrong_hypothesis_count, attempt_budget_exceeded]
