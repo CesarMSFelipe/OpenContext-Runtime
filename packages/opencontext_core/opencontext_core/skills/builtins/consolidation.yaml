@@ -1,0 +1,46 @@
+# Built-in Consolidation skills (PR-006, book doc 06 — Skill Categories).
+- id: oc-memory-candidate
+  name: Memory Candidate
+  tier: T1
+  category: Consolidation
+  workflow_nodes: [archive, consolidation]
+  inputs: [run_result]
+  outputs: [memory_candidate]
+  required_harnesses: [memory]
+  required_capabilities: [reason]
+  token_budget: 900
+  failure_modes: [noisy_record, raw_cot_saved]
+
+- id: oc-kg-update
+  name: KG Update
+  tier: T1
+  category: Consolidation
+  workflow_nodes: [archive, consolidation]
+  inputs: [changed_paths]
+  outputs: [graph_delta]
+  required_harnesses: [kg]
+  required_capabilities: [kg_write]
+  token_budget: 700
+  failure_modes: [kg_inconsistent]
+
+- id: oc-summary
+  name: Summary
+  tier: T1
+  category: Consolidation
+  inputs: [run_result]
+  outputs: [summary]
+  required_harnesses: [consolidation]
+  required_capabilities: [reason]
+  token_budget: 800
+  failure_modes: [incomplete_summary]
+
+- id: oc-receipt-finalization
+  name: Receipt Finalization
+  tier: T0
+  category: Consolidation
+  inputs: [run_result]
+  outputs: [receipt]
+  required_harnesses: [consolidation]
+  required_capabilities: [write_receipt]
+  token_budget: 500
+  failure_modes: [receipt_missing]

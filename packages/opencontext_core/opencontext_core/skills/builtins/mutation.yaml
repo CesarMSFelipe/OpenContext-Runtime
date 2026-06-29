@@ -1,0 +1,46 @@
+# Built-in Mutation skills (PR-006, book doc 06 — Skill Definition + Categories).
+- id: oc-apply-surgical
+  name: Surgical Apply
+  tier: T1
+  category: Mutation
+  workflow_nodes: [apply, mutate]
+  inputs: [task_contract, focused_context]
+  outputs: [apply_edit, receipt]
+  required_harnesses: [mutation, inspection]
+  required_capabilities: [apply_edit]
+  token_budget: 1200
+  failure_modes: [policy_denied, invalid_contract]
+
+- id: oc-refactor-safe
+  name: Safe Refactor
+  tier: T2
+  category: Mutation
+  workflow_nodes: [apply, mutate]
+  inputs: [task_contract, focused_context]
+  outputs: [apply_edit, receipt]
+  required_harnesses: [mutation, inspection]
+  required_capabilities: [apply_edit]
+  token_budget: 1500
+  failure_modes: [behaviour_changed, broad_diff]
+
+- id: oc-api-update
+  name: API Update
+  tier: T2
+  category: Mutation
+  inputs: [task_contract, focused_context]
+  outputs: [apply_edit, receipt]
+  required_harnesses: [mutation, inspection]
+  required_capabilities: [apply_edit]
+  token_budget: 1300
+  failure_modes: [contract_broken]
+
+- id: oc-doc-update
+  name: Doc Update
+  tier: T2
+  category: Mutation
+  inputs: [focused_context]
+  outputs: [apply_edit]
+  required_harnesses: [mutation]
+  required_capabilities: [apply_edit]
+  token_budget: 800
+  failure_modes: [stale_doc]
