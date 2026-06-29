@@ -1,0 +1,47 @@
+# Built-in Planning skills (PR-006, book doc 06 — Skill Categories).
+- id: oc-plan-lite
+  name: Plan Lite
+  tier: T1
+  category: Planning
+  workflow_nodes: [propose, plan]
+  inputs: [task, context_envelope]
+  outputs: [plan]
+  required_harnesses: [planning]
+  required_capabilities: [reason]
+  token_budget: 1200
+  failure_modes: [scope_creep, missing_constraints]
+
+- id: oc-task-decomposition
+  name: Task Decomposition
+  tier: T1
+  category: Planning
+  workflow_nodes: [tasks, design]
+  inputs: [design]
+  outputs: [task_list]
+  required_harnesses: [planning]
+  required_capabilities: [reason]
+  token_budget: 1200
+  failure_modes: [non_atomic_tasks, missing_verification]
+
+- id: oc-acceptance-criteria
+  name: Acceptance Criteria
+  tier: T1
+  category: Planning
+  workflow_nodes: [spec, tasks]
+  inputs: [requirement]
+  outputs: [acceptance_criteria]
+  required_harnesses: [planning]
+  required_capabilities: [reason]
+  token_budget: 900
+  failure_modes: [unfalsifiable_criteria]
+
+- id: oc-risk-evaluation
+  name: Risk Evaluation
+  tier: T2
+  category: Planning
+  inputs: [plan]
+  outputs: [risk_assessment]
+  required_harnesses: [planning]
+  required_capabilities: [reason]
+  token_budget: 900
+  failure_modes: [unbounded_risk]

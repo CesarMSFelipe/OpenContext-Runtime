@@ -9,6 +9,11 @@ from dataclasses import field as _field
 from pathlib import Path
 from typing import Any
 
+from opencontext_core.registries.base import Registry, RegistryNotFound
+from opencontext_core.registries.loader import load_defs_from_dir
+from opencontext_core.skills.builtins import builtins_dir
+from opencontext_core.skills.definition import SkillDefinition
+
 FRONTMATTER_RE = re.compile(
     r"^---\s*\n(.*?)\n---\s*\n",
     re.DOTALL | re.MULTILINE,
@@ -377,3 +382,55 @@ def match_skills(
         elif any(kw in kw_set for kw in e.triggers_kw):
             matched.append(e)
     return matched
+
+
+# ---------------------------------------------------------------------------
+# Skill Registry v2 (PR-006) — contract-bearing SkillDefinitions.
+#
+# Coexists with the scanner above: build_registry()/scan_skills() keep discovering
+# SKILL.md files for editor surfacing; SkillRegistryV2 indexes the typed contracts
+# (id/tier/category/inputs/outputs/required_harnesses) loaded from builtins/*.yaml.
+# Reuses the shared Registry[T] base so all three registries share one API.
+# ---------------------------------------------------------------------------
+
+
+class SkillNotFound(RegistryNotFound):
+    """Raised when a skill id is not registered."""
+
+
+class SkillRegistryV2(Registry[SkillDefinition]):
+    """Registers, retrieves, and indexes skill definitions by id/category/tier."""
+
+    kind = "skill"
+
+    def get(self, definition_id: str) -> SkillDefinition:
+        try:
+            return super().get(definition_id)
+        except RegistryNotFound as exc:
+            raise SkillNotFound(str(exc)) from exc
+
+    def by_category(self, category: str) -> list[SkillDefinition]:
+        """Return all skills in ``category`` (case-insensitive)."""
+        return [s for s in self.list() if s.category.lower() == category.lower()]
+
+    def by_tier(self, tier: str) -> list[SkillDefinition]:
+        """Return all skills tagged with ``tier`` (T0/T1/T2)."""
+        return [s for s in self.list() if s.tier == tier]
+
+    def categories(self) -> set[str]:
+        """Return the distinct categories present in the registry."""
+        return {s.category for s in self.list()}
+
+    def bundle(self, persona_id: str) -> list[SkillDefinition]:
+        """Resolve a persona's skill bundle to definitions (book §Skill Bundles)."""
+        from opencontext_core.skills.bundles import bundle_for
+
+        return [self.get(skill_id) for skill_id in bundle_for(persona_id)]
+
+    @classmethod
+    def with_builtins(cls) -> SkillRegistryV2:
+        """Construct a registry seeded with every built-in skill definition."""
+        registry = cls()
+        for defn in load_defs_from_dir(builtins_dir(), SkillDefinition):
+            registry.register(defn)
+        return registry

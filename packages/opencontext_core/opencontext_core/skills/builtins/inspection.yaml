@@ -1,0 +1,45 @@
+# Built-in Inspection skills (PR-006, book doc 06 — Skill Categories).
+- id: oc-local-first-validation
+  name: Local-First Validation
+  tier: T1
+  category: Inspection
+  workflow_nodes: [apply, verify, local_inspection]
+  inputs: [apply_edit]
+  outputs: [inspection_report]
+  required_harnesses: [inspection]
+  required_capabilities: [run_targeted_tests, lint]
+  token_budget: 1000
+  failure_modes: [tests_failed, lint_failed]
+
+- id: oc-test-selection
+  name: Test Selection
+  tier: T1
+  category: Inspection
+  inputs: [changed_paths]
+  outputs: [selected_tests]
+  required_harnesses: [inspection]
+  required_capabilities: [kg_query]
+  token_budget: 700
+  failure_modes: [no_tests_selected]
+
+- id: oc-lint-analysis
+  name: Lint Analysis
+  tier: T1
+  category: Inspection
+  inputs: [changed_paths]
+  outputs: [lint_findings]
+  required_harnesses: [inspection]
+  required_capabilities: [lint]
+  token_budget: 600
+  failure_modes: [lint_failed]
+
+- id: oc-ast-review
+  name: AST Review
+  tier: T2
+  category: Inspection
+  inputs: [apply_edit]
+  outputs: [ast_findings]
+  required_harnesses: [inspection]
+  required_capabilities: [parse_ast]
+  token_budget: 800
+  failure_modes: [syntax_invalid]

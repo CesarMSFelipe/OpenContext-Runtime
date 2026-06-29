@@ -1,0 +1,57 @@
+# Built-in Context skills (PR-006, book doc 06 — Skill Categories).
+- id: oc-context-discovery
+  name: Context Discovery
+  tier: T0
+  category: Context
+  workflow_nodes: [explore, gather_context]
+  inputs: [task]
+  outputs: [context_envelope]
+  required_harnesses: [context]
+  required_capabilities: [kg_query, search]
+  token_budget: 1500
+  failure_modes: [empty_context, over_retrieval]
+
+- id: oc-symbol-retrieval
+  name: Symbol Retrieval
+  tier: T1
+  category: Context
+  workflow_nodes: [explore]
+  inputs: [symbol_name]
+  outputs: [symbol_refs]
+  required_harnesses: [context]
+  required_capabilities: [kg_query]
+  token_budget: 800
+  failure_modes: [symbol_not_found]
+
+- id: oc-owner-discovery
+  name: Owner Discovery
+  tier: T2
+  category: Context
+  inputs: [paths]
+  outputs: [owners]
+  required_harnesses: [context]
+  required_capabilities: [kg_query]
+  token_budget: 600
+  failure_modes: [owner_unknown]
+
+- id: oc-test-discovery
+  name: Test Discovery
+  tier: T1
+  category: Context
+  inputs: [changed_paths]
+  outputs: [related_tests]
+  required_harnesses: [context]
+  required_capabilities: [kg_query, search]
+  token_budget: 800
+  failure_modes: [no_tests_found]
+
+- id: oc-memory-grounding
+  name: Memory Grounding
+  tier: T0
+  category: Context
+  inputs: [task]
+  outputs: [memory_context]
+  required_harnesses: [context, memory]
+  required_capabilities: [memory_read]
+  token_budget: 1000
+  failure_modes: [no_relevant_memory]

@@ -1,0 +1,46 @@
+# Built-in Diagnosis skills (PR-006, book doc 06 — Skill Categories).
+- id: oc-three-hypotheses
+  name: Three Hypotheses
+  tier: T2
+  category: Diagnosis
+  workflow_nodes: [diagnose]
+  inputs: [failure]
+  outputs: [diagnosis_attempt]
+  required_harnesses: [diagnosis]
+  required_capabilities: [reason, kg_query]
+  token_budget: 1200
+  failure_modes: [wrong_hypothesis_count, no_evidence]
+
+- id: oc-root-cause-analysis
+  name: Root Cause Analysis
+  tier: T2
+  category: Diagnosis
+  workflow_nodes: [diagnose]
+  inputs: [failure, diagnosis_attempt]
+  outputs: [root_cause]
+  required_harnesses: [diagnosis]
+  required_capabilities: [reason, kg_query]
+  token_budget: 1200
+  failure_modes: [inconclusive]
+
+- id: oc-instrumentation
+  name: Instrumentation
+  tier: T2
+  category: Diagnosis
+  inputs: [failure]
+  outputs: [trace]
+  required_harnesses: [diagnosis]
+  required_capabilities: [run_targeted_tests]
+  token_budget: 900
+  failure_modes: [no_signal]
+
+- id: oc-semantic-gc
+  name: Semantic Compression
+  tier: T2
+  category: Diagnosis
+  inputs: [context_envelope]
+  outputs: [compressed_context]
+  required_harnesses: [diagnosis]
+  required_capabilities: [compress]
+  token_budget: 800
+  failure_modes: [lossy_compression]

@@ -49,6 +49,17 @@ class Persona:
     tools: tuple[str, ...] = field(default_factory=tuple)
     visibility: PersonaVisibility = PersonaVisibility.HIDDEN_DELEGATION
 
+    def to_definition(self, **enrichment: object) -> object:
+        """Lift this legacy persona into a PR-006 ``PersonaDefinition``.
+
+        The dataclass remains the single source of ``system_prompt``/``tools``/
+        ``visibility``; governance enrichment (responsibility, output contracts,
+        strategy/capabilities/constraints) is layered on via ``enrichment``. Imported
+        lazily to avoid a package import cycle (definition.py imports this module)."""
+        from opencontext_core.personas.definition import PersonaDefinition
+
+        return PersonaDefinition.from_legacy(self, **enrichment)
+
 
 _ORCHESTRATOR = Persona(
     id="oc-orchestrator",
@@ -465,6 +476,65 @@ Principles:
     tools=_ORCHESTRATOR_TOOLS,
 )
 
+_DIAGNOSTICIAN = Persona(
+    id="oc-diagnostician",
+    name="OC Diagnostician",
+    description="Methodical failure diagnosis: reproduce, three hypotheses, evidence, attempt budget.",  # noqa: E501
+    system_prompt="""You are the OC Diagnostician.
+
+You repair recoverable failures methodically — never by guessing. A failure is a
+hypothesis-testing problem, not a patch-and-pray loop.
+
+Principles:
+- Prime first: call `opencontext_memory_context` for the change so prior failed
+  strategies are not retried; `opencontext_memory_save` (FAILURE) each strategy you
+  rule out so the next run does not repeat it.
+- Reproduce before theorising: establish a concrete, repeatable failure. If you
+  cannot reproduce it, say so and stop — do not patch blind.
+- Generate EXACTLY three hypotheses for the root cause. Not one, not five — three.
+  Ground each in the real code: use `opencontext_callers`/`opencontext_callees` and
+  `opencontext_impact` to trace flow, not intuition.
+- Select one hypothesis WITH evidence (a trace, a failing assertion, a diff). State
+  the evidence; instrument with `Bash` only when the evidence is otherwise missing.
+- Respect the attempt budget: stop after the configured number of failed attempts
+  and escalate with what you learned — do not retry indefinitely.
+
+Must not: guess-patch, retry forever, change unrelated code, or ignore a previously
+failed strategy. Your output is a DiagnosisAttempt: reproduction, three hypotheses,
+the selected one, its evidence, and the next action.""",
+    tools=_ORCHESTRATOR_TOOLS,
+)
+
+_SECURITY_REVIEWER = Persona(
+    id="oc-security-reviewer",
+    name="OC Security Reviewer",
+    description="Reviews security-sensitive surfaces: trust boundaries, secrets, exports, auth.",
+    system_prompt="""You are the OC Security Reviewer.
+
+You review security-sensitive surfaces and block unsafe changes. You read; you do
+not modify. You rely on local checks and evidence, never on model reasoning alone.
+
+Principles:
+- Prime first: call `opencontext_memory_context` for the change so known sensitive
+  surfaces and past incidents inform the review; `opencontext_memory_save` (FAILURE)
+  any confirmed risk so it is not reintroduced.
+- Map the trust boundaries the change crosses: external input, network/data export,
+  auth/billing/public-API surfaces. Use `opencontext_impact` to bound what a change
+  touches before asserting a risk.
+- Check secrets handling: no credentials in code, logs, or exported context. Treat
+  any secret leakage as blocking.
+- Review network and provider exfiltration paths: restricted data must not reach an
+  external provider.
+- Classify every finding by severity and cite the exact file:line evidence. When
+  policy is strict, a high-severity finding blocks — security warnings are not
+  optional under strict policy.
+
+Must not: expose secrets, treat strict-policy warnings as advisory, or pass a change
+on model reasoning without a local check. Your output is classified security
+findings, not prose.""",
+    tools=_READ_ONLY_TOOLS,
+)
+
 PERSONAS: tuple[Persona, ...] = (
     _ORCHESTRATOR,
     _EXPLORER,
@@ -479,6 +549,8 @@ PERSONAS: tuple[Persona, ...] = (
     _HARNESS_VERIFIER,
     _ARCHIVIST,
     _EVOLUTION_STEWARD,
+    _DIAGNOSTICIAN,
+    _SECURITY_REVIEWER,
 )
 _BY_ID: dict[str, Persona] = {p.id: p for p in PERSONAS}
 
@@ -541,3 +613,47 @@ def persona_for_phase(phase: str) -> Persona | None:
 
     persona_id = PHASE_PERSONAS.get(phase)
     return _BY_ID.get(persona_id) if persona_id else None
+
+
+# PR-006 registry surface — re-exported here so callers keep using the
+# ``opencontext_core.personas`` package boundary. Imported at the end so the legacy
+# ``PERSONAS``/``PHASE_PERSONAS`` are already defined (registry/resolver read them).
+from opencontext_core.personas.definition import (  # noqa: E402
+    PERSONA_CONTRACT_VERSION,
+    PERSONA_SCHEMA_VERSION,
+    PersonaCapabilities,
+    PersonaConstraints,
+    PersonaDefinition,
+    PersonaStrategy,
+)
+from opencontext_core.personas.handoff import PersonaHandoff  # noqa: E402
+from opencontext_core.personas.registry import (  # noqa: E402
+    PersonaNotFound,
+    PersonaRegistry,
+)
+from opencontext_core.personas.resolver import PersonaResolver, default_role_map  # noqa: E402
+
+__all__ = [
+    "PERSONAS",
+    "PERSONA_CONTRACT_VERSION",
+    "PERSONA_SCHEMA_VERSION",
+    "PHASE_PERSONAS",
+    "Persona",
+    "PersonaCapabilities",
+    "PersonaConstraints",
+    "PersonaDefinition",
+    "PersonaHandoff",
+    "PersonaNotFound",
+    "PersonaRegistry",
+    "PersonaResolver",
+    "PersonaStrategy",
+    "PersonaVisibility",
+    "default_role_map",
+    "delegation_personas",
+    "get_persona",
+    "hidden_delegation_personas",
+    "persona_for_phase",
+    "public_main_persona",
+    "public_personas",
+    "public_support_personas",
+]
