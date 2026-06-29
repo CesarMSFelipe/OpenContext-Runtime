@@ -79,14 +79,17 @@ class GraphTunnelStore:
 
     def __init__(self, base_path: Path | str = ".storage/opencontext") -> None:
         self.base_path = Path(base_path)
+        # Created lazily on first save (see save_tunnel) so an indexed project
+        # with no cross-project tunnels leaves no empty ``tunnels/`` directory.
         self.tunnels_dir = self.base_path / "tunnels"
-        self.tunnels_dir.mkdir(parents=True, exist_ok=True)
         self._index: dict[tuple[str, str], GraphTunnel] = {}
         self._load()
 
     def _load(self) -> None:
         """Load all tunnel definitions from disk."""
         self._index.clear()
+        if not self.tunnels_dir.exists():
+            return
         for path in self.tunnels_dir.glob("*.json"):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
@@ -100,6 +103,7 @@ class GraphTunnelStore:
         """Persist a tunnel definition."""
         key = (tunnel.source_project, tunnel.target_project)
         self._index[key] = tunnel
+        self.tunnels_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{tunnel.source_project}__{tunnel.target_project}.json"
         path = self.tunnels_dir / filename
         path.write_text(tunnel.model_dump_json(indent=2), encoding="utf-8")

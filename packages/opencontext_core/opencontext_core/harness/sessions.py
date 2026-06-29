@@ -26,8 +26,6 @@ from opencontext_core.models.run_manifest import (
     RunManifest,
 )
 
-_LAYOUT_DIRS = ("artifacts", "receipts", "checkpoints", "patches")
-
 
 def sessions_root(root: Path | str) -> Path:
     """Return ``<root>/.opencontext/sessions``."""
@@ -45,13 +43,15 @@ def run_root(root: Path | str, session_id: str, run_id: str) -> Path:
 
 
 def ensure_layout(root: Path | str, session_id: str, run_id: str) -> Path:
-    """Create the per-run ``{artifacts,receipts,checkpoints,patches}`` tree.
+    """Create (only) the per-run root directory and return it.
 
-    Returns the run root. Idempotent — safe to call repeatedly in a run.
+    The ``{artifacts,receipts,checkpoints,patches}`` subdirs are created lazily
+    by their own writers (ArtifactStore, ReceiptStore, ``next_patch_path``, the
+    checkpoint writers) on first real write, so a run that produces only some
+    evidence kinds leaves no empty placeholder directories. Idempotent.
     """
     base = run_root(root, session_id, run_id)
-    for name in _LAYOUT_DIRS:
-        (base / name).mkdir(parents=True, exist_ok=True)
+    base.mkdir(parents=True, exist_ok=True)
     return base
 
 

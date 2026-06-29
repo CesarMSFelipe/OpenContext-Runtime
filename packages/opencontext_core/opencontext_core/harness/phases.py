@@ -1650,9 +1650,9 @@ class ApplyPhase(HarnessPhase):
         cp_model = CheckpointManager(state.root).model(
             checkpoint, session_id=session_id, run_id=run_id
         )
-        (run_dir / "checkpoints" / f"{cp_model.checkpoint_id}.json").write_text(
-            cp_model.model_dump_json(indent=2), encoding="utf-8"
-        )
+        checkpoint_path = run_dir / "checkpoints" / f"{cp_model.checkpoint_id}.json"
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint_path.write_text(cp_model.model_dump_json(indent=2), encoding="utf-8")
         before = cp_model.checksums
         meta: dict[str, Any] = {
             "durable_run_dir": str(run_dir),

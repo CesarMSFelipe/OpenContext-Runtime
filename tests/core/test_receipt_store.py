@@ -24,8 +24,12 @@ def _make_receipt(run_id: str = "run-001") -> RunReceipt:
     )
 
 
-def test_store_creates_receipts_dir(tmp_path):
-    RunReceiptStore(tmp_path)
+def test_store_creates_receipts_dir_lazily(tmp_path):
+    # Construction alone must not create an empty receipts/ dir (footprint fix).
+    store = RunReceiptStore(tmp_path)
+    assert not (tmp_path / ".opencontext" / "receipts").exists()
+    # The directory appears only once a receipt is actually saved.
+    store.save(_make_receipt())
     assert (tmp_path / ".opencontext" / "receipts").exists()
 
 

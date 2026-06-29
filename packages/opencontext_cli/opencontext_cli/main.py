@@ -116,7 +116,7 @@ from opencontext_core.models.context import (
     DataClassification,
 )
 from opencontext_core.models.trace import RuntimeTrace
-from opencontext_core.onboarding.service import is_first_run
+from opencontext_core.onboarding.service import OnboardingService, is_first_run
 from opencontext_core.operating_model import (
     CacheAwarePromptCompiler,
     CacheWarmer,
@@ -1838,9 +1838,15 @@ def _init(
     if path.exists():
         print(f"Config already exists: {path}")
         ensure_workspace(Path("."))
+        # Keep the OC state tree (.opencontext/, .storage/) out of git so a
+        # freshly `init`-ed project does not surface ~100 untracked files.
+        OnboardingService._write_gitignore_storage_block(root)
         return
     path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
     ensure_workspace(Path("."))
+    # Same managed .gitignore block the wizard/install path writes, so `init`
+    # alone never litters the user's repo with untracked OC artifacts.
+    OnboardingService._write_gitignore_storage_block(root)
     print(f"Created config: {path}")
     print(f"Template: {template}")
     if profile:

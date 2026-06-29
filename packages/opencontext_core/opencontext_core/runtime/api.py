@@ -496,9 +496,9 @@ class RuntimeApi:
         cp_model = CheckpointManager(root).model(
             checkpoint, session_id=session_id, run_id=run_id
         )
-        (run_dir / "checkpoints" / f"{cp_model.checkpoint_id}.json").write_text(
-            cp_model.model_dump_json(indent=2), encoding="utf-8"
-        )
+        checkpoint_path = run_dir / "checkpoints" / f"{cp_model.checkpoint_id}.json"
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint_path.write_text(cp_model.model_dump_json(indent=2), encoding="utf-8")
 
         # Apply the edits. Any failure restores the checkpoint and raises — never a
         # silent applied=False (SPEC AVH-014: failure must be structured).

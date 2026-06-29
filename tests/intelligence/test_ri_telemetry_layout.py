@@ -36,7 +36,7 @@ def test_required_events_and_receipts_defined() -> None:
     assert ri_events.RECEIPT_WORKFLOW_COMPARISON in ri_events.INTELLIGENCE_RECEIPTS
 
 
-def test_legacy_single_file_telemetry_still_readable(tmp_path: Path) -> None:
+def test_savings_telemetry_writes_only_canonical_ledger(tmp_path: Path) -> None:
     from opencontext_core.evaluation.telemetry import (
         TelemetryEvent,
         load_telemetry,
@@ -53,15 +53,46 @@ def test_legacy_single_file_telemetry_still_readable(tmp_path: Path) -> None:
         ),
         root=tmp_path,
     )
-    # Legacy reader still works ...
+    # The savings store round-trips through the canonical events ledger ...
     store = load_telemetry(tmp_path)
     assert store.total_saved == 800
-    # ... and the legacy shim reads the legacy file.
-    legacy = telemetry_layout.read_legacy_telemetry(tmp_path)
-    assert legacy and legacy[0]["naive_tokens"] == 1000
-    # ... and the write was mirrored to the canonical events ledger.
     events = telemetry_layout.read_events(tmp_path)
     assert any(e["event"] == "telemetry.savings.recorded" for e in events)
+    # ... and the legacy duplicate single file is NO LONGER written (footprint).
+    assert not (tmp_path / telemetry_layout.LEGACY_TELEMETRY_FILE).exists()
+
+
+def test_legacy_single_file_telemetry_still_readable(tmp_path: Path) -> None:
+    """Pre-canonical projects (only telemetry.json) are read via the fallback."""
+    import json as _json
+
+    from opencontext_core.evaluation.telemetry import load_telemetry
+
+    legacy_path = tmp_path / telemetry_layout.LEGACY_TELEMETRY_FILE
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_path.write_text(
+        _json.dumps(
+            {
+                "events": [
+                    {
+                        "timestamp": 1.0,
+                        "task": "t",
+                        "naive_tokens": 1000,
+                        "optimized_tokens": 200,
+                        "reduction_pct": 80.0,
+                        "scenario": "",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    # The legacy shim reads it ...
+    legacy = telemetry_layout.read_legacy_telemetry(tmp_path)
+    assert legacy and legacy[0]["naive_tokens"] == 1000
+    # ... and load_telemetry falls back to it when no canonical ledger exists.
+    store = load_telemetry(tmp_path)
+    assert store.total_saved == 800
 
 
 def test_otel_exporter_off_by_default(tmp_path: Path, make_trace) -> None:

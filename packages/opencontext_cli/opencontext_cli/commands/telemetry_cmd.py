@@ -92,11 +92,47 @@ def _handle_show(root: str, last: int | None = None) -> None:
 
 
 def _handle_clear(root: str) -> None:
+    import json
     from pathlib import Path
 
-    path = Path(root) / ".opencontext/telemetry.json"
-    if path.exists():
-        path.unlink()
+    from opencontext_core.evaluation.telemetry import (
+        CANONICAL_EVENTS_FILE,
+        CANONICAL_TELEMETRY_DIR,
+        TELEMETRY_FILE,
+    )
+
+    cleared = False
+
+    # The canonical ledger is shared with other event families, so drop only the
+    # savings lines rather than deleting the whole append-only file.
+    events_path = Path(root) / CANONICAL_TELEMETRY_DIR / CANONICAL_EVENTS_FILE
+    if events_path.exists():
+        kept: list[str] = []
+        for line in events_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                record = json.loads(stripped)
+            except json.JSONDecodeError:
+                kept.append(line)
+                continue
+            if isinstance(record, dict) and record.get("event") == "telemetry.savings.recorded":
+                cleared = True
+                continue
+            kept.append(line)
+        if cleared:
+            events_path.write_text(
+                "".join(f"{line}\n" for line in kept), encoding="utf-8"
+            )
+
+    # Remove any pre-canonical legacy single file outright.
+    legacy_path = Path(root) / TELEMETRY_FILE
+    if legacy_path.exists():
+        legacy_path.unlink()
+        cleared = True
+
+    if cleared:
         console.print("[green]✓ Telemetry cleared.[/]")
     else:
         console.print("[dim]No telemetry data to clear.[/]")
