@@ -1,0 +1,19 @@
+# Context Harness (PR-006, book doc 07 §10) — retrieve minimum sufficient context.
+schema_version: opencontext.harness.v1
+id: context
+version: "1.0"
+type: retrieval
+description: Retrieve the minimum sufficient context, KG-first, within budget.
+default_mode: strict
+required_capabilities: [kg_query, search]
+inputs: [task]
+outputs: [ContextEnvelope, ContextRetrievalReceipt]
+gates:
+  - context_envelope_created
+  - token_budget_respected
+  - evidence_refs_present
+  - omissions_recorded
+  - no_broad_context_without_reason
+metrics: [tokens_used, omissions]
+receipts: [context_retrieval_receipt]
+failure_modes: [empty_context, over_retrieval]

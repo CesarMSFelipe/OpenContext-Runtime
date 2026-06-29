@@ -1,0 +1,19 @@
+# Security Harness (PR-006, book doc 07 §17) — protect sensitive surfaces.
+schema_version: opencontext.harness.v1
+id: security
+version: "1.0"
+type: security
+description: Protect sensitive surfaces — secrets, trust boundaries, exports.
+default_mode: warn
+required_capabilities: [secret_scan]
+inputs: [changed_scope]
+outputs: [SecurityFindings]
+gates:
+  - no_secret_leakage
+  - trust_boundary_reviewed
+  - network_policy_passed
+  - no_high_risk_export
+  - security_findings_classified
+metrics: [security_findings]
+receipts: [security_receipt]
+failure_modes: [secret_leak, high_risk_export]

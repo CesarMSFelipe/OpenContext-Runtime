@@ -1,0 +1,19 @@
+# Escalation Harness (PR-006, book doc 07 §18) — stop unsafe/non-convergent runs.
+schema_version: opencontext.harness.v1
+id: escalation
+version: "1.0"
+type: governance
+description: Stop non-convergent execution and produce a useful human handoff.
+default_mode: strict
+required_capabilities: [reason]
+inputs: [failure, attempts]
+outputs: [Handoff]
+gates:
+  - escalation_reason_recorded
+  - owner_resolved_or_unknown_recorded
+  - handoff_created
+  - blocking_error_preserved
+  - next_action_present
+metrics: [attempts_exhausted]
+receipts: [escalation_receipt]
+failure_modes: [no_handoff, token_burn]

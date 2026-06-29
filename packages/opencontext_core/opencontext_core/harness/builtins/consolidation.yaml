@@ -1,0 +1,20 @@
+# Consolidation Harness (PR-006, book doc 07 §21) — finalize execution.
+schema_version: opencontext.harness.v1
+id: consolidation
+version: "1.0"
+type: governance
+description: Finalize artifacts/receipts, purge ephemeral context, record deltas.
+default_mode: strict
+required_capabilities: [write_receipt]
+inputs: [run_result]
+outputs: [ConsolidationReport]
+gates:
+  - summary_created
+  - artifacts_finalized
+  - receipts_finalized
+  - ephemeral_context_purged
+  - memory_delta_recorded
+  - graph_delta_recorded
+metrics: [cost, confidence]
+receipts: [consolidation_receipt]
+failure_modes: [incomplete_summary]

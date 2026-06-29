@@ -1,0 +1,19 @@
+# Memory Harness (PR-006, book doc 07 §19) — promote useful knowledge to memory.
+schema_version: opencontext.harness.v1
+id: memory
+version: "1.0"
+type: memory
+description: Promote useful knowledge into memory; reject noisy/raw records.
+default_mode: strict
+required_capabilities: [memory_write]
+inputs: [run_result]
+outputs: [MemoryCandidate]
+gates:
+  - memory_candidates_classified
+  - no_raw_cot_saved
+  - evidence_refs_present
+  - duplicates_checked
+  - stale_memory_marked
+metrics: [candidates, duplicates]
+receipts: [memory_write_receipt]
+failure_modes: [noisy_record, raw_cot_saved]

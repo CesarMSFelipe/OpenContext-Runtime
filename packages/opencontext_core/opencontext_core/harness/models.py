@@ -51,6 +51,22 @@ class GateStatus(StrEnum):
         return self in (GateStatus.PASSED, GateStatus.SKIPPED)
 
 
+class GateSeverity(StrEnum):
+    """Severity of a gate finding (PR-006, book doc 07 §9 GateResult).
+
+    Ordered info < warning < error < critical. Independent of ``GateStatus``: a
+    FAILED gate may be ``warning`` (advisory) or ``critical`` (hard block).
+    """
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}.{self.name}>"
+
+
 class PermissionScope(StrEnum):
     """Scope of operations that can be restricted by a privacy rule."""
 
@@ -157,13 +173,36 @@ class PhaseLedger:
 
 @dataclass
 class PhaseGate:
-    """Result of a single gate evaluation for a phase."""
+    """Result of a single gate evaluation for a phase.
+
+    PR-006 enriches the legacy gate with the book's GateResult fields
+    (``severity``/``evidence_refs``/``blocking``, doc 07 §9). All three are
+    defaulted so the 16 existing gate constructors (id/phase/status/message) keep
+    working unchanged; ``to_gate_result()`` projects onto the book ``GateResult``.
+    """
 
     id: str
     phase: str
     status: GateStatus = GateStatus.PASSED
     message: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    severity: GateSeverity = GateSeverity.WARNING
+    evidence_refs: list[str] = field(default_factory=list)
+    blocking: bool = False
+
+    def to_gate_result(self) -> Any:
+        """Project this gate onto the book ``GateResult`` (PR-006). Imported lazily
+        to avoid an import cycle (``results`` imports this module)."""
+        from opencontext_core.harness.results import GateResult
+
+        return GateResult(
+            gate_id=self.id,
+            status=self.status,
+            severity=self.severity,
+            message=self.message,
+            evidence_refs=list(self.evidence_refs),
+            blocking=self.blocking,
+        )
 
 
 @dataclass
@@ -222,3 +261,6 @@ class HarnessRunResult:
     # retrieval recent_failure boost on the next run.
     context_omitted_paths: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    # REG-CONV: a noisy harness must be measurable. Fraction of gate findings later
+    # judged false positives (0.0 default; populated by the benchmark loop in PR-017).
+    false_positive_rate: float = 0.0

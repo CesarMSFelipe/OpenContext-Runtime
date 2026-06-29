@@ -1,0 +1,20 @@
+# Mutation Harness (PR-006, book doc 07 §13) — apply code changes safely.
+schema_version: opencontext.harness.v1
+id: mutation
+version: "1.0"
+type: mutation
+description: Apply code changes safely with checkpoint, receipt, and rollback.
+default_mode: strict
+required_capabilities: [apply_edit]
+inputs: [apply_edit]
+outputs: [ApplyReceipt, patch]
+gates:
+  - path_policy_passed
+  - checkpoint_created
+  - apply_edit_valid
+  - patch_created
+  - checksum_verified
+  - rollback_available
+metrics: [diff_size]
+receipts: [mutation_receipt]
+failure_modes: [policy_denied, invalid_contract]
