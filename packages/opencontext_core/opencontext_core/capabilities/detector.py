@@ -17,6 +17,7 @@ imported by them; upper layers receive the built graph by injection.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from opencontext_core.capabilities.graph import CapabilityGraph, CapabilityKind, CapabilityNode
@@ -48,6 +49,13 @@ def build_capability_graph(root: Path | str = ".") -> CapabilityGraph:
     nodes: list[CapabilityNode] = []
 
     nodes.extend(_tooling_nodes(root))
+    # Manifest detection (above) is gated on pyproject.toml/pytest.ini/go.mod/etc.
+    # A real small project often has only `.py` and `test_*.py` files and no such
+    # manifest, which would leave the graph empty. Supplement with direct
+    # source-file evidence so genuine capabilities (language, test runner, VCS)
+    # are reported. First-wins by id keeps manifest evidence authoritative.
+    existing_ids = {node.id for node in nodes}
+    nodes.extend(_source_evidence_nodes(root, existing_ids))
     provider_node = _provider_node()
     if provider_node is not None:
         nodes.append(provider_node)
@@ -55,6 +63,124 @@ def build_capability_graph(root: Path | str = ".") -> CapabilityGraph:
     nodes.append(_strict_harness_node())
 
     return CapabilityGraph(nodes=nodes)
+
+
+# Directories that never hold a project's own source and would only add noise (or
+# cost) to the evidence scan. Pruned so detection stays fast and honest.
+_IGNORE_DIRS = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".tox",
+        ".nox",
+        "build",
+        "dist",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".opencontext",
+        ".storage",
+        "site-packages",
+    }
+)
+
+
+def _source_evidence_nodes(
+    root: Path | str, existing_ids: set[str]
+) -> list[CapabilityNode]:
+    """Detect capabilities from source-file evidence the manifest scan misses.
+
+    Honest by construction: a node is added only when a matching file/marker
+    actually exists, and ids already produced by manifest detection are skipped
+    so their evidence stays authoritative. Nothing is fabricated — a project with
+    no python sources gets no python node, one with no tests gets no pytest node.
+    """
+    base = Path(root)
+    nodes: list[CapabilityNode] = []
+
+    first_py, first_test = _scan_python_evidence(base)
+    if first_py is not None and "python" not in existing_ids:
+        nodes.append(
+            CapabilityNode(
+                id="python",
+                kind="language",
+                available=True,
+                evidence=f"python source file: {first_py}",
+            )
+        )
+    # `test_*.py` / `*_test.py` are pytest's default discovery patterns, so such a
+    # file is genuine evidence the pytest runner applies even without a manifest.
+    if first_test is not None and "pytest" not in existing_ids:
+        nodes.append(
+            CapabilityNode(
+                id="pytest",
+                kind="test",
+                available=True,
+                evidence=f"pytest-style test file: {first_test}",
+            )
+        )
+
+    vcs_node = _vcs_node(base)
+    if vcs_node is not None and vcs_node.id not in existing_ids:
+        nodes.append(vcs_node)
+
+    return nodes
+
+
+def _scan_python_evidence(
+    base: Path, *, file_limit: int = 5000
+) -> tuple[str | None, str | None]:
+    """Return (first ``.py`` file, first pytest-style test file), relative to ``base``.
+
+    Walks the tree, pruning vendored/cache directories, and stops early once both
+    markers are found or ``file_limit`` files have been seen (so a large tree
+    never makes ``doctor`` slow).
+    """
+    first_py: str | None = None
+    first_test: str | None = None
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if d not in _IGNORE_DIRS]
+        for filename in filenames:
+            seen += 1
+            if seen > file_limit:
+                return first_py, first_test
+            if not filename.endswith(".py"):
+                continue
+            rel = _relative(base, Path(dirpath) / filename)
+            if first_py is None:
+                first_py = rel
+            if first_test is None and (
+                filename.startswith("test_") or filename.endswith("_test.py")
+            ):
+                first_test = rel
+            if first_py is not None and first_test is not None:
+                return first_py, first_test
+    return first_py, first_test
+
+
+def _vcs_node(base: Path) -> CapabilityNode | None:
+    """A git VCS capability when the project is a git repo (dir or worktree file)."""
+    if (base / ".git").exists():
+        return CapabilityNode(
+            id="git",
+            kind="vcs",
+            available=True,
+            evidence=".git",
+        )
+    return None
+
+
+def _relative(base: Path, path: Path) -> str:
+    try:
+        return path.relative_to(base).as_posix()
+    except ValueError:
+        return path.name
 
 
 def _tooling_nodes(root: Path | str) -> list[CapabilityNode]:

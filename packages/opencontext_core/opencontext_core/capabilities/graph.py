@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 CAPABILITY_NODE_SCHEMA_VERSION = "opencontext.capability_node.v1"
 CAPABILITY_GRAPH_SCHEMA_VERSION = "opencontext.capability_graph.v1"
 
-CapabilityKind = Literal["test", "lint", "type", "provider", "agent", "vcs", "harness"]
+CapabilityKind = Literal["language", "test", "lint", "type", "provider", "agent", "vcs", "harness"]
 
 
 class CapabilityNode(BaseModel):
