@@ -43,5 +43,10 @@ where = ["."]
 include = ["opencontext_core*"]
 exclude = []
 
+[tool.setuptools.package-data]
+opencontext_core = ["studio/static/*"]
+
 [project.optional-dependencies]
 dev = ["types-PyYAML", "types-requests"]
+# Studio web shell (PR-014) — optional; the read-only data layer needs neither.
+studio = ["fastapi>=0.110,<0.136.3", "uvicorn>=0.30"]
