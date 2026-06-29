@@ -23,12 +23,45 @@ WARNING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# --- PR-010 §Semantic Compression KEEP detectors (opt-in via include_semantic) ---
+# These mark the book's KEEP categories that are NOT load-bearing constraints:
+# acceptance criteria, code signatures, diagnostics, and evidence markers. They are
+# opt-in so legacy compression behaviour stays byte-identical; only the v2 Context
+# Engine path enables them, where "keep signatures/diagnostics verbatim" is intended.
+ACCEPTANCE_RE = re.compile(
+    r"^\s*(?:"
+    r"-\s*\[[ xX]\]\s+"  # markdown checklist item
+    r"|(?:GIVEN|WHEN|THEN)\b"  # gherkin acceptance scenario
+    r"|AC\d*\s*:"  # AC:, AC1: ... acceptance-criterion label
+    r"|acceptance criteria"  # literal heading
+    r").*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+SIGNATURE_RE = re.compile(
+    r"^\s*(?:async\s+)?(?:def|class|func|function|fn)\s+[A-Za-z_]\w*[^\n]*",
+    re.MULTILINE,
+)
+DIAGNOSTIC_RE = re.compile(
+    r"(?:Traceback \(most recent call last\)"
+    r'|^\s*File "[^"]+", line \d+'
+    r"|\b[A-Za-z_]*(?:Error|Exception)\b\s*:"
+    r"|\bAssertionError\b)",
+    re.MULTILINE,
+)
+EVIDENCE_MARKER_RE = re.compile(r"^\s*evidence\s*:\s*\S.*$", re.IGNORECASE | re.MULTILINE)
+
 
 class ProtectedSpanManager:
     """Detects content that lossy compression must preserve."""
 
-    def detect(self, content: str) -> list[ProtectedSpan]:
-        """Return protected spans in deterministic order."""
+    def detect(self, content: str, *, include_semantic: bool = False) -> list[ProtectedSpan]:
+        """Return protected spans in deterministic order.
+
+        When ``include_semantic`` is true (PR-010 Context Engine path), the book's
+        KEEP categories — acceptance criteria, signatures, diagnostics, evidence —
+        are also detected so the compression engine refuses to lossy-compress them.
+        Defaults off so legacy callers are byte-identical.
+        """
 
         spans: list[ProtectedSpan] = []
         spans.extend(_find_spans(content, CODE_BLOCK_RE, "code_block"))
@@ -37,12 +70,24 @@ class ProtectedSpanManager:
         spans.extend(_find_spans(content, NUMBER_RE, "numeric_value"))
         spans.extend(_find_spans(content, CITATION_RE, "citation"))
         spans.extend(_find_spans(content, WARNING_RE, "warning"))
+        if include_semantic:
+            spans.extend(self.detect_semantic_keep(content))
         return _dedupe_overlaps(spans)
 
-    def has_protected_spans(self, content: str) -> bool:
+    def detect_semantic_keep(self, content: str) -> list[ProtectedSpan]:
+        """Return only the PR-010 KEEP spans (acceptance/signature/diagnostic/evidence)."""
+
+        spans: list[ProtectedSpan] = []
+        spans.extend(_find_spans(content, ACCEPTANCE_RE, "acceptance_criteria"))
+        spans.extend(_find_spans(content, SIGNATURE_RE, "signature"))
+        spans.extend(_find_spans(content, DIAGNOSTIC_RE, "diagnostic"))
+        spans.extend(_find_spans(content, EVIDENCE_MARKER_RE, "evidence"))
+        return _dedupe_overlaps(spans)
+
+    def has_protected_spans(self, content: str, *, include_semantic: bool = False) -> bool:
         """Return whether content has protected spans."""
 
-        return bool(self.detect(content))
+        return bool(self.detect(content, include_semantic=include_semantic))
 
 
 def _find_spans(content: str, pattern: re.Pattern[str], kind: str) -> list[ProtectedSpan]:
