@@ -28,6 +28,9 @@ def test_manifest_indexes_produced_evidence(tmp_path: Path) -> None:
         snapshot_paths={},
         created_at="2026-01-01T00:00:00+00:00",
     )
+    # ensure_layout no longer pre-creates the checkpoints/ skeleton; create it
+    # before this direct write (real writers do their own mkdir).
+    (run_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
     (run_dir / "checkpoints" / "cp_1.json").write_text(cp.model_dump_json(), encoding="utf-8")
 
     manifest = build_run_manifest(

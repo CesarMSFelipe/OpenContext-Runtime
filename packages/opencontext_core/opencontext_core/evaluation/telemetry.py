@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 TELEMETRY_FILE = ".opencontext/telemetry.json"
@@ -113,34 +114,78 @@ class TelemetryStore:
         return len(self.events)
 
 
-def load_telemetry(root: str | Path = ".") -> TelemetryStore:
+def _coerce_timestamp(value: object) -> float:
+    """Best-effort coercion of a stored timestamp to a float epoch second."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).timestamp()
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _load_canonical(root: str | Path) -> list[TelemetryEvent]:
+    """Read savings events from the canonical ``telemetry/events.jsonl`` ledger."""
+    path = Path(root) / CANONICAL_TELEMETRY_DIR / CANONICAL_EVENTS_FILE
+    if not path.exists():
+        return []
+    events: list[TelemetryEvent] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict) or record.get("event") != "telemetry.savings.recorded":
+            continue
+        events.append(
+            TelemetryEvent(
+                timestamp=_coerce_timestamp(record.get("timestamp")),
+                task=str(record.get("task", "")),
+                naive_tokens=int(record.get("naive_tokens", 0) or 0),
+                optimized_tokens=int(record.get("optimized_tokens", 0) or 0),
+                reduction_pct=float(record.get("reduction_pct", 0.0) or 0.0),
+                scenario=str(record.get("scenario", "")),
+            )
+        )
+    return events
+
+
+def _load_legacy(root: str | Path) -> list[TelemetryEvent]:
+    """Read the pre-canonical single-file ``.opencontext/telemetry.json`` events."""
     path = Path(root) / TELEMETRY_FILE
     if not path.exists():
-        return TelemetryStore()
+        return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return TelemetryStore(events=[TelemetryEvent(**e) for e in data.get("events", [])])
+        return [TelemetryEvent(**e) for e in data.get("events", [])]
     except Exception:
-        return TelemetryStore()
+        return []
+
+
+def load_telemetry(root: str | Path = ".") -> TelemetryStore:
+    """Load the cumulative token-savings store.
+
+    Reads the canonical append-only ``.opencontext/telemetry/events.jsonl``;
+    falls back to the legacy single-file ``.opencontext/telemetry.json`` only for
+    projects written before the canonical layout, so old history is not orphaned.
+    """
+    events = _load_canonical(root)
+    if not events:
+        events = _load_legacy(root)
+    return TelemetryStore(events=events)
 
 
 def record_event(event: TelemetryEvent, root: str | Path = ".") -> None:
-    store = load_telemetry(root)
-    store.events.append(event)
-    path = Path(root) / TELEMETRY_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"events": [asdict(e) for e in store.events]}, indent=2), encoding="utf-8"
-    )
-    _mirror_to_canonical(event, root)
+    """Append one savings event to the canonical telemetry ledger.
 
-
-def _mirror_to_canonical(event: TelemetryEvent, root: str | Path = ".") -> None:
-    """Also append the savings event to the canonical telemetry events ledger.
-
-    Routes token-savings telemetry through the OC-OBS ``.opencontext/telemetry/``
-    layout (append-only) while the legacy single file above stays readable. Best
-    effort: a telemetry-write failure never breaks the caller.
+    Writes only ``.opencontext/telemetry/events.jsonl`` (append-only). The legacy
+    whole-file ``.opencontext/telemetry.json`` is no longer written — it merely
+    duplicated this ledger and inflated the project's artifact footprint.
     """
     try:
         events_dir = Path(root) / CANONICAL_TELEMETRY_DIR

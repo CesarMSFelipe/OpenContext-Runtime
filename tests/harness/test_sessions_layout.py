@@ -14,8 +14,11 @@ def test_session_layout_is_created(tmp_path: Path) -> None:
     run_dir = ensure_layout(tmp_path, "sess_1", "run_1")
     expected = tmp_path / ".opencontext" / "sessions" / "sess_1" / "runs" / "run_1"
     assert run_dir == expected
+    # Only the run root is created; evidence subdirs are made lazily by their
+    # writers, so a run with no evidence leaves no empty placeholder dirs.
+    assert run_dir.is_dir()
     for sub in ("artifacts", "receipts", "checkpoints", "patches"):
-        assert (run_dir / sub).is_dir()
+        assert not (run_dir / sub).exists()
 
 
 def test_next_patch_path_increments(tmp_path: Path) -> None:

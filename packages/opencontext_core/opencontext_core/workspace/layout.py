@@ -1,89 +1,16 @@
-"""Workspace layout definitions for .opencontext state."""
+"""Workspace layout definitions for .opencontext state.
+
+``ensure_workspace`` materialises only the starter files that carry real
+content. Everything else — the curated ``memory/*`` projections, workflow
+specs, evals, reports, top-level docs, and every working directory (``cache``,
+``runs``, ``traces``, ``context-repository/*`` …) — is created lazily by its
+own writer on first real use. A fresh ``init`` therefore writes no empty
+placeholder files and no empty directories into the user's repo.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
-
-WORKSPACE_DIRS: tuple[str, ...] = (
-    "cache",
-    "context-packs",
-    "workflows",
-    "plugins",
-    "agents",
-    "models",
-    "policies",
-    "rules",
-    "templates",
-    "memory",
-    "state",
-    "traces",
-    "evals",
-    "reports",
-)
-
-WORKSPACE_EXTRA_DIRS: tuple[str, ...] = (
-    "context-repository/system",
-    "context-repository/memory",
-    "context-repository/archive",
-    "context-repository/facts",
-    "context-repository/decisions",
-    "context-repository/summaries",
-    "playbooks",
-    "commands",
-    "runs",
-    "approvals",
-)
-
-WORKSPACE_FILES: tuple[str, ...] = (
-    "project.md",
-    "architecture.md",
-    "decisions.md",
-    "security.md",
-    "agents/README.md",
-    "models/README.md",
-    "models/default.yaml",
-    "policies/security-policy.yaml",
-    "policies/provider-policy.yaml",
-    "policies/tool-policy.yaml",
-    "policies/cache-policy.yaml",
-    "policies/permissions.yaml",
-    "workflows/code_review.yaml",
-    "workflows/security_audit.yaml",
-    "workflows/repo_onboarding.yaml",
-    "workflows/context_budget_debug.yaml",
-    "rules/security.md",
-    "rules/architecture.md",
-    "rules/testing.md",
-    "templates/system.md",
-    "templates/secure_prompt.md",
-    "templates/untrusted_context.md",
-    "templates/provider_policy_violation.md",
-    "templates/trace_summary.md",
-    "memory/project_manifest.json",
-    "memory/repo_map.json",
-    "memory/symbol_index.json",
-    "memory/dependency_graph.json",
-    "memory/decisions.json",
-    # PR-009 OC-MEMORY-001 §16: eight curated project-memory projections,
-    # regenerated from the store by `opencontext memory maintain`.
-    "memory/project-profile.md",
-    "memory/conventions.md",
-    "memory/decisions.md",
-    "memory/commands.md",
-    "memory/failure-patterns.md",
-    "memory/owners.md",
-    "memory/environment.md",
-    "memory/harness-learnings.md",
-    "evals/regression.yaml",
-    "evals/security.yaml",
-    "evals/prompt_injection.yaml",
-    "reports/security-scan.json",
-    "reports/context-efficiency.json",
-    "playbooks/review-pr.yaml",
-    "playbooks/security-audit.yaml",
-    "commands/review-pr.md",
-    "commands/release-gate.md",
-)
 
 WORKSPACE_FILE_CONTENT: dict[str, str] = {
     "policies/security-policy.yaml": (
@@ -153,20 +80,23 @@ WORKSPACE_FILE_CONTENT: dict[str, str] = {
 
 
 def ensure_workspace(root: Path) -> list[Path]:
-    """Ensure .opencontext workspace directories exist."""
+    """Materialise the ``.opencontext`` workspace starter files.
+
+    Only files that carry real starter content are written (their parent
+    directories are created as needed). Directories populated lazily — and
+    empty placeholder files — are intentionally NOT pre-created, so onboarding
+    does not litter the project with junk that git would then track. Existing
+    files are left untouched. Returns the files created on this call.
+    """
 
     created: list[Path] = []
     base = root / ".opencontext"
-    for part in WORKSPACE_DIRS:
-        path = base / part
-        path.mkdir(parents=True, exist_ok=True)
-        created.append(path)
-    for part in WORKSPACE_EXTRA_DIRS:
-        (base / part).mkdir(parents=True, exist_ok=True)
-    for rel in WORKSPACE_FILES:
+    base.mkdir(parents=True, exist_ok=True)
+    for rel, content in WORKSPACE_FILE_CONTENT.items():
         file_path = base / rel
-        file_path.parent.mkdir(parents=True, exist_ok=True)
         if file_path.exists():
             continue
-        file_path.write_text(WORKSPACE_FILE_CONTENT.get(rel, ""), encoding="utf-8")
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        created.append(file_path)
     return created

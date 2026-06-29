@@ -57,11 +57,13 @@ class RunReceiptStore:
     """Append-only JSONL store for RunReceipt objects."""
 
     def __init__(self, root: Path | str = ".") -> None:
+        # ``root`` is the PROJECT root; receipts live at ``.opencontext/receipts``.
+        # Created lazily on first save so an unused store leaves no empty dir.
         self.base_path = Path(root) / ".opencontext" / "receipts"
-        self.base_path.mkdir(parents=True, exist_ok=True)
         self._store = self.base_path / "receipts.jsonl"
 
     def save(self, receipt: RunReceipt) -> Path:
+        self.base_path.mkdir(parents=True, exist_ok=True)
         with self._store.open("a", encoding="utf-8") as fh:
             fh.write(receipt.model_dump_json() + "\n")
         return self._store
@@ -133,6 +135,7 @@ class RunReceiptStore:
         """Append one provider receipt (append-only JSONL)."""
 
         store = self._provider_store
+        store.parent.mkdir(parents=True, exist_ok=True)
         with store.open("a", encoding="utf-8") as fh:
             fh.write(receipt.model_dump_json() + "\n")
         return store

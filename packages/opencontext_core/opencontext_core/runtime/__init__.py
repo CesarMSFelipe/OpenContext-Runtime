@@ -355,7 +355,11 @@ class OpenContextRuntime:
             from opencontext_core.learning.feed import record_outcome
 
             self.cost_ledger = CostLedger()
-            self.provider_receipts = RunReceiptStore(self.storage_path)
+            # RunReceiptStore appends ``.opencontext/receipts`` to its root, so it
+            # must receive the PROJECT root, not the storage dir. storage_path is
+            # ``<root>/.storage/opencontext``; passing it directly produced the
+            # double-nested ``.storage/opencontext/.opencontext/receipts``.
+            self.provider_receipts = RunReceiptStore(self.storage_path.parent.parent)
             self.provider_decisions = DecisionRecorder()
             self.provider_events = ProviderEventEmitter()
             # PR-000.3 provider-response cache seam, plugged in but conservative
