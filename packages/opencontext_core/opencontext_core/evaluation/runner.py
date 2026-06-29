@@ -2,28 +2,25 @@
 
 A thin registry that unifies discovery + versioned reporting across the ten
 mandatory 1.0 benchmark gates (doc 57 §A / convergence §6) WITHOUT coupling their
-measurement code. Three gates already have honest measurement substrate and are
-WIRED here:
+measurement code.
 
-* ``context-token-efficiency`` → the parity-gated efficiency benchmark
-  (``evaluation/efficiency.py``); MET only when every CON pack is sufficient.
-* ``kg-retrieval-precision`` → :func:`~opencontext_core.evaluation.recall_eval.run_recall_eval`
-  (median recall/precision over labeled tasks).
-* ``memory-usefulness`` → :func:`~opencontext_core.memory.benchmark.run_benchmark`
-  (R@5 / MRR / p50, the gate K-5 thresholds).
+``memory-usefulness`` is WIRED to a deterministic provider-free seeded backend
+(:func:`~opencontext_core.memory.benchmark.seeded_memory_provider`) so it MEASURES
+(R@5 / MRR / p50 against the gate K-5 thresholds) without a live model (VDM-008).
 
-Five more gates are WIRED here to real, provider-free golden fixtures under
-``tests/golden/`` via :class:`~opencontext_core.evaluation.golden.GoldenSuite`
-(B4/B5/AVH-006): ``first-run``, ``oc-flow-localized-bugfix``, ``policy-security``,
-``resume-rollback`` and ``provider-fallback`` produce a genuine ``MET`` / ``FAILED``
-(NOT_MEASURED only when a fixture is absent — e.g. an installed wheel without the test
-tree). The two remaining gates (``sdd-formal-feature``, ``plugin-compatibility``) stay
-DECLARED and honestly report :class:`GateStatus.NOT_MEASURED` with a reason until their
-end-to-end runners land — never a fabricated pass (build-rule #1).
+Seven gates are WIRED to real, provider-free golden fixtures under ``tests/golden/``
+via :class:`~opencontext_core.evaluation.golden.GoldenSuite` (B4/B5/AVH-006/VDM-008):
+``first-run``, ``oc-flow-localized-bugfix``, ``policy-security``, ``resume-rollback``,
+``provider-fallback``, ``sdd-formal-feature`` and ``plugin-compatibility`` produce a
+genuine ``MET`` / ``FAILED`` (NOT_MEASURED only when a fixture is absent — e.g. an
+installed wheel without the test tree).
 
-A provider-gated suite invoked WITHOUT its measurement inputs also returns
-``NOT_MEASURED`` with a clear note; supplying a real provider produces a genuine
-``MET`` / ``FAILED`` (exercised by the tests).
+The two remaining gates require a live provider and are DEFERRED under Option A
+(``DEFERRED_PROVIDER_CI.md``): ``context-token-efficiency`` (parity-gated efficiency
+benchmark) and ``kg-retrieval-precision`` (median recall/precision over labeled tasks)
+ship runner hooks (``efficiency_provider`` / ``recall_provider``) but report
+:class:`GateStatus.NOT_MEASURED` until a provider callable is injected — never a
+fabricated pass (build-rule #1).
 """
 
 from __future__ import annotations
@@ -258,13 +255,19 @@ def build_default_runner(config: RunnerConfig | None = None) -> BenchmarkRunner:
     # Lazy import keeps the runner<->golden module pair acyclic (golden imports
     # not_measured/DEFAULT_METHODOLOGY_VERSION from here at its module top).
     from opencontext_core.evaluation.golden import GOLDEN_ROOT, GOLDEN_SUITE_NAMES, GoldenSuite
+    from opencontext_core.memory.benchmark import seeded_memory_provider
 
     cfg = config or RunnerConfig()
+    # VDM-008: memory-usefulness MEASURES provider-free by default via a deterministic
+    # seeded backend; an explicit ``memory_provider`` in the config still overrides it.
+    # The two provider-CI gates (efficiency / recall) stay NOT_MEASURED until a hook is
+    # injected (Option A — see DEFERRED_PROVIDER_CI.md).
+    memory_provider = cfg.memory_provider or seeded_memory_provider()
     runner = BenchmarkRunner()
     wired: dict[str, BenchmarkSuite] = {
         "context-token-efficiency": EfficiencySuite(provider=cfg.efficiency_provider),
         "kg-retrieval-precision": RecallSuite(provider=cfg.recall_provider),
-        "memory-usefulness": MemorySuite(provider=cfg.memory_provider),
+        "memory-usefulness": MemorySuite(provider=memory_provider),
     }
     # B4/B5/AVH-006: the five 1.0-minimum golden gates MEASURE against real fixtures
     # under tests/golden/ (MET/FAILED; NOT_MEASURED only when a fixture is absent).

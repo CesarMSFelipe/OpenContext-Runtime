@@ -42,5 +42,37 @@ jobs:
           opencontext run "Fix failing test" --workflow auto \
             --root tests/golden/oc_flow_bugfix_python --json
           pytest tests/golden/oc_flow_bugfix_python -q
+      - name: B+D + e2e-dod evidence — run the real DoD journey, write evidence artifacts
+        # VDM-006/007: writes .opencontext/e2e/dod-proof.json + release-evidence.json
+        # at the repo root from a genuine journey; `release acceptance` reads them.
+        run: python scripts/collect_release_evidence.py --root .
+      - name: CI regression gates — write .opencontext/reports/ci-gates.json
+        # VDM-006: the five externally-measured C gates. Each check's exit code (0=pass)
+        # becomes a boolean the acceptance evaluator reads as MET/FAILED.
+        run: |
+          set +e
+          python -m pytest -p no:randomly -q -o addopts= ; SUITE=$?
+          bash scripts/gate_k.sh ; GATEK=$?
+          mypy packages/ ; MYPY=$?
+          ruff check packages/ ; RUFF=$?
+          # The forbidden-names guard ships as pytest assertions over public surfaces.
+          python -m pytest -p no:randomly -q -o addopts= \
+            tests/core/test_config.py -k "external_names or generic_names" ; FORBID=$?
+          set -e
+          mkdir -p .opencontext/reports
+          python - "$SUITE" "$GATEK" "$MYPY" "$RUFF" "$FORBID" <<'PY'
+          import json, sys
+          suite, gatek, mypy, ruff, forbid = (int(a) == 0 for a in sys.argv[1:6])
+          gates = {
+              "suite-green": suite,
+              "gate-k-12-12": gatek,
+              "mypy-strict-clean": mypy,
+              "ruff-clean": ruff,
+              "forbidden-names-clean": forbid,
+          }
+          with open(".opencontext/reports/ci-gates.json", "w", encoding="utf-8") as fh:
+              json.dump(gates, fh, indent=2)
+          print(json.dumps(gates, indent=2))
+          PY
       - name: Release acceptance (RELEASE mode — NOT_MEASURED mandatory gate fails)
         run: opencontext release acceptance --root . --release

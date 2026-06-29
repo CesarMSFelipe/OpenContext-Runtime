@@ -74,9 +74,12 @@ FIXTURE_DIRS: dict[str, str] = {
     "policy-security": "policy_security",
     "resume-rollback": "resume_rollback",
     "provider-fallback": "provider_fallback",
+    # VDM-008: two more A-gates measured provider-free against golden fixtures.
+    "sdd-formal-feature": "sdd_formal_feature",
+    "plugin-compatibility": "plugin_compatibility",
 }
 
-#: The five wired golden gates (the 1.0-minimum set that moves NOT_MEASURED -> MET).
+#: The wired golden gates (the set that moves NOT_MEASURED -> MET against real fixtures).
 GOLDEN_SUITE_NAMES: tuple[str, ...] = tuple(FIXTURE_DIRS)
 
 # Module-level result cache: idempotent fixtures need only run once per session.
@@ -429,12 +432,129 @@ def _run_provider_fallback(
         shutil.rmtree(base, ignore_errors=True)
 
 
+def _run_sdd_formal_feature(
+    suite: GoldenSuite, fixture_dir: Path, smoke: bool
+) -> BenchmarkSuiteReport:
+    """SDD formal-feature: a broad/high-risk task routes to SDD and the flow yields phase
+    outputs end-to-end (PR-004) — measured provider-free by static validation.
+
+    Honest checks (no live LLM):
+    * the shared workflow selector routes the fixture's formal task to ``sdd``;
+    * the SDD flow defines at least ``phases_min`` phases, each with expected artifacts;
+    * the fixture's shipped phase outputs name real SDD phases and are non-empty.
+    """
+    from opencontext_core.context.planning.workflow_selector import select_workflow
+    from opencontext_core.oc_new.flow import OC_NEW_FLOW
+
+    expected = _load_expected(fixture_dir)
+    task_path = fixture_dir / "task.txt"
+    if not task_path.is_file():
+        raise _NotMeasured("task.txt missing")
+    task = task_path.read_text(encoding="utf-8").strip()
+    if not task:
+        raise _NotMeasured("task.txt is empty")
+
+    problems: list[str] = []
+
+    # 1) The shared selector routes a formal/high-risk feature to SDD (B5/AVH-013).
+    selection = select_workflow(task)
+    want_workflow = str(expected.get("workflow", "sdd"))
+    if selection.workflow != want_workflow:
+        problems.append(f"workflow={selection.workflow!r} (expected {want_workflow!r})")
+
+    # 2) The SDD flow defines the full phase set with expected artifacts.
+    flow_phases = [p for p in OC_NEW_FLOW]
+    flow_names = {p.name for p in flow_phases}
+    phases_min = int(expected.get("phases_min", 1))
+    producing = [p for p in flow_phases if getattr(p, "expected_artifacts", None)]
+    if len(producing) < phases_min:
+        problems.append(
+            f"SDD flow defines {len(producing)} artifact-producing phases < {phases_min}"
+        )
+
+    # 3) The shipped phase outputs map to real SDD phases and are non-empty.
+    if expected.get("artifacts_exist", True):
+        phase_dir = fixture_dir / "phases"
+        outputs = (
+            sorted(p for p in phase_dir.glob("*") if p.is_file()) if phase_dir.is_dir() else []
+        )
+        if len(outputs) < phases_min:
+            problems.append(f"{len(outputs)} phase output(s) < {phases_min}")
+        for out in outputs:
+            if out.stem not in flow_names:
+                problems.append(f"phase output {out.name!r} is not an SDD phase")
+            elif not out.read_text(encoding="utf-8").strip():
+                problems.append(f"empty phase output {out.name!r}")
+
+    if problems:
+        return _failed(suite.name, suite.version, "; ".join(problems))
+    return _met(
+        suite.name, suite.version,
+        f"formal task routed to {selection.workflow}; {len(producing)} SDD phases produce "
+        "artifacts; phase outputs present",
+    )
+
+
+def _run_plugin_compatibility(
+    suite: GoldenSuite, fixture_dir: Path, smoke: bool
+) -> BenchmarkSuiteReport:
+    """Plugin-compatibility: a sample plugin loads + validates against the public
+    contracts (PR-015) — static validation, no live provider.
+
+    Honest checks: the manifest passes the conformance suite (interface_valid) and the
+    sandbox loader activates the entry point (plugin_loads).
+    """
+    from opencontext_core.plugins.compatibility import runtime_version
+    from opencontext_core.plugins.conformance import run_conformance
+    from opencontext_core.plugins.manifest import PluginManifest
+    from opencontext_core.plugins.sandbox import run_sandboxed
+
+    expected = _load_expected(fixture_dir)
+    plugin_dir = fixture_dir / "sample_plugin"
+    manifest_path = plugin_dir / "plugin.json"
+    if not manifest_path.is_file():
+        raise _NotMeasured("sample_plugin/plugin.json missing")
+    try:
+        manifest = PluginManifest.from_plugin_json(
+            json.loads(manifest_path.read_text(encoding="utf-8"))
+        )
+    except (ValueError, OSError) as exc:
+        raise _NotMeasured(f"unreadable plugin manifest: {exc}") from exc
+
+    problems: list[str] = []
+
+    # interface_valid: the manifest honors the public contracts (CONF-1..CONF-6).
+    report = run_conformance(manifest, core_version=runtime_version())
+    interface_valid = report.passed
+    if expected.get("interface_valid", True) and not interface_valid:
+        fails = ", ".join(f"{c.id}:{c.detail}" for c in report.failures)
+        problems.append(f"conformance failed: {fails}")
+
+    # plugin_loads: the sandbox loader activates the declared entry point.
+    sandbox = run_sandboxed(
+        plugin_dir, entry_point=manifest.entrypoint, plugin_name=manifest.name
+    )
+    plugin_loads = sandbox.ok
+    if expected.get("plugin_loads", True) and not plugin_loads:
+        problems.append(f"plugin did not load: {sandbox.reason}")
+
+    if problems:
+        return _failed(suite.name, suite.version, "; ".join(problems))
+    return _met(
+        suite.name, suite.version,
+        f"sample plugin loaded ({sandbox.reason}) and passed {len(report.checks)} "
+        "conformance checks against the public contracts",
+    )
+
+
 _RUNNERS: dict[str, Callable[[GoldenSuite, Path, bool], BenchmarkSuiteReport]] = {
     "oc-flow-localized-bugfix": _run_oc_flow_bugfix,
     "first-run": _run_first_run,
     "policy-security": _run_policy_security,
     "resume-rollback": _run_resume_rollback,
     "provider-fallback": _run_provider_fallback,
+    "sdd-formal-feature": _run_sdd_formal_feature,
+    "plugin-compatibility": _run_plugin_compatibility,
 }
 
 

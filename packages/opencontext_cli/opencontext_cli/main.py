@@ -3425,13 +3425,39 @@ def _release(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         return
     if args.release_command == "acceptance":
-        from opencontext_core.operating_model.release_gate import AcceptanceEvaluator
+        from opencontext_core.operating_model.release_gate import (
+            AcceptanceEvaluator,
+            ReleaseBaselineStore,
+            ReleaseGateRunner,
+            ReleaseMetrics,
+            read_ci_gates,
+            read_dod_proof,
+            read_release_evidence,
+        )
 
         root = Path(getattr(args, "root", "."))
+        # VDM-006/007: inject measured evidence so the C/B/D gates report MET from real
+        # signals. Anything not supplied stays honestly NOT_MEASURED — never faked.
+        functional, governance = read_release_evidence(root)
+        regression = read_ci_gates(root)
+        e2e_proof = read_dod_proof(root)
+        # VDM-006 / REL-11: the four DoD baseline-delta gates vs a stored baseline
+        # (the first run seeds the baseline and passes without blocking).
+        baseline_store = ReleaseBaselineStore(root / ".opencontext" / "release-baseline.json")
+        baseline = baseline_store.load()
+        current = ReleaseMetrics()
+        dod_gates = ReleaseGateRunner().evaluate(current, baseline)
+        if baseline is None:
+            baseline_store.save(current)
         verdict = AcceptanceEvaluator(repo_root=root).evaluate(
             bench_root=getattr(args, "root", "."),
             smoke=getattr(args, "smoke", False),
             release_mode=getattr(args, "release", False),
+            functional=functional or None,
+            governance=governance or None,
+            regression=regression or None,
+            dod_gates=dod_gates,
+            e2e_proof=e2e_proof,
         )
         rendered = verdict.model_dump_json(indent=2)
         print(rendered)

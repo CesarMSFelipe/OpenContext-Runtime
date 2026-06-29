@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import statistics
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -97,7 +98,20 @@ def run_benchmark(
         )
         for item in raw
     ]
+    return run_benchmark_questions(questions, backend, k=k)
 
+
+def run_benchmark_questions(
+    questions: list[MemoryBenchmarkQuestion],
+    backend: Any,
+    k: int = 5,
+) -> MemoryBenchmarkResult:
+    """Run the benchmark over already-parsed *questions* against *backend*.
+
+    The fixture-loading variant :func:`run_benchmark` delegates here; the seeded
+    provider (:func:`seeded_memory_provider`) uses it directly so it needs no JSON
+    file on disk.
+    """
     recall_scores: list[float] = []
     rr_scores: list[float] = []
     precision_scores: list[float] = []
@@ -157,3 +171,119 @@ def run_benchmark(
         num_questions=len(questions),
         details=details,
     )
+
+
+# --------------------------------------------------------------------------- VDM-008
+# A deterministic, self-contained corpus so ``memory-usefulness`` MEASURES provider-free
+# (no live LLM, no tests/ tree, no packaged fixture). Each query's relevant keys are
+# distinctive substrings the FTS5 search recovers from seeded record content.
+SEED_FIXTURE: tuple[dict[str, Any], ...] = (
+    {
+        "query": "JWT authentication middleware implementation",
+        "relevant": ["auth:jwt_middleware", "auth:token_validation", "auth:bearer_token"],
+        "metadata": {"domain": "auth", "phase": "apply"},
+    },
+    {
+        "query": "database connection pool configuration",
+        "relevant": ["db:connection_pool", "db:pool_config", "db:pool_size"],
+        "metadata": {"domain": "database", "phase": "apply"},
+    },
+    {
+        "query": "test suite fails on CI environment",
+        "relevant": ["failure:ci_test_failure", "failure:env_mismatch", "failure:ci_env_var"],
+        "metadata": {"domain": "testing", "phase": "verify"},
+    },
+    {
+        "query": "context pack builder token budget exceeded",
+        "relevant": ["budget:token_limit", "budget:pack_overflow", "budget:token_cap"],
+        "metadata": {"domain": "context", "phase": "explore"},
+    },
+    {
+        "query": "memory harvest from agent trace",
+        "relevant": ["episodic:harvest_run", "episodic:agent_trace", "episodic:trace_capture"],
+        "metadata": {"domain": "memory", "phase": "archive"},
+    },
+    {
+        "query": "knowledge graph symbol resolution call edges",
+        "relevant": ["kg:symbol_resolution", "kg:call_edges", "kg:node_lookup"],
+        "metadata": {"domain": "kg", "phase": "explore"},
+    },
+)
+
+
+def _seed_records(questions: list[MemoryBenchmarkQuestion], backend: Any) -> int:
+    """Seed *backend* so each query's relevant keys are FTS5-recoverable.
+
+    For each (query, relevant_id) pair, store a :class:`MemoryRecord` whose ``key`` is
+    the relevant id and whose ``content`` embeds the query text. Returns the count
+    written. Mirrors the CLI memory-benchmark seeding contract (REQ-02c).
+    """
+    from datetime import UTC, datetime
+
+    from opencontext_core.models.agent_memory import DecayPolicy, MemoryLayer, MemoryRecord
+
+    now = datetime.now(tz=UTC)
+    count = 0
+    for q in questions:
+        domain = q.metadata.get("domain", "general")
+        phase = q.metadata.get("phase", "apply")
+        for rel_id in q.relevant:
+            backend.store(
+                MemoryRecord(
+                    id=f"bench:{rel_id}",
+                    layer=MemoryLayer.SEMANTIC,
+                    key=rel_id,
+                    content=f"{q.query}. Key: {rel_id}. Domain: {domain}. Phase: {phase}.",
+                    decay_policy=DecayPolicy(enabled=False),
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            count += 1
+    return count
+
+
+def run_seeded_memory_benchmark(
+    questions: tuple[dict[str, Any], ...] = SEED_FIXTURE, *, k: int = 5
+) -> MemoryBenchmarkResult:
+    """Seed an ephemeral SQLite backend from a deterministic corpus and benchmark it.
+
+    Provider-free (no live LLM). Uses a temp-file DB because ``SQLiteMemoryBackend``
+    opens a fresh connection per call, so an in-memory DB would lose its schema/data
+    between the seed and the search.
+    """
+    import os
+    import tempfile
+
+    from opencontext_core.memory.backends import SQLiteMemoryBackend
+
+    parsed = [
+        MemoryBenchmarkQuestion(
+            query=item["query"], relevant=item["relevant"], metadata=item.get("metadata", {})
+        )
+        for item in questions
+    ]
+    fd, db_path = tempfile.mkstemp(suffix=".memory-bench.db", prefix="oc_mem_seed_")
+    os.close(fd)
+    try:
+        backend = SQLiteMemoryBackend(db_path)
+        _seed_records(parsed, backend)
+        return run_benchmark_questions(parsed, backend, k=k)
+    finally:
+        try:
+            Path(db_path).unlink()
+        except OSError:
+            pass
+
+
+def seeded_memory_provider() -> Callable[[Path, bool], MemoryBenchmarkResult]:
+    """Return a ``provider(root, smoke)`` callable for the ``memory-usefulness`` suite.
+
+    Deterministic + provider-free: it ignores ``root``/``smoke`` and benchmarks the
+    seeded corpus so the gate MEASURES (MET/FAILED) without a live model (VDM-008).
+    """
+
+    def _provider(root: Path, smoke: bool) -> MemoryBenchmarkResult:
+        return run_seeded_memory_benchmark()
+
+    return _provider

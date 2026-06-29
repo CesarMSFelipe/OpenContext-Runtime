@@ -57,7 +57,12 @@ class AcceptanceVerdict(VersionedContract):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str = "opencontext.acceptance_verdict.v1"
-    ready: bool = Field(description="True only when every gate is MET.")
+    ready: bool = Field(
+        description=(
+            "True only when every non-deferred gate is MET (deferred provider-CI gates "
+            "that are NOT_MEASURED do not block; see DEFERRED_PROVIDER_CI_GATES)."
+        )
+    )
     methodology_version: str = Field(description="Versioned benchmark methodology stamp.")
     met: int = 0
     not_measured: int = 0
@@ -236,6 +241,145 @@ DOD_PROOF_SCHEMA = "opencontext.e2e_dod_proof.v1"
 #: The mandatory 1.0 gate id whose verdict is the hard, gating e2e DoD journey.
 E2E_DOD_GATE = "e2e-dod"
 
+#: VDM-007 / B+D — the e2e developer journey writes this single evidence artifact
+#: capturing the 15 functional (B) + 3 governance (D) gate outcomes from a real
+#: init -> doctor -> index -> run -> session journey. ``release acceptance`` reads it
+#: and injects ``functional=`` / ``governance=``. A separate path from the package
+#: ``release evidence`` output to avoid a name collision.
+RELEASE_EVIDENCE_PATH = ".opencontext/e2e/release-evidence.json"
+RELEASE_EVIDENCE_SCHEMA = "opencontext.release_evidence.v1"
+
+#: VDM-006 — the CI workflow writes a ``{gate: bool}`` map for the five externally
+#: measured regression gates; ``release acceptance`` reads it as the ``regression=``
+#: evidence source. Absent file -> those gates stay honestly NOT_MEASURED.
+CI_GATES_PATH = ".opencontext/reports/ci-gates.json"
+
+#: VDM-008 / Option A — the two A-gates that require a live provider (embeddings /
+#: real context builds). They ship runner hooks but stay NOT_MEASURED in provider-free
+#: CI; their NOT_MEASURED status MUST NOT drive ``ready=False`` (deferral is recorded in
+#: ``DEFERRED_PROVIDER_CI.md``). A FAILED verdict (real, not deferral) still blocks.
+DEFERRED_PROVIDER_CI_GATES: tuple[str, ...] = (
+    "kg-retrieval-precision",
+    "context-token-efficiency",
+)
+
+
+def _status_input_from(value: Any) -> _StatusInput | None:
+    """Convert a JSON-friendly evidence value into a gate-status input.
+
+    Accepts ``bool`` (True->MET / False->FAILED), a status string (``"met"`` /
+    ``"failed"`` / ``"not-measured"``, tolerant of underscores and pass/fail aliases),
+    or a ``[status, detail]`` pair. Returns ``None`` for an unparseable value so the
+    caller can drop it and leave the gate honestly NOT_MEASURED.
+    """
+    detail = ""
+    raw: Any = value
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        raw, detail = value[0], str(value[1])
+    if isinstance(raw, bool):
+        status: GateStatus | None = GateStatus.MET if raw else GateStatus.FAILED
+    elif isinstance(raw, str):
+        alias = {
+            "met": GateStatus.MET,
+            "pass": GateStatus.MET,
+            "passed": GateStatus.MET,
+            "ok": GateStatus.MET,
+            "failed": GateStatus.FAILED,
+            "fail": GateStatus.FAILED,
+            "not-measured": GateStatus.NOT_MEASURED,
+            "not_measured": GateStatus.NOT_MEASURED,
+        }
+        status = alias.get(raw.strip().lower().replace("_", "-"))
+        if status is None:
+            status = alias.get(raw.strip().lower())
+    else:
+        status = None
+    if status is None:
+        return None
+    return (status, detail) if detail else status
+
+
+def _load_status_map(path: Path) -> dict[str, _StatusInput]:
+    """Read a ``{gate: status}`` JSON map into a gate -> status-input mapping.
+
+    A missing/unreadable file yields ``{}`` (not an error); an unparseable entry is
+    dropped so the corresponding gate stays honestly NOT_MEASURED.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, _StatusInput] = {}
+    for gate, value in data.items():
+        parsed = _status_input_from(value)
+        if parsed is not None:
+            out[str(gate)] = parsed
+    return out
+
+
+def read_ci_gates(repo_root: Path, *, path: str = CI_GATES_PATH) -> dict[str, _StatusInput]:
+    """Read the CI regression-gate evidence map written by release-acceptance.yml.
+
+    Returns a ``{gate: status}`` mapping suitable for the ``regression=`` parameter of
+    :meth:`AcceptanceEvaluator.evaluate`. Absent file -> ``{}`` so the five CI gates
+    stay NOT_MEASURED (honest), never a fabricated pass.
+    """
+    return _load_status_map(Path(repo_root) / path)
+
+
+def read_release_evidence(
+    repo_root: Path, *, path: str = RELEASE_EVIDENCE_PATH
+) -> tuple[dict[str, _StatusInput], dict[str, _StatusInput]]:
+    """Read the e2e B+D evidence artifact -> ``(functional, governance)`` maps.
+
+    The artifact shape is ``{"functional": {gate: status}, "governance": {gate: status}}``.
+    A missing/unreadable file yields ``({}, {})`` (not an error) so every B and D gate
+    stays honestly NOT_MEASURED until a real journey supplies evidence (VDM-007).
+    """
+    file = Path(repo_root) / path
+    if not file.is_file():
+        return {}, {}
+    try:
+        data = json.loads(file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}, {}
+    if not isinstance(data, dict):
+        return {}, {}
+
+    def _coerce(section: Any) -> dict[str, _StatusInput]:
+        out: dict[str, _StatusInput] = {}
+        if isinstance(section, dict):
+            for gate, value in section.items():
+                parsed = _status_input_from(value)
+                if parsed is not None:
+                    out[str(gate)] = parsed
+        return out
+
+    return _coerce(data.get("functional")), _coerce(data.get("governance"))
+
+
+def write_release_evidence(
+    repo_root: Path,
+    *,
+    functional: Mapping[str, Any],
+    governance: Mapping[str, Any],
+) -> Path:
+    """Persist the B+D evidence artifact the acceptance evaluator reads (used by tests/e2e)."""
+    path = Path(repo_root) / RELEASE_EVIDENCE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": RELEASE_EVIDENCE_SCHEMA,
+        "functional": dict(functional),
+        "governance": dict(governance),
+        "generated_at": now_iso(),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
 
 def read_dod_proof(repo_root: Path) -> dict[str, Any] | None:
     """Read the e2e DoD proof artifact, or ``None`` when absent/unreadable."""
@@ -303,11 +447,30 @@ class AcceptanceEvaluator:
         )
         gates.extend(self._gate_d(governance or {}))
 
+        # VDM-008 / Option A: a deferred provider-CI gate that is NOT_MEASURED does not
+        # block readiness (its deferral is documented in DEFERRED_PROVIDER_CI.md); we
+        # annotate it and exclude it from the ready denominator. A deferred gate that
+        # is FAILED (a real failure, not a deferral) still blocks.
+        for gate in gates:
+            if gate.gate in DEFERRED_PROVIDER_CI_GATES and gate.status is GateStatus.NOT_MEASURED:
+                gate.detail = (gate.detail + "; " if gate.detail else "") + (
+                    "DEFERRED provider-CI gate (Option A) — does not block ready; "
+                    "see DEFERRED_PROVIDER_CI.md"
+                )
+
         met = sum(1 for g in gates if g.status is GateStatus.MET)
         nm = sum(1 for g in gates if g.status is GateStatus.NOT_MEASURED)
         failed = sum(1 for g in gates if g.status is GateStatus.FAILED)
+        blocking = [
+            g
+            for g in gates
+            if not (
+                g.gate in DEFERRED_PROVIDER_CI_GATES and g.status is GateStatus.NOT_MEASURED
+            )
+        ]
+        ready = bool(blocking) and all(g.status is GateStatus.MET for g in blocking)
         return AcceptanceVerdict(
-            ready=(met == len(gates) and len(gates) > 0),
+            ready=ready,
             methodology_version=_methodology_version(runner, bench_root, smoke),
             met=met,
             not_measured=nm,
@@ -573,10 +736,13 @@ def now_iso() -> str:
 
 
 __all__ = [
+    "CI_GATES_PATH",
+    "DEFERRED_PROVIDER_CI_GATES",
     "DOD_PROOF_PATH",
     "E2E_DOD_GATE",
     "FUNCTIONAL_BEHAVIOURS",
     "GOVERNANCE_GATES",
+    "RELEASE_EVIDENCE_PATH",
     "AcceptanceEvaluator",
     "AcceptanceVerdict",
     "GateResult",
@@ -584,6 +750,9 @@ __all__ = [
     "ReleaseGateRunner",
     "ReleaseMetrics",
     "now_iso",
+    "read_ci_gates",
     "read_dod_proof",
+    "read_release_evidence",
     "write_dod_proof",
+    "write_release_evidence",
 ]

@@ -26,13 +26,12 @@ from opencontext_core.evaluation.runner import (
     build_default_runner,
 )
 
-# The deferred mandatory gates that stay framed / provider-gated past 1.0-minimum.
+# The two provider-CI gates that stay NOT_MEASURED without a provider hook (Option A;
+# VDM-008). sdd-formal-feature, plugin-compatibility and memory-usefulness now MEASURE
+# provider-free (golden fixtures + seeded backend), so they are no longer deferred.
 _DEFERRED = (
-    "sdd-formal-feature",
-    "plugin-compatibility",
     "context-token-efficiency",
     "kg-retrieval-precision",
-    "memory-usefulness",
 )
 
 
@@ -89,13 +88,14 @@ def test_build_default_runner_wires_golden_gates_and_keeps_deferred_declared() -
     runner = build_default_runner()
     # All ten mandatory gates are registered.
     assert set(runner.list_suites()) >= set(MANDATORY_GATES)
-    # The five golden gates are GoldenSuites (not the inert DeclaredSuite stub).
+    # Every golden gate (now including sdd-formal-feature + plugin-compatibility) is a
+    # GoldenSuite, not the inert DeclaredSuite stub.
     for name in GOLDEN_SUITE_NAMES:
         suite = runner.suite(name)
         assert isinstance(suite, GoldenSuite), f"{name} should be wired to a GoldenSuite"
-    # The two purely-deferred gates remain DeclaredSuite NOT_MEASURED.
-    for name in ("sdd-formal-feature", "plugin-compatibility"):
-        assert isinstance(runner.suite(name), DeclaredSuite)
+    # No mandatory gate is left as an inert DeclaredSuite — the two provider-CI gates are
+    # wired suites that report NOT_MEASURED honestly without a provider hook.
+    assert not any(isinstance(runner.suite(n), DeclaredSuite) for n in MANDATORY_GATES)
 
 
 def test_deferred_gates_stay_not_measured_no_fake_met() -> None:
