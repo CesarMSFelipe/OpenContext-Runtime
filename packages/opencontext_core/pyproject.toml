@@ -44,7 +44,13 @@ include = ["opencontext_core*"]
 exclude = []
 
 [tool.setuptools.package-data]
-opencontext_core = ["studio/static/*"]
+opencontext_core = [
+  "studio/static/*",
+  "workflows/builtins/*.yaml",
+  "harness/builtins/*.yaml",
+  "personas/builtins/*.yaml",
+  "skills/builtins/*.yaml",
+]
 
 [project.optional-dependencies]
 dev = ["types-PyYAML", "types-requests"]
