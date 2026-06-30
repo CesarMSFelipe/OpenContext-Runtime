@@ -88,6 +88,24 @@ def _join_lines(lines: list[str], trailing_newline: bool) -> str:
     return text
 
 
+def _sdd_run_metadata(legacy: Any, workflow: str) -> dict[str, Any]:
+    """Small MCP-only phase summary for SDD harness runs."""
+
+    events = getattr(legacy, "events", []) or []
+    phase_status: dict[str, str] = {}
+    for event in events:
+        if getattr(event, "action", None) == "run_phase":
+            phase_status[str(getattr(event, "phase", ""))] = str(getattr(event, "status", ""))
+    return {
+        "selected_workflow": workflow,
+        "phases": list(phase_status),
+        "phase_status": phase_status,
+        "verified_by": None,
+        "verification_outcome": phase_status.get("verify"),
+        "reason": getattr(legacy, "summary", "") or "",
+    }
+
+
 _IMPORT_LINE_RE = re.compile(r"^\s*(?:from\s+\S+\s+import|import)\b")
 
 
@@ -1029,6 +1047,18 @@ class MCPServer:
         profile = str(params.get("profile", "balanced")) or "balanced"
         root = Path(params.get("root") or Path.cwd()).resolve()
 
+        from opencontext_core.mcp.run_dispatcher import dispatch_mcp_run
+
+        dispatched = dispatch_mcp_run(
+            task=task,
+            workflow=workflow,
+            root=root,
+            profile=profile,
+            lane=str(params.get("lane", "fast") or "fast"),
+        )
+        if dispatched is not None:
+            return dispatched
+
         resolved = self._resolve_config(root)
         api = RuntimeApi(root=root, config=resolved.config)
         ref = api.start_session(StartSessionRequest(task=task, root=str(root), profile=profile))
@@ -1056,7 +1086,16 @@ class MCPServer:
             legacy=result.legacy,
             host_model_used=get_host_sampler() is not None,
         )
-        return contract.model_dump()
+        out = contract.model_dump()
+        out.update(_sdd_run_metadata(result.legacy, workflow))
+        if any(
+            getattr(gate, "id", "") == "phase_contract"
+            and str(getattr(getattr(gate, "status", None), "value", getattr(gate, "status", "")))
+            == "failed"
+            for gate in (getattr(result.legacy, "gates", []) or [])
+        ):
+            out["status"] = "blocked"
+        return out
 
     # ------------------------------------------------------------------ #
     # Runtime-API-backed session + meta tools (PR-013, SPEC-CLI-013-16). #

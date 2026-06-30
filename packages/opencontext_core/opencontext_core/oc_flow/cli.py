@@ -155,6 +155,11 @@ def _resolve_executor(root: Path) -> NodeExecutor | None:
     """
     det = detect_provider()
     if det.name == "mock":
+        from opencontext_core.llm.sampling_gateway import get_host_sampler
+        from opencontext_core.oc_flow.mcp_executor import MCPSamplingNodeExecutor
+
+        if sampler := get_host_sampler():
+            return MCPSamplingNodeExecutor(sampler=sampler, root=root)
         # TEST-ONLY gate (PROD-002 / design B2): a config that EXPLICITLY declares
         # `provider: test_stub` with a resolvable `edits_file` drives the real mutation
         # pipeline credential-free. This is NEVER a production fallback — any other

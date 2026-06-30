@@ -246,7 +246,7 @@ _APPLY_EDIT_INSTRUCTION = (
     "Implement the task below as concrete file edits. Output ONLY a JSON array of "
     "ApplyEdit objects, nothing else: "
     '[{"path":"<root-relative>","operation":"replace_range|insert_after|delete_range'
-    '|create_file","start_line":1,"end_line":3,"content":"<new content>",'
+    '|create_file|delete_file","start_line":1,"end_line":3,"content":"<new content>",'
     '"reason":"<why>","requirement_refs":["<criterion>"]}]. '
     "Use surgical line anchors; no prose, no Markdown fences, nothing outside the array."
 )
@@ -297,10 +297,25 @@ def _parse_apply_edit_set(text: str) -> list[ApplyEdit] | None:
         if not isinstance(item, dict):
             return None
         try:
-            edits.append(ApplyEdit.model_validate(item))
+            edit = ApplyEdit.model_validate(item)
         except ValidationError:
             return None
+        if _invalid_edit_contract_reason(edit):
+            return None
+        edits.append(edit)
     return edits
+
+
+def _invalid_edit_contract_reason(edit: ApplyEdit) -> str | None:
+    if edit.operation in (ApplyOperation.REPLACE_RANGE, ApplyOperation.DELETE_RANGE):
+        if edit.start_line is None or edit.end_line is None:
+            return f"{edit.operation.value} requires start_line and end_line"
+        if edit.start_line < 1 or edit.end_line < edit.start_line:
+            return "invalid line range"
+    if edit.operation == ApplyOperation.INSERT_AFTER:
+        if edit.after_line is None or edit.after_line < 0:
+            return "insert_after requires non-negative after_line"
+    return None
 
 
 def _unsafe_edit_reason(edit: ApplyEdit) -> str | None:
