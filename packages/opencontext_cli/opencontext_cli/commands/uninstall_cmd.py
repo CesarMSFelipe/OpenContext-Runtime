@@ -75,9 +75,16 @@ _PURGE_TARGETS = (
 def _purge_project_artifacts(root: object) -> list[str]:
     """Delete OpenContext's project-local artifacts. Best-effort; returns what
     was removed. Only paths under ``root`` are touched.
+
+    In-repo state dirs (``.storage/opencontext``, ``.opencontext``) are always
+    removed when present — ``--purge`` is an explicit cleanup pass. The XDG
+    user-mode state directory for this project is additionally removed when the
+    ownership manifest matches the given root (``is_owned()`` gate).
     """
     import shutil
     from pathlib import Path
+
+    from opencontext_core.paths import StorageMode, is_owned, resolve_storage_path
 
     base = Path(str(root))
     removed: list[str] = []
@@ -93,6 +100,16 @@ def _purge_project_artifacts(root: object) -> list[str]:
             removed.append(name)
         except Exception:
             pass
+
+    # Also remove the XDG user-mode state directory for this project if owned.
+    try:
+        _xdg_path = resolve_storage_path(base, StorageMode.user)
+        if _xdg_path.exists() and is_owned(_xdg_path):
+            shutil.rmtree(_xdg_path)
+            removed.append(str(_xdg_path))
+    except Exception:
+        pass
+
     storage = base / ".storage"
     if storage.is_dir() and not any(storage.iterdir()):
         try:

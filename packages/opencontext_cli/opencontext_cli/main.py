@@ -1016,8 +1016,8 @@ def _build_parser() -> argparse.ArgumentParser:
     mcp_parser = subparsers.add_parser("mcp", help="Start MCP server for agent integration.")
     mcp_parser.add_argument(
         "--db-path",
-        default=".storage/opencontext/context_graph.db",
-        help="Path to knowledge graph database.",
+        default=None,
+        help="Path to knowledge graph database (default: resolved from storage config).",
     )
     security_parser = subparsers.add_parser("security", help="Security commands.")
     security_sub = security_parser.add_subparsers(dest="security_command", required=True)
@@ -1768,7 +1768,7 @@ def _dispatch(args: argparse.Namespace) -> None:
             # Always index an explicit path; for `.` index only when there is no
             # manifest yet, so a fresh checkout yields a real pack instead of an
             # empty one (without re-indexing an already-indexed project).
-            manifest = pack_root / ".storage" / "opencontext" / "project_manifest.json"
+            manifest = runtime.storage_path / "project_manifest.json"
             if args.root != "." or not manifest.exists():
                 runtime.index_project(pack_root)
         _pack(
@@ -1827,7 +1827,7 @@ def _dispatch(args: argparse.Namespace) -> None:
     elif command == "provider":
         _provider_simulate(args.provider, args.classification, runtime, args.mode)
     elif command == "mcp":
-        _mcp_serve(getattr(args, "db_path", ".storage/opencontext/context_graph.db"))
+        _mcp_serve(getattr(args, "db_path", None) or str(runtime.storage_path / "context_graph.db"))
     else:
         _unreachable(command)
 
@@ -1936,19 +1936,27 @@ def _runtime(config_path: str) -> OpenContextRuntime:
 def _runtime_for_root(config_path: str, root: str | Path) -> OpenContextRuntime:
     """Build a runtime whose storage resolves under the indexed *root*, not cwd.
 
-    ``index <root>`` must persist the knowledge graph + manifest under
-    ``<root>/.storage/opencontext``. The default runtime storage path is relative
-    (``.storage/opencontext``), so when ``index`` runs from a different cwd the
-    graph lands under that cwd instead of the project, and a later
-    ``knowledge-graph status`` run from the project finds nothing. Anchoring the
-    storage path to the resolved root fixes that; ``index .`` is unchanged because
-    cwd == root there.
+    ``index <root>`` must persist the knowledge graph + manifest under the path
+    determined by ``StorageConfig`` (user-dir XDG by default, or in-repo when
+    ``mode=local``).  The config is loaded from *config_path* so that the
+    storage mode declared in ``opencontext.yaml`` is honoured; the root passed
+    to the runtime overrides ``project_index.root`` so the resolver computes the
+    correct per-project XDG path even when ``index`` runs from a different cwd.
     """
+    from opencontext_core.config import load_config_or_defaults
+
     resolved = Path(config_path)
+    cfg = load_config_or_defaults(resolved if resolved.exists() else None)
+    # Anchor project_index.root to the explicit root so the storage resolver
+    # computes the correct XDG project path (sha256 of the resolved root),
+    # even when ``index <root>`` is run from a different cwd.
+    abs_root = str(Path(root).resolve())
+    cfg = cfg.model_copy(
+        update={"project_index": cfg.project_index.model_copy(update={"root": abs_root})}
+    )
     return OpenContextRuntime(
-        config_path=str(resolved) if resolved.exists() else None,
+        config=cfg,
         technology_profiles=first_party_profiles(),
-        storage_path=Path(root).resolve() / ".storage" / "opencontext",
     )
 
 
@@ -2462,7 +2470,7 @@ def _index(
     console.info(f"Files: {len(manifest.files)}")
     console.info(f"Symbols: {len(manifest.symbols)}")
     console.info(f"Technology profiles: {', '.join(manifest.technology_profiles)}")
-    console.info("Manifest: .storage/opencontext/project_manifest.json")
+    console.info(f"Manifest: {runtime.storage_path / 'project_manifest.json'}")
     if incremental:
         console.info("Incremental mode scaffold active in v0.1.")
 
@@ -2835,13 +2843,18 @@ def _workflow_pack_metadata(name: str | None) -> dict[str, Any]:
 
 def _status(root: str = ".") -> None:
     """Show project status at a glance."""
+    from opencontext_core.config import load_config_or_defaults
     from opencontext_core.dx.console_styles import console
     from opencontext_core.indexing.git_context import GitContextProvider
+    from opencontext_core.paths import resolve_storage_path
 
     project_root = Path(root).resolve()
     config_path = project_root / "opencontext.yaml"
     opencontext_dir = project_root / ".opencontext"
-    manifest_path = project_root / ".storage" / "opencontext" / "project_manifest.json"
+    _cfg = load_config_or_defaults(config_path if config_path.exists() else None)
+    manifest_path = resolve_storage_path(
+        project_root, _cfg.storage.mode, _cfg.storage.custom_path
+    ) / "project_manifest.json"
     hints_path = project_root / ".opencontexthints"
     checks_dir = project_root / ".opencontext" / "checks"
 
@@ -2988,7 +3001,7 @@ def _doctor(
     if scope == "graph":
         from opencontext_core.indexing.graph_health import compute_graph_health
 
-        graph_report = compute_graph_health(".storage/opencontext/context_graph.db")
+        graph_report = compute_graph_health(str(runtime.storage_path / "context_graph.db"))
 
         if json_output:
             json.dump(graph_report.model_dump(), sys.stdout, indent=2)
@@ -4357,7 +4370,7 @@ def _pack(
             try:
                 import sqlite3 as _sqlite3
 
-                mem_db = naive_root / ".storage" / "opencontext" / "memory.db"
+                mem_db = runtime.storage_path / "memory.db"
                 if mem_db.exists():
                     with _sqlite3.connect(str(mem_db)) as _mc:
                         row = _mc.execute("SELECT COUNT(*) FROM memories").fetchone()
@@ -4767,7 +4780,8 @@ def _memory(args: argparse.Namespace) -> None:
         else:
             # NOTE: single trace store — trace_id maps directly to a file path.
             # Add source routing when traces span multiple stores.
-            trace_path = Path(f".storage/opencontext/traces/{trace_id}.json")
+            _rt = _runtime(args.config)
+            trace_path = _rt.storage_path / "traces" / f"{trace_id}.json"
             trace_data = json.loads(trace_path.read_text(encoding="utf-8"))
             trace = RuntimeTrace.model_validate(trace_data)
         result = recorder.harvest(trace)
@@ -4804,7 +4818,7 @@ def _memory(args: argparse.Namespace) -> None:
     if command == "maintain":
         from opencontext_core.memory.graph import LocalMemoryStore
 
-        db_path = Path(".storage/opencontext/memory.db")
+        db_path = _runtime(args.config).storage_path / "memory.db"
         if not db_path.exists():
             console.info(f"No memory store at {db_path} yet — nothing to maintain.")
             return
@@ -4960,7 +4974,11 @@ def _memory_doctor() -> None:
         checks.append(("context_repository", False, f"Cannot read local memory: {exc}"))
 
     # Check 2: LocalMemoryStore (SQLite FTS5)
-    db_path = Path(".storage/opencontext/memory.db")
+    from opencontext_core.config import load_config_or_defaults
+    from opencontext_core.paths import resolve_storage_path
+
+    _dc = load_config_or_defaults()
+    db_path = resolve_storage_path(Path.cwd(), _dc.storage.mode, _dc.storage.custom_path) / "memory.db"
     if db_path.exists():
         try:
             store = LocalMemoryStore(db_path)

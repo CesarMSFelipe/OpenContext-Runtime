@@ -343,18 +343,34 @@ def _maybe_write_gitignore(root: Any, scope: str) -> None:
     """Keep the local index/memory out of git so teammates don't clone a stale
     binary graph — while the shareable config (opencontext.yaml, AGENTS.md) stays
     committed. Managed block, project scope only, best-effort.
+
+    Only writes the .gitignore block when mode=local (in-repo storage) or legacy
+    in-repo state dirs are detected. In user mode (default XDG), the block is
+    skipped because no in-repo state is written.
     """
     if scope != "local":
         return
     try:
         from pathlib import Path
 
+        from opencontext_core.config import load_config_or_defaults
         from opencontext_core.configurator.filemerge import (
             inject_managed_lines,
             write_text_atomic,
         )
+        from opencontext_core.paths import StorageMode, detect_legacy
 
-        path = Path(root) / ".gitignore"
+        root_path = Path(root)
+        _cfg_path = root_path / "opencontext.yaml"
+        if _cfg_path.exists():
+            _cfg = load_config_or_defaults(_cfg_path)
+            # Only skip the .gitignore block when we know mode=user and there are
+            # no legacy dirs (in-repo state is not written in user mode).
+            if _cfg.storage.mode != StorageMode.local and detect_legacy(root_path) is None:
+                return
+        # No config found yet (first-time setup) — write the block as a safe default.
+
+        path = root_path / ".gitignore"
         existing = path.read_text(encoding="utf-8") if path.exists() else ""
         merged = inject_managed_lines(existing, "storage", [".storage/", ".opencontext/"])
         if write_text_atomic(path, merged):

@@ -201,7 +201,16 @@ class HarnessRunner:
             self._memory_v2 = bool(
                 getattr(getattr(oc_config, "runtime", None), "memory_v2_enabled", False)
             )
-            storage_path = self.root / ".storage" / "opencontext"
+            try:
+                from opencontext_core.paths import StorageMode, resolve_storage_path
+
+                storage_path = resolve_storage_path(
+                    self.root,
+                    oc_config.storage.mode,
+                    oc_config.storage.custom_path,
+                )
+            except Exception:
+                storage_path = self.root / ".storage" / "opencontext"
             storage_path.mkdir(parents=True, exist_ok=True)
             self._memory_store = BackendFactory.create_memory_store(oc_config, storage_path)
         except Exception:
@@ -431,7 +440,6 @@ class HarnessRunner:
 
             runtime = OpenContextRuntime(
                 config=cfg,
-                storage_path=self.root / ".storage" / "opencontext",
             )
             return runtime.llm_gateway, provider, model
         except Exception:
@@ -914,10 +922,16 @@ class HarnessRunner:
         # Best-effort — learning must never block a run.
         try:
             from opencontext_core.learning.feedback_collector import FeedbackCollector
+            from opencontext_core.paths import StorageMode, resolve_storage_path
 
-            fb = FeedbackCollector(
-                storage_path=state.root / ".storage" / "opencontext" / "learning"
-            )
+            try:
+                from opencontext_core.config import load_config_or_defaults
+
+                _rc = load_config_or_defaults(state.root / "opencontext.yaml", auto_detect=False)
+                _fb_base = resolve_storage_path(state.root, _rc.storage.mode, _rc.storage.custom_path)
+            except Exception:
+                _fb_base = state.root / ".storage" / "opencontext"
+            fb = FeedbackCollector(storage_path=_fb_base / "learning")
             op_id = fb.start_operation("context_pack", task)
             fb.finish_operation(
                 op_id,
@@ -984,9 +998,17 @@ class HarnessRunner:
             try:
                 from opencontext_core.learning.learning_orchestrator import LearningOrchestrator
 
+                try:
+                    from opencontext_core.config import load_config_or_defaults
+                    from opencontext_core.paths import StorageMode, resolve_storage_path
+
+                    _lrc = load_config_or_defaults(state.root / "opencontext.yaml", auto_detect=False)
+                    _ls = resolve_storage_path(state.root, _lrc.storage.mode, _lrc.storage.custom_path)
+                except Exception:
+                    _ls = state.root / ".storage" / "opencontext"
                 orch = LearningOrchestrator(
-                    storage_path=state.root / ".storage" / "opencontext" / "learning",
-                    kg_db_path=state.root / ".storage" / "opencontext" / "context_graph.db",
+                    storage_path=_ls / "learning",
+                    kg_db_path=_ls / "context_graph.db",
                 )
                 orch.learn()
                 learned_patterns = list(orch.patterns.get_all_patterns().values())
@@ -1038,7 +1060,15 @@ class HarnessRunner:
                 from opencontext_core.indexing.project_indexer import _KG_EXTENSIONS
 
                 # Canonical KG db name — same as runtime/explore (context_graph.db).
-                db_path = state.root / ".storage" / "opencontext" / "context_graph.db"
+                try:
+                    from opencontext_core.config import load_config_or_defaults
+                    from opencontext_core.paths import StorageMode, resolve_storage_path
+
+                    _krc = load_config_or_defaults(state.root / "opencontext.yaml", auto_detect=False)
+                    _ks = resolve_storage_path(state.root, _krc.storage.mode, _krc.storage.custom_path)
+                    db_path = _ks / "context_graph.db"
+                except Exception:
+                    db_path = state.root / ".storage" / "opencontext" / "context_graph.db"
                 kg_changed = {p for p in changed if (state.root / p).suffix in _KG_EXTENSIONS}
                 if db_path.exists() and kg_changed:
                     kg = KnowledgeGraph(db_path=db_path)
@@ -1479,7 +1509,19 @@ class HarnessRunner:
     @staticmethod
     def _quality_db_path(root: Path) -> Path:
         """Path to the persisted knowledge graph the quality engine reads."""
-        return root / ".storage" / "opencontext" / "context_graph.db"
+        _local = root / ".storage" / "opencontext" / "context_graph.db"
+        _oc_yaml = root / "opencontext.yaml"
+        if not _oc_yaml.exists():
+            return _local
+        try:
+            from opencontext_core.config import load_config_or_defaults
+            from opencontext_core.paths import StorageMode, resolve_storage_path
+
+            _qrc = load_config_or_defaults(_oc_yaml, auto_detect=False)
+            _resolved = resolve_storage_path(root, _qrc.storage.mode, _qrc.storage.custom_path) / "context_graph.db"
+            return _resolved if _resolved.exists() or not _local.exists() else _local
+        except Exception:
+            return _local
 
     # Working-tree paths that are byproducts / control-plane, NOT source the graph
     # is built from. These are written *after* (or independently of) the graph and
@@ -2180,7 +2222,26 @@ class HarnessRunner:
         try:
             from opencontext_core.indexing.knowledge_graph import KnowledgeGraph
 
-            kg = KnowledgeGraph(db_path=self.root / ".storage" / "opencontext" / "context_graph.db")
+            # Resolve DB path via StorageConfig. When an opencontext.yaml exists and
+            # sets mode=user, use the XDG path. Otherwise fall back to the in-repo
+            # local path for backward compatibility (legacy layout and tests without
+            # a project config file).
+            _local_kg_db = self.root / ".storage" / "opencontext" / "context_graph.db"
+            _kg_db = _local_kg_db
+            _oc_yaml = self.root / "opencontext.yaml"
+            if _oc_yaml.exists():
+                try:
+                    from opencontext_core.config import load_config_or_defaults
+                    from opencontext_core.paths import StorageMode, resolve_storage_path
+
+                    _crc = load_config_or_defaults(_oc_yaml, auto_detect=False)
+                    _cs = resolve_storage_path(self.root, _crc.storage.mode, _crc.storage.custom_path)
+                    _kg_db = _cs / "context_graph.db"
+                    if not _kg_db.exists() and _local_kg_db.exists():
+                        _kg_db = _local_kg_db
+                except Exception:
+                    _kg_db = _local_kg_db
+            kg = KnowledgeGraph(db_path=_kg_db)
             stats = kg.get_stats()
             kg.close()
             if stats.get("nodes", 0) == 0:

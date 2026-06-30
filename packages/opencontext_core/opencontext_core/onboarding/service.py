@@ -159,10 +159,29 @@ class OnboardingService:
             config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
         result.config_path = str(config_path)
 
-        # 2b. Keep the local index/memory out of git. This was setup-only, so a
-        # project onboarded via `opencontext install` could commit its binary
-        # graph. Managed block, best-effort — never fail onboarding over it.
-        self._write_gitignore_storage_block(root)
+        # 2b. Keep the local index/memory out of git. Only write the .gitignore
+        # block when storage.mode=local (in-repo layout) or legacy in-repo dirs
+        # are detected (upgrading an existing repo). In user mode (default XDG),
+        # no in-repo state is written so the .gitignore block is unnecessary.
+        # Best-effort — never fail onboarding over it.
+        try:
+            from opencontext_core.config import load_config_or_defaults
+            from opencontext_core.paths import StorageMode, detect_legacy
+
+            _oc = load_config_or_defaults(config_path)
+            # Write .gitignore block only when in-repo state will be written:
+            # mode=local explicitly, or legacy dirs already exist in the repo.
+            # mode=user (default): state goes to XDG, so no .gitignore entry needed.
+            _write_gitignore = (
+                _oc.storage.mode == StorageMode.local
+                or detect_legacy(root) is not None
+            )
+        except Exception:
+            _write_gitignore = True  # safe default: write block when uncertain
+        if _write_gitignore:
+            self._write_gitignore_storage_block(root)
+        # NOTE: In mode=user the .storage/ and .opencontext/ dirs are NOT created
+        # in the project repo; the runtime writes to XDG state dirs instead.
 
         # 3. Save user preferences
         store = UserConfigStore()
@@ -197,7 +216,6 @@ class OnboardingService:
 
             runtime = OpenContextRuntime(
                 config_path=config_path,
-                storage_path=root / ".storage" / "opencontext",
             )
             manifest = runtime.index_project(root)
             result.indexed_files = len(manifest.files)
