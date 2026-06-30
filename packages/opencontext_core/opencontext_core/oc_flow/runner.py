@@ -128,7 +128,7 @@ def _discover_test_command(root: Path) -> list[str] | None:
     )
     if not tests:
         return None
-    # NOTE: caps at 10 to avoid running the full suite on auto-discovery; pass explicit test_command for large repos.
+    # NOTE: caps at 10 to avoid running the full suite; pass explicit test_command for large repos.
     return [sys.executable, "-m", "pytest", "-q", *[str(p) for p in tests[:10]]]
 
 

@@ -1,4 +1,4 @@
-"""VDM-007: the e2e B+D evidence artifact moves the 15 functional + 2 governance gates.
+"""VDM-007: the e2e B+D evidence artifact moves the 19 functional + 2 governance gates.
 
 ``release acceptance`` reads ``release-evidence.json`` and injects ``functional=`` /
 ``governance=`` into :meth:`AcceptanceEvaluator.evaluate`. Only gates with REAL evidence
@@ -29,7 +29,7 @@ def _statuses(root: Path) -> dict[str, GateStatus]:
     return {g.gate: g.status for g in verdict.gates}
 
 
-def test_full_evidence_moves_all_17_gates_to_met(tmp_path: Path) -> None:
+def test_full_evidence_moves_all_21_gates_to_met(tmp_path: Path) -> None:
     write_release_evidence(
         tmp_path,
         functional={name: "met" for name in FUNCTIONAL_BEHAVIOURS},
@@ -47,13 +47,13 @@ def test_partial_evidence_only_moves_evidenced_gates(tmp_path: Path) -> None:
     met_b = [n for n in FUNCTIONAL_BEHAVIOURS if statuses[n] is GateStatus.MET]
     nm_b = [n for n in FUNCTIONAL_BEHAVIOURS if statuses[n] is GateStatus.NOT_MEASURED]
     assert set(met_b) == set(five)
-    assert len(nm_b) == 10
+    assert len(nm_b) == len(FUNCTIONAL_BEHAVIOURS) - 5
     # No governance evidence -> both D gates stay NOT_MEASURED.
     for name in GOVERNANCE_GATES:
         assert statuses[name] is GateStatus.NOT_MEASURED
 
 
-def test_missing_evidence_file_keeps_all_17_not_measured(tmp_path: Path) -> None:
+def test_missing_evidence_file_keeps_all_not_measured(tmp_path: Path) -> None:
     # No release-evidence.json under this root: read returns empty maps, no error.
     functional, governance = read_release_evidence(tmp_path)
     assert functional == {} and governance == {}

@@ -105,7 +105,7 @@ def test_brain_is_advisory_only_graph_governs(tmp_path: Path) -> None:
         "fix.py", content="ok = 1\n", reason="fix", requirement_ref="task addressed"
     )
     result = OCFlowRunner(root=tmp_path, brain=brain).run(
-        "Fix failing test", lane=Lane.FAST, requested_edits=[edit]
+        "Fix a null-pointer bug", lane=Lane.FAST, requested_edits=[edit]
     )
     # The Brain was consulted on transitions, and the graph still completed correctly.
     assert brain.calls
