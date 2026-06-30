@@ -168,10 +168,12 @@ def _phase_contract_gate(phase: str, content: str, *, enabled: bool) -> PhaseGat
     from opencontext_core.sdd.validators import validate_phase
 
     result = validate_phase(phase, content)
+    # WARNING (not FAILED) so individual phase status stays PASSED/WARNING.
+    # Hard blocking only happens in sdd_strict mode via the runner's contract_blocked check.
     return PhaseGate(
         id="phase_contract",
         phase=phase,
-        status=GateStatus.PASSED if result.passed else GateStatus.FAILED,
+        status=GateStatus.PASSED if result.passed else GateStatus.WARNING,
         message=result.reason,
     )
 

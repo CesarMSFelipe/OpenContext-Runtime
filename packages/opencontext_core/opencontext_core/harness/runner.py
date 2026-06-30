@@ -895,8 +895,8 @@ class HarnessRunner:
             scaffold_blocked = getattr(state, "sdd_strict", False) and any(
                 g.id == "guardrails" and g.status == GateStatus.FAILED for g in result.gates
             )
-            contract_blocked = any(
-                g.id == "phase_contract" and g.status == GateStatus.FAILED
+            contract_blocked = getattr(state, "sdd_strict", False) and any(
+                g.id == "phase_contract" and g.status == GateStatus.WARNING
                 for g in result.gates
             )
             if result.status == GateStatus.FAILED:
@@ -1311,7 +1311,12 @@ class HarnessRunner:
         TDD/approval can be configured from the main config too. Decoupled from
         token ``budget_mode``.
         """
-        tdd_mode = getattr(self.config, "tdd_mode", "ask")
+        import os
+
+        _cfg_tdd = getattr(self.config, "tdd_mode", "ask")
+        # Env var only applies when config is at the default ("ask"); an explicit
+        # config value (e.g. from a test fixture) always wins.
+        tdd_mode = os.environ.get("OPENCONTEXT_TDD_MODE", _cfg_tdd) if _cfg_tdd == "ask" else _cfg_tdd
         approval_required = bool(getattr(self.config, "approval_required_for_writes", False))
 
         # Merge from the top-level config only to fill in non-overridden defaults.
