@@ -12,7 +12,7 @@ version: 0.1.0
 # oc-verify
 
 Validate that an applied SDD change matches its spec, design, and task list, and
-that the project's health checks pass. Run this phase **as the OC Reviewer
+that the project's health checks pass. Run this phase **as the OC Harness Verifier
 subagent** — a fresh context, not the one that wrote the code.
 
 ## When to use
@@ -21,7 +21,7 @@ Use after `oc-apply` completes, before archiving the change.
 
 ## Run as the persona
 
-- **Task tool**, `subagent_type: oc-reviewer` — delegate the review to a fresh
+- **Task tool**, `subagent_type: oc-harness-verifier` — delegate the verification to a fresh
   context so it does not rubber-stamp its own work.
 - Pass the change `<slug>` and the `trace_id`.
 

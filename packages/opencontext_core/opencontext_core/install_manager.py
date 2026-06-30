@@ -70,6 +70,7 @@ class InstallState:
     agents: list[str] = field(default_factory=list)
     profiles: list[str] = field(default_factory=list)
     hooks_run: list[str] = field(default_factory=list)
+    files: list[str] = field(default_factory=list)
 
 
 class InstallationManager:
@@ -185,11 +186,13 @@ class InstallationManager:
         except Exception:
             pass
 
+        files = [f for r in results for f in (r.get("files", []) if isinstance(r, dict) else [])]
         self._save_state(
             InstallState(
                 version=self.VERSION,
                 components=list(to_install),
                 agents=agents,
+                files=files,
             )
         )
 
@@ -424,31 +427,34 @@ class InstallationManager:
                 agents=data.get("agents", []),
                 profiles=data.get("profiles", []),
                 hooks_run=data.get("hooks_run", []),
+                files=data.get("files", []),
             )
         except (json.JSONDecodeError, OSError):
             return None
 
     def _save_state(self, state: InstallState) -> None:
-        """Save installation state."""
+        """Save installation state atomically (temp + os.replace)."""
+        import os
         import time
 
         if not state.installed_at:
             state.installed_at = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        self.state_path.write_text(
-            json.dumps(
-                {
-                    "version": state.version,
-                    "installed_at": state.installed_at,
-                    "components": state.components,
-                    "agents": state.agents,
-                    "profiles": state.profiles,
-                    "hooks_run": state.hooks_run,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
+        data = json.dumps(
+            {
+                "version": state.version,
+                "installed_at": state.installed_at,
+                "components": state.components,
+                "agents": state.agents,
+                "profiles": state.profiles,
+                "hooks_run": state.hooks_run,
+                "files": state.files,
+            },
+            indent=2,
         )
+        tmp = self.state_path.with_suffix(".tmp")
+        tmp.write_text(data, encoding="utf-8")
+        os.replace(tmp, self.state_path)
 
     def _resolve_components(
         self,
@@ -497,34 +503,51 @@ class InstallationManager:
         Reuses the canonical default template (``default_config_data``) — the
         same source ``OnboardingService.run`` uses — and validates the written
         file by loading it back, so install never reports success over an
-        unloadable config. An existing config is left untouched.
+        unloadable config.
+
+        An existing ``opencontext.yaml`` is PRESERVED, never overwritten (the
+        ``if not config_path.exists()`` guard below). This is load-bearing for
+        PROD-002 / design B2: ``install --yes`` must not clobber a project's
+        ``provider: test_stub`` declaration that a later ``run`` step depends on.
         """
         import yaml
 
         from opencontext_core.config import default_config_data, load_config
 
         project_root.mkdir(parents=True, exist_ok=True)
+        # Canonical config location (B2 / ADR-A2): install MUST write the SAME
+        # path the resolver reads — <root>/opencontext.yaml. Keep this in lockstep
+        # with opencontext_core.config_resolver.resolve_config_path; writing a
+        # configs/ subpath here re-introduces the AVH-012 install/run mismatch.
         config_path = project_root / "opencontext.yaml"
-        if not config_path.exists():
-            config_data = default_config_data()
-            project = config_data.get("project")
-            if isinstance(project, dict):
-                project["name"] = project_root.name or project.get("name", "my-project")
-            # Auto-detect ambient provider from environment
-            try:
-                from opencontext_core.providers.detect import detect_provider
+        if config_path.exists():
+            # PRESERVE an existing config (PROD-002 / B2): never overwrite, and never
+            # fail install over a config install did NOT write. The test_stub fixture's
+            # raw test-only keys (`provider`, `edits_file`) are intentionally outside the
+            # typed OpenContextConfig schema (`run` reads them raw); validating them here
+            # would crash a preserve. The load-back guard below applies ONLY to a config
+            # install itself writes.
+            return config_path
 
-                detected = detect_provider()
-                if detected.source != "fallback":
-                    models = config_data.setdefault("models", {})
-                    default_model = models.setdefault("default", {})
-                    default_model["provider"] = detected.name
-                    default_model["model"] = detected.model
-            except Exception:
-                pass
-            config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
+        config_data = default_config_data()
+        project = config_data.get("project")
+        if isinstance(project, dict):
+            project["name"] = project_root.name or project.get("name", "my-project")
+        # Auto-detect ambient provider from environment
+        try:
+            from opencontext_core.providers.detect import detect_provider
 
-        # Fail loudly rather than report success over an unloadable config.
+            detected = detect_provider()
+            if detected.source != "fallback":
+                models = config_data.setdefault("models", {})
+                default_model = models.setdefault("default", {})
+                default_model["provider"] = detected.name
+                default_model["model"] = detected.model
+        except Exception:
+            pass
+        config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
+
+        # Fail loudly rather than report success over an unloadable config WE wrote.
         load_config(config_path)
         return config_path
 

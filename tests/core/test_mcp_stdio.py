@@ -69,7 +69,7 @@ class TestTraceTool:
             },
         )
         assert "error" in result
-        assert "SYMBOL_NOT_FOUND" in result.get("code", "")
+        assert "SYMBOL_NOT_FOUND" in result["data"].get("code", "")
         server.close()
 
     def test_trace_requires_both_params(self, tmp_path: Path) -> None:
@@ -87,7 +87,9 @@ class TestMCPServer:
         """Server initializes with correct tools."""
 
         server = MCPServer(db_path=tmp_path / "test.db")
-        assert len(server.tools) == 19
+        # PR-013 added 13 interface tools (8 session_* + workflow/profile meta +
+        # doctor) on top of the original 19 analysis/edit/memory/run tools.
+        assert len(server.tools) == 32
         assert "opencontext_search" in server.tools
         assert "opencontext_context" in server.tools
         assert "opencontext_callers" in server.tools
@@ -108,6 +110,12 @@ class TestMCPServer:
         assert "opencontext_memory_judge" in server.tools
         # architecture & code-quality gate tool
         assert "opencontext_quality" in server.tools
+        # PR-013 interface tools: session step + workflow/profile meta + doctor.
+        assert "opencontext_session_start" in server.tools
+        assert "opencontext_session_archive" in server.tools
+        assert "opencontext_workflow_explain" in server.tools
+        assert "opencontext_profile_list" in server.tools
+        assert "opencontext_doctor" in server.tools
         server.close()
 
     def test_handle_initialize(self, tmp_path: Path) -> None:
@@ -132,7 +140,7 @@ class TestMCPServer:
             server._handle_request(request)
             mock_send.assert_called_once()
             result = mock_send.call_args[0][1]
-            assert len(result["tools"]) == 19
+            assert len(result["tools"]) == 32
             assert all("name" in t for t in result["tools"])
             assert all("description" in t for t in result["tools"])
         server.close()
@@ -161,9 +169,9 @@ class TestMCPServer:
 
         server = MCPServer(db_path=tmp_path / "test.db")
         result = server._call_tool("opencontext_status", {})
-        assert result["indexed"] is False
-        assert result["nodes"] == 0
-        assert result["edges"] == 0
+        assert result["data"]["indexed"] is False
+        assert result["data"]["nodes"] == 0
+        assert result["data"]["edges"] == 0
         server.close()
 
     def test_explicit_max_nodes_is_honored(self, tmp_path: Path) -> None:
@@ -201,7 +209,7 @@ class TestMCPServer:
             # MCP tools/call envelope: a content array plus structured payload.
             assert result["content"][0]["type"] == "text"
             assert result["isError"] is False
-            assert "indexed" in result["structuredContent"]
+            assert "indexed" in result["structuredContent"]["data"]
         server.close()
 
     def test_notifications_initialized_gets_no_response(self, tmp_path: Path) -> None:
@@ -249,7 +257,7 @@ class TestMCPPolicyEnforcement:
         server.policy = default_policy
         result = server._call_tool("opencontext_status", {})
         assert "error" not in result or "denied" not in result.get("error", "").lower()
-        assert result.get("indexed") is False
+        assert result["data"].get("indexed") is False
         server.close()
 
     def test_unapproved_tool_is_denied_before_execution(self, tmp_path: Path) -> None:
@@ -343,8 +351,8 @@ def test_context_tool_injects_project_profile(tmp_path: Path) -> None:
         server.close()
 
     assert "error" not in result, result
-    assert result["context"].startswith("## Project Profile")
-    assert "Serve a knowledge graph to agents." in result["context"]
+    assert result["data"]["context"].startswith("## Project Profile")
+    assert "Serve a knowledge graph to agents." in result["data"]["context"]
 
 
 def test_context_tool_has_no_profile_section_when_absent(tmp_path: Path) -> None:
@@ -356,4 +364,4 @@ def test_context_tool_has_no_profile_section_when_absent(tmp_path: Path) -> None
         server.close()
 
     assert "error" not in result, result
-    assert "## Project Profile" not in result["context"]
+    assert "## Project Profile" not in result["data"]["context"]

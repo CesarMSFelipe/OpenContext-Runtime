@@ -15,7 +15,12 @@ from opencontext_core.mcp_stdio import MCPServer
 
 @pytest.fixture
 def server(tmp_path: Path) -> MCPServer:
-    return MCPServer(db_path=tmp_path / ".storage" / "opencontext" / "context_graph.db")
+    s = MCPServer(db_path=tmp_path / ".storage" / "opencontext" / "context_graph.db")
+    # NOTE: opencontext_run not in safe default; sampling tests need it explicitly
+    from opencontext_core.tools.policy import ToolPermissionPolicy
+
+    s.policy = ToolPermissionPolicy(allowed_tools=set(s.tools.keys()))
+    return s
 
 
 @pytest.fixture(autouse=True)
@@ -125,10 +130,11 @@ def test_opencontext_run_requires_task(server: MCPServer) -> None:
 
 
 def test_opencontext_run_drives_harness_with_host_sampler(
-    server: MCPServer, monkeypatch: pytest.MonkeyPatch
+    server: MCPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """C3: the in-process run tool drives the harness where the host sampler is
-    live (the standalone loop runs in a separate process where it is absent)."""
+    """C3 + PR-013: the in-process run tool drives the harness through the shared
+    RuntimeApi and returns the full RunContract (not bare counts). The host
+    sampler is live here (the standalone loop runs in a separate process)."""
     register_host_sampler(lambda s, p, n, m: "ok")
 
     captured: dict[str, str] = {}
@@ -150,11 +156,33 @@ def test_opencontext_run_drives_harness_with_host_sampler(
     from opencontext_core.harness import runner as runner_mod
 
     monkeypatch.setattr(runner_mod.HarnessRunner, "run", _fake_run)
-    out = server._call_tool("opencontext_run", {"task": "do X", "workflow": "sdd"})
+    # Pass an explicit root so the session tree is written under tmp, not cwd.
+    out = server._call_tool(
+        "opencontext_run", {"task": "do X", "workflow": "sdd", "root": str(tmp_path)}
+    )
 
     assert captured == {"workflow": "sdd", "task": "do X"}
-    assert out["host_model_used"] is True
     assert out["status"] == "passed"
+    data = out["data"]
+    # PR-013 full contract keys are always present (even when empty).
+    for key in (
+        "session_id",
+        "run_id",
+        "workflow",
+        "status",
+        "summary",
+        "artifacts",
+        "receipts",
+        "gates",
+        "cost",
+        "confidence",
+        "next_recommended",
+    ):
+        assert key in data, f"missing run-contract key: {key}"
+    assert data["host_model_used"] is True
+    assert data["workflow"] == "sdd"
+    assert data["session_id"].startswith("sess-")
+    assert data["status"] in ("completed", "passed")
 
 
 def test_initialize_without_sampling_does_not_register(server: MCPServer) -> None:

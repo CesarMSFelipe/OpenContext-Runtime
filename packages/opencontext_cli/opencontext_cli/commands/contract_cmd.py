@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import sys
+from typing import Any
+
+from opencontext_cli.output import eprint
 
 
-def add_contract_commands(subparsers: argparse._SubParsersAction) -> None:
+def add_contract_commands(subparsers: argparse._SubParsersAction[Any]) -> None:
     contract = subparsers.add_parser("contract", help="Context contract operations")
     sub = contract.add_subparsers(dest="contract_cmd", help="contract subcommands")
 
@@ -16,15 +18,15 @@ def add_contract_commands(subparsers: argparse._SubParsersAction) -> None:
     build.add_argument("--root", default=".", help="Project root")
 
 
-def handle_contract(args: argparse.Namespace, config=None) -> int:
+def handle_contract(args: argparse.Namespace, config: object = None) -> int:
     cmd = getattr(args, "contract_cmd", None)
     if cmd == "build":
         return _handle_contract_build(args, config)
-    print("Usage: opencontext contract build --query <task>", file=sys.stderr)
+    eprint("Usage: opencontext contract build --query <task>")
     return 1
 
 
-def _handle_contract_build(args: argparse.Namespace, config=None) -> int:
+def _handle_contract_build(args: argparse.Namespace, config: object = None) -> int:
     try:
         from opencontext_core.context.planning.classifier import TaskClassifier
         from opencontext_core.context.planning.contract import ContextContractBuilder
@@ -35,6 +37,8 @@ def _handle_contract_build(args: argparse.Namespace, config=None) -> int:
             risk_classifier=RiskClassifier(),
         ).build(args.query)
 
+        # --output selects the serialization FORMAT (json|yaml); both are pure
+        # machine-readable payloads written verbatim to stdout.
         if args.output == "json":
             import json
 
@@ -43,5 +47,5 @@ def _handle_contract_build(args: argparse.Namespace, config=None) -> int:
             print(contract.to_yaml())
         return 0
     except Exception as e:
-        print(f"Error building contract: {e}", file=sys.stderr)
+        eprint(f"Error building contract: {e}")
         return 1

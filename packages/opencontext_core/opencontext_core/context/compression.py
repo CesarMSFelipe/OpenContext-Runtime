@@ -16,6 +16,53 @@ from opencontext_core.models.context import (
     ContextItem,
 )
 
+# --- PR-010 §Semantic Compression priority taxonomy (OC-CONTEXT-001) -----------
+# Declarative keep/compress/discard rules. KEEP kinds are never lossy-compressed
+# (enforced via ProtectedSpanManager KEEP spans); COMPRESS kinds may be reduced
+# aggressively; DISCARD kinds are dropped and recorded as omissions (see context/gc).
+KEEP_KINDS: tuple[str, ...] = (
+    "acceptance_criteria",
+    "constraint",
+    "signature",
+    "diagnostic",
+    "evidence",
+    "failed_strategy",
+)
+COMPRESS_KINDS: tuple[str, ...] = (
+    "repeated_log",
+    "duplicate_snippet",
+    "long_stack_trace",
+    "repetitive_plan",
+)
+DISCARD_KINDS: tuple[str, ...] = (
+    "obsolete_reasoning",
+    "superseded_attempt",
+    "transient",
+    "duplicated_tool_output",
+)
+
+# Protected-span kinds that map onto the KEEP taxonomy (so a detected span of one of
+# these kinds means "do not lossy-compress this item").
+_PROTECTED_KEEP_KINDS: frozenset[str] = frozenset(
+    {"acceptance_criteria", "signature", "diagnostic", "evidence", "warning", "constraint"}
+)
+
+
+def compression_priority(kind: str) -> str:
+    """Classify a span/content ``kind`` as ``keep`` | ``compress`` | ``discard``.
+
+    Unknown kinds default to ``compress`` (safe: compressible, never silently kept
+    or dropped). The three buckets are the book's §Semantic Compression taxonomy.
+    """
+    if kind in KEEP_KINDS:
+        return "keep"
+    if kind in DISCARD_KINDS:
+        return "discard"
+    if kind in COMPRESS_KINDS:
+        return "compress"
+    return "compress"
+
+
 # Maps detected ContentFormat to a CompressionStrategy when adaptive routing is active.
 # Falls back to config.strategy for MIXED / UNKNOWN.
 _FORMAT_TO_STRATEGY: dict[ContentFormat, CompressionStrategy] = {
@@ -32,9 +79,13 @@ _FORMAT_TO_STRATEGY: dict[ContentFormat, CompressionStrategy] = {
 class CompressionEngine:
     """Applies deterministic compression strategies and records lossiness."""
 
-    def __init__(self, config: CompressionConfig) -> None:
+    def __init__(self, config: CompressionConfig, *, semantic_protection: bool = False) -> None:
         self.config = config
         self.protected_spans = ProtectedSpanManager()
+        # PR-010: when set, the engine also treats acceptance criteria / signatures /
+        # diagnostics / evidence as protected (book §Semantic Compression KEEP rules).
+        # Default off so legacy compression is byte-identical.
+        self.semantic_protection = semantic_protection
         self._code_compressor: CodeCompressor | None = None
         self._cache_aligner: Any | None = None
         self._output_reducer: Any | None = None
@@ -70,7 +121,11 @@ class CompressionEngine:
         if not self.config.enabled or self.config.strategy is CompressionStrategy.NONE:
             return self._result(item, item, CompressionStrategy.NONE, "none")
 
-        spans = self.protected_spans.detect(item.content) if self.config.protected_spans else []
+        spans = (
+            self.protected_spans.detect(item.content, include_semantic=self.semantic_protection)
+            if self.config.protected_spans
+            else []
+        )
         if spans:
             metadata = dict(item.metadata)
             metadata["protected_spans"] = [span.model_dump() for span in spans]

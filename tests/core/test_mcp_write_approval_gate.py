@@ -81,6 +81,10 @@ def _make_server(tmp_path: Path, *, require_write_approval: bool | None) -> tupl
     if require_write_approval is not None:
         runtime = _FakeRuntime(root, require_write_approval=require_write_approval)
     server = MCPServer(db_path=tmp_path / "kg.db", project_root=root, runtime=runtime)
+    # NOTE: write-tool tests need explicit policy; code-write tools not in safe default
+    from opencontext_core.tools.policy import ToolPermissionPolicy
+
+    server.policy = ToolPermissionPolicy(allowed_tools=set(server.tools.keys()))
     return server, root
 
 
@@ -116,8 +120,8 @@ class TestDefaultOffPreservesBehavior:
                 "body": "def audit_login(username: str) -> str:\n    return username.upper()",
             },
         )
-        assert result["applied"] is True
-        assert "approval_required" not in result
+        assert result["data"]["applied"] is True
+        assert "approval_required" not in result["data"]
         assert "return username.upper()" in _read(root)
         server.close()
 
@@ -133,8 +137,8 @@ class TestDefaultOffPreservesBehavior:
                 "body": "def audit_login(username: str) -> str:\n    return username.upper()",
             },
         )
-        assert result["applied"] is True
-        assert "approval_required" not in result
+        assert result["data"]["applied"] is True
+        assert "approval_required" not in result["data"]
         assert "return username.upper()" in _read(root)
         server.close()
 
@@ -169,8 +173,8 @@ class TestGateBlocksUnapproved:
         server, root = _make_server(tmp_path, require_write_approval=True)
         before = _read(root)
         result = server._call_tool(tool, params)
-        assert result.get("approval_required") is True
-        assert result.get("applied") is False
+        assert result["data"].get("approval_required") is True
+        assert result["data"].get("applied") is False
         # nothing on disk changed
         assert _read(root) == before
         server.close()
@@ -190,8 +194,8 @@ class TestGatePermitsApproved:
                 "approved": True,
             },
         )
-        assert result["applied"] is True
-        assert "approval_required" not in result
+        assert result["data"]["applied"] is True
+        assert "approval_required" not in result["data"]
         assert "return username.upper()" in _read(root)
         server.close()
 
@@ -202,7 +206,7 @@ class TestReadAndMemoryToolsUnaffected:
 
         server, _root = _make_server(tmp_path, require_write_approval=True)
         result = server._call_tool("opencontext_search", {"query": "audit_login"})
-        assert "approval_required" not in result
+        assert "approval_required" not in result.get("data", result)
         server.close()
 
     def test_memory_tool_not_gated(self, tmp_path: Path) -> None:
@@ -216,6 +220,6 @@ class TestReadAndMemoryToolsUnaffected:
 
         server, _root = _make_server(tmp_path, require_write_approval=True)
         result = server._call_tool("opencontext_memory_save", {"content": "a note"})
-        assert "approval_required" not in result
-        assert result.get("available") is False
+        assert "approval_required" not in result.get("data", result)
+        assert result["data"].get("available") is False
         server.close()

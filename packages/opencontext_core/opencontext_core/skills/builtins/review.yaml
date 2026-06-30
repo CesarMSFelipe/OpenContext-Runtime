@@ -1,0 +1,46 @@
+# Built-in Review skills (PR-006, book doc 06 — Skill Categories).
+- id: oc-review-changes
+  name: Review Changes
+  tier: T1
+  category: Review
+  workflow_nodes: [review]
+  inputs: [changed_scope]
+  outputs: [review_report]
+  required_harnesses: [review]
+  required_capabilities: [kg_query, reason]
+  token_budget: 1500
+  failure_modes: [unverified_claim, praise_only]
+
+- id: oc-security-review
+  name: Security Review
+  tier: T2
+  category: Review
+  workflow_nodes: [review]
+  inputs: [changed_scope]
+  outputs: [security_findings]
+  required_harnesses: [security]
+  required_capabilities: [secret_scan, reason]
+  token_budget: 1500
+  failure_modes: [secret_leak, missed_boundary]
+
+- id: oc-performance-review
+  name: Performance Review
+  tier: T2
+  category: Review
+  inputs: [changed_scope]
+  outputs: [performance_findings]
+  required_harnesses: [review]
+  required_capabilities: [reason]
+  token_budget: 1200
+  failure_modes: [missed_hot_path]
+
+- id: oc-maintainability-review
+  name: Maintainability Review
+  tier: T1
+  category: Review
+  inputs: [changed_scope]
+  outputs: [maintainability_findings]
+  required_harnesses: [review]
+  required_capabilities: [reason]
+  token_budget: 1200
+  failure_modes: [over_engineering_missed]

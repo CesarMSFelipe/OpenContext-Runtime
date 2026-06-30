@@ -52,7 +52,35 @@ def run_doctor(config: OpenContextConfig) -> list[DoctorCheck]:
         ),
         _check_provider(config),
         _check_learning(config),
+        _check_capability_graph(),
     ]
+
+
+def _check_capability_graph() -> DoctorCheck:
+    """Build the live Capability Graph (PR-000.2 CP-006) and report it.
+
+    ``doctor`` materialises the typed environment graph in addition to the
+    existing checks, listing the detected capability nodes. Never raises — a
+    detection failure degrades to a best-effort, non-blocking message.
+    """
+    try:
+        from opencontext_core.capabilities.detector import build_capability_graph
+
+        graph = build_capability_graph(".")
+        ready = sorted(graph.available_ids())
+        total = len(graph.nodes)
+        listed = ", ".join(ready) if ready else "none"
+        return DoctorCheck(
+            name="capabilities.graph",
+            ok=bool(ready),
+            details=(f"Capability graph: {len(ready)}/{total} ready — {listed}."),
+        )
+    except Exception as exc:
+        return DoctorCheck(
+            name="capabilities.graph",
+            ok=True,
+            details=f"Capability graph unavailable: {exc}.",
+        )
 
 
 def _check_learning(config: OpenContextConfig) -> DoctorCheck:
@@ -106,9 +134,12 @@ def _check_provider(config: OpenContextConfig) -> DoctorCheck:
                 name="llm.provider",
                 ok=True,
                 details=(
-                    "No LLM provider detected — core features (context packing, knowledge graph, "
-                    "MCP tools) work without one. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, "
-                    "or OPENROUTER_API_KEY to enable the autonomous loop."
+                    "No LLM provider detected — analysis/context features (context packing, "
+                    "knowledge graph, MCP tools) work without one. OC Flow MUTATION tasks (the "
+                    "`run` command) additionally require a configured provider (set "
+                    "ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY), an MCP sampler, or "
+                    "`provider: test_stub` in opencontext.yaml; without one a mutation run is "
+                    "reported honestly as needs_executor (read-only features are unaffected)."
                 ),
             )
         return DoctorCheck(
@@ -125,8 +156,20 @@ def run_security_doctor(config: OpenContextConfig) -> list[DoctorCheck]:
 
     from opencontext_core.mcp_stdio import MCPServer
 
-    server = MCPServer()  # default allowlist = every registered tool
-    policy_default_allows_registered = server.policy.allows("opencontext_search")
+    server = MCPServer()  # default allowlist = safe read-only + memory tools
+    # Safe-by-default posture: read/memory tools allowed, code-write tools and
+    # opencontext_run require an explicit policy opt-in (fail-closed).
+    _default_allowed = set(server._default_tool_names())
+    _write_tools = {
+        "opencontext_replace_symbol_body",
+        "opencontext_insert_before_symbol",
+        "opencontext_insert_after_symbol",
+        "opencontext_rename_symbol",
+        "opencontext_run",
+    }
+    policy_default_allows_registered = server.policy.allows("opencontext_search") and not (
+        _default_allowed & _write_tools
+    )
 
     return [
         DoctorCheck(
@@ -151,8 +194,9 @@ def run_security_doctor(config: OpenContextConfig) -> list[DoctorCheck]:
             name="mcp.policy.default_allowlist",
             ok=policy_default_allows_registered,
             details=(
-                f"Default policy allowlists all "
-                f"{len(server._default_tool_names())} registered MCP tools."
+                f"Default policy allowlists {len(_default_allowed)} safe tools "
+                f"(read + memory); {len(_write_tools)} code-write/run tools "
+                f"require explicit opt-in."
             ),
         ),
         DoctorCheck(

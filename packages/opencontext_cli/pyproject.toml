@@ -26,6 +26,7 @@ dependencies = [
   "opencontext-profiles>=0.1.0",
   "argcomplete>=3.0.0",
   "InquirerPy>=0.3.4",
+  "textual>=0.80",
 ]
 
 [project.urls]
@@ -40,3 +41,9 @@ opencontext = "opencontext_cli.main:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["opencontext_cli*"]
+
+[project.optional-dependencies]
+dev = ["types-PyYAML", "types-requests", "types-pyperclip"]
+
+[tool.setuptools.package-data]
+opencontext_cli = ["fixtures/memory/*.json", "data/*.yaml"]

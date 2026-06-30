@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -57,6 +58,10 @@ PHASE_DEPENDENCIES: dict[str, list[str]] = {
 }
 
 # Workflow tracks: each track defines its own phase order and dependencies
+# DEPRECATED(2.0): legacy workflow-track declaration; superseded by the PR-003
+# WorkflowRegistry/builtins. Still consumed by the HarnessRunner DAG + explain.py while the
+# runtime.registry_enabled rollback exists; remove when registry-driven scheduling replaces
+# the legacy DAG (milestone-C).
 WORKFLOW_TRACKS: dict[str, dict[str, object]] = {
     "quick": {
         "phases": ["explore", "apply", "verify"],
@@ -103,10 +108,62 @@ WORKFLOW_TRACKS: dict[str, dict[str, object]] = {
 }
 
 
+def phase_required_harnesses(phase: str) -> list[str]:
+    """Return the first-class ``required_harnesses`` declared for ``phase``.
+
+    Sourced from the declarative ``OC_NEW_FLOW`` (spec PR-004 REQ-05). Imported
+    lazily so this module's import graph is unchanged. Unknown phases yield ``[]``.
+    """
+    from opencontext_core.oc_new.flow import OC_NEW_FLOW
+
+    for phase_def in OC_NEW_FLOW:
+        if phase_def.name == phase:
+            return list(phase_def.required_harnesses)
+    return []
+
+
+def resolve_phase_harness_modes(phase: str, profile: str | None = None) -> dict[str, str]:
+    """Resolve each of ``phase``'s required harnesses to its effective mode.
+
+    Consumes the PR-006 SDD harness matrix (``harness/matrix.py``) **read-only**
+    via :func:`resolve_harness_mode` — strictness is profile-driven, not
+    hardcoded here (REG-CONV). Returns a ``{harness_id: mode}`` digest a phase
+    can attach to its receipt or use to decide blocking. Best-effort: an unknown
+    harness resolves to the matrix's ``"warn"`` fallback. This module never edits
+    the matrix; it only reads it.
+    """
+    from opencontext_core.harness.matrix import resolve_harness_mode
+
+    return {h: resolve_harness_mode(h, profile) for h in phase_required_harnesses(phase)}
+
+
+def sdd_definition_source() -> tuple[list[str], dict[str, list[str]], dict[str, str]]:
+    """Return the SDD graph's source-of-truth data for the built-in definition.
+
+    Exposes ``(PHASE_ORDER, PHASE_DEPENDENCIES, PHASE_PERSONAS)`` so the PR-003
+    workflow registry's parity check can assert that ``builtins/sdd.yaml`` never
+    drifts from the live scheduler graph (spec SDD1). No behavior change — this is a
+    read-only accessor over existing module data. ``PHASE_PERSONAS`` is imported
+    lazily to keep this module's import graph unchanged.
+    """
+    from opencontext_core.personas import PHASE_PERSONAS
+
+    return list(PHASE_ORDER), dict(PHASE_DEPENDENCIES), dict(PHASE_PERSONAS)
+
+
+# DEPRECATED(2.0): dead class (0 instantiations outside tests; folded into HarnessRunner).
+# The module-level WORKFLOW_TRACKS/PHASE_* tables + functions above stay live. Remove in 2.0.
 class SDDOrchestrator:
     """Orchestrates the full SDD lifecycle."""
 
     def __init__(self, config: SDDConfig | None = None) -> None:
+        warnings.warn(
+            "SDDOrchestrator is deprecated and will be removed in 2.0; the live SDD "
+            "flow runs through opencontext_core.harness (the WORKFLOW_TRACKS/PHASE_* "
+            "tables in this module remain).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.config = config or SDDConfig()
         self.store = self._create_store()
         self.state: DAGState | None = None

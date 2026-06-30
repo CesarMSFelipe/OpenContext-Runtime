@@ -1,0 +1,19 @@
+# Planning Harness (PR-006, book doc 07 §11) — valid plans before mutation.
+schema_version: opencontext.harness.v1
+id: planning
+version: "1.0"
+type: governance
+description: Ensure planning outputs are valid before mutation.
+default_mode: strict
+required_capabilities: [reason]
+inputs: [task, context_envelope]
+outputs: [TaskContract]
+gates:
+  - task_contract_created
+  - acceptance_criteria_present
+  - constraints_recorded
+  - no_business_code_in_plan
+  - verification_strategy_present
+metrics: [scope_creep_flags]
+receipts: [planning_receipt]
+failure_modes: [scope_creep, missing_constraints]

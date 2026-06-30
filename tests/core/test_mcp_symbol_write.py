@@ -52,6 +52,10 @@ def indexed_project(tmp_path: Path) -> tuple[MCPServer, Path]:
     kg.close()
 
     server = MCPServer(db_path=tmp_path / "kg.db", project_root=root)
+    # NOTE: write-tool tests need explicit policy; code-write tools not in safe default
+    from opencontext_core.tools.policy import ToolPermissionPolicy
+
+    server.policy = ToolPermissionPolicy(allowed_tools=set(server.tools.keys()))
     yield server, root
     server.close()
 
@@ -70,7 +74,7 @@ class TestRegistration:
             "opencontext_rename_symbol",
         ):
             assert name in server.tools
-            assert name in server._default_tool_names()
+            # NOTE: write tools NOT in safe default allowlist; checked in test_mcp_safe_defaults.py
             assert name in server._handlers()
         server.close()
 
@@ -89,12 +93,12 @@ class TestReplaceSymbolBody:
             {"symbol": "audit_login", "file": "src/auth.py", "body": new_body},
         )
 
-        assert result["applied"] is True
-        assert result["symbol"] == "audit_login"
-        assert result["file"] == "src/auth.py"
+        assert result["data"]["applied"] is True
+        assert result["data"]["symbol"] == "audit_login"
+        assert result["data"]["file"] == "src/auth.py"
         assert "error" not in result
         # Changed range covers the original span of audit_login (lines 6-7).
-        assert result["changed_range"] == {"start_line": 6, "end_line": 7}
+        assert result["data"]["changed_range"] == {"start_line": 6, "end_line": 7}
 
         text = _read(root)
         assert "return username.upper()" in text
@@ -113,7 +117,7 @@ class TestReplaceSymbolBody:
             {"symbol": "does_not_exist", "body": "x = 1"},
         )
         assert "error" in result
-        assert result.get("applied") is False
+        assert result["data"].get("applied") is False
         # File is left completely intact.
         assert _read(root) == before
 
@@ -126,9 +130,9 @@ class TestReplaceSymbolBody:
             "opencontext_replace_symbol_body",
             {"symbol": "audit_login", "file": "src/auth.py", "body": "def audit_login(:"},
         )
-        assert result.get("applied") is False
+        assert result["data"].get("applied") is False
         assert "invalid Python" in result.get("error", "")
-        assert "hint" in result  # points the agent at passing the full definition
+        assert "hint" in result["data"]  # points the agent at passing the full definition
         assert _read(root) == before  # nothing written
 
 
@@ -143,7 +147,7 @@ class TestInsertBeforeSymbol:
                 "content": "# audit helper below",
             },
         )
-        assert result["applied"] is True
+        assert result["data"]["applied"] is True
         assert "error" not in result
 
         lines = _read(root).splitlines()
@@ -163,7 +167,7 @@ class TestInsertAfterSymbol:
                 "content": "# end of audit_login",
             },
         )
-        assert result["applied"] is True
+        assert result["data"]["applied"] is True
         assert "error" not in result
 
         lines = _read(root).splitlines()
@@ -185,9 +189,9 @@ class TestRenameSymbol:
                 "new_name": "record_login",
             },
         )
-        assert result["applied"] is True
-        assert result["symbol"] == "audit_login"
-        assert result["new_name"] == "record_login"
+        assert result["data"]["applied"] is True
+        assert result["data"]["symbol"] == "audit_login"
+        assert result["data"]["new_name"] == "record_login"
         assert "error" not in result
 
         text = _read(root)
@@ -206,7 +210,7 @@ class TestRenameSymbol:
             {"symbol": "audit_login", "file": "src/auth.py"},
         )
         assert "error" in result
-        assert result.get("applied") is False
+        assert result["data"].get("applied") is False
         assert _read(root) == before
 
     def test_rename_rejects_python_keyword(self, indexed_project: tuple[MCPServer, Path]) -> None:
@@ -217,7 +221,7 @@ class TestRenameSymbol:
             "opencontext_rename_symbol",
             {"symbol": "audit_login", "file": "src/auth.py", "new_name": "class"},
         )
-        assert result.get("applied") is False
+        assert result["data"].get("applied") is False
         assert "keyword" in result.get("error", "")
         assert _read(root) == before
 
@@ -231,7 +235,7 @@ class TestRenameSymbol:
             {"symbol": "ghost", "new_name": "spirit"},
         )
         assert "error" in result
-        assert result.get("applied") is False
+        assert result["data"].get("applied") is False
         assert _read(root) == before
 
     def test_rename_updates_import_statement(self, tmp_path: Path) -> None:
@@ -251,6 +255,7 @@ class TestRenameSymbol:
         kg.index_project(root)
         kg.close()
         server = MCPServer(db_path=tmp_path / "kg.db", project_root=root)
+        server.policy = ToolPermissionPolicy(allowed_tools=set(server.tools.keys()))
         try:
             result = server._call_tool(
                 "opencontext_rename_symbol",
@@ -259,7 +264,7 @@ class TestRenameSymbol:
         finally:
             server.close()
 
-        assert result.get("applied") is True
+        assert result["data"].get("applied") is True
         auth = (root / "pkg" / "auth.py").read_text(encoding="utf-8")
         assert "from pkg.db import fetch_user" in auth  # import updated
         assert "return fetch_user(u)" in auth  # call site updated

@@ -12,30 +12,70 @@ from typing import Any, NoReturn
 
 import yaml
 
+from opencontext_cli.commands.aicx_cmd import add_aicx_parser, handle_aicx
+from opencontext_cli.commands.architecture_cmd import (
+    add_architecture_parser,
+    handle_architecture,
+)
 from opencontext_cli.commands.benchmark_cmd import add_benchmark_parser, handle_benchmark
 from opencontext_cli.commands.bridges_cmd import add_bridges_parser, handle_bridges
 from opencontext_cli.commands.bytecode_cmd import add_bytecode_commands, handle_bytecode
+from opencontext_cli.commands.capabilities_cmd import (
+    add_capabilities_parser,
+    handle_capabilities,
+)
 from opencontext_cli.commands.ci_check_cmd import add_ci_check_parser, handle_ci_check
 from opencontext_cli.commands.config_cmd import add_config_parser, handle_config
 from opencontext_cli.commands.contract_cmd import add_contract_commands, handle_contract
+from opencontext_cli.commands.decisions_cmd import add_decisions_parser, handle_decisions
 from opencontext_cli.commands.demo_cmd import add_demo_parser, handle_demo
+from opencontext_cli.commands.engram_cmd import add_engram_parser, handle_engram
+from opencontext_cli.commands.evolve_cmd import add_evolve_parser, handle_evolve
 from opencontext_cli.commands.explain_cmd import add_explain_parser, handle_explain
 from opencontext_cli.commands.extension_cmd import add_extension_parser, handle_extension
 from opencontext_cli.commands.git_cmd import add_git_parser, handle_git
+from opencontext_cli.commands.health_cmd import add_health_parser, handle_health
 from opencontext_cli.commands.hints_cmd import add_hints_parser, handle_hints
 from opencontext_cli.commands.kg_cmd import add_kg_parser, handle_kg
+from opencontext_cli.commands.learn_cmd import add_learn_parser, handle_learn
 from opencontext_cli.commands.loop_cmd import add_loop_commands, handle_loop
+from opencontext_cli.commands.maturity_cmd import add_maturity_parser, handle_maturity
+from opencontext_cli.commands.memory_benchmark_cmd import (
+    add_memory_benchmark_parser,
+    handle_memory_benchmark,
+)
+from opencontext_cli.commands.metaharness_cmd import (
+    handle_doctor_metaharness,
+)
+from opencontext_cli.commands.migration_cmd import (
+    add_migrate_subparser,
+    handle_migrate,
+    handle_version,
+)
 from opencontext_cli.commands.models_cmd import add_models_parser, handle_models
 from opencontext_cli.commands.mutation_cmd import add_mutation_commands, handle_mutation
+from opencontext_cli.commands.oc_new_cmd import add_oc_new_parser, handle_oc_new
 from opencontext_cli.commands.persona_cmd import add_persona_parser, handle_persona
 from opencontext_cli.commands.plugin_cmd import add_plugin_parser, handle_plugin
+from opencontext_cli.commands.policy_cmd import add_policy_parser, handle_policy
 from opencontext_cli.commands.privacy_cmd import add_privacy_parser, handle_privacy
 from opencontext_cli.commands.profile_cmd import add_profile_parser, handle_profile
+from opencontext_cli.commands.receipt_cmd import add_receipt_parser, handle_receipt
 from opencontext_cli.commands.review_cmd import add_review_parser, handle_review
 from opencontext_cli.commands.routes_cmd import add_routes_parser, handle_routes
+from opencontext_cli.commands.run_cmd import (
+    add_run_exec_parser,
+    add_run_parser,
+    add_simulate_parser,
+    handle_run_exec,
+    handle_run_inspect,
+    handle_simulate,
+)
+from opencontext_cli.commands.session_cmd import add_session_parser, handle_session
 from opencontext_cli.commands.setup_cmd import add_setup_parser, handle_setup
 from opencontext_cli.commands.skill_cmd import add_skill_parser, handle_skill
 from opencontext_cli.commands.stack_cmd import add_stack_parser, handle_stack
+from opencontext_cli.commands.studio_cmd import add_studio_parser, handle_studio
 from opencontext_cli.commands.sync_cmd import add_sync_parser, handle_sync
 from opencontext_cli.commands.telemetry_cmd import add_telemetry_parser, handle_telemetry
 from opencontext_cli.commands.uninstall_cmd import add_uninstall_parser, handle_uninstall
@@ -46,11 +86,13 @@ from opencontext_cli.commands.update_cmd import (
     handle_upgrade,
 )
 from opencontext_cli.commands.verify_cmd import add_verify_parser, handle_verify
+from opencontext_cli.output import add_output_flag, eprint
 from opencontext_core.adapters.agent_manifest import AgentIntegrationGenerator, AgentTarget
 from opencontext_core.config import SecurityMode, default_config_data, load_config
 from opencontext_core.context.modes import ContextMode
 from opencontext_core.doctor.checks import run_doctor, run_security_doctor
 from opencontext_core.dx.checkpoints import ContextCheckpoint, fingerprint
+from opencontext_core.dx.console_styles import BrandConsole, console
 from opencontext_core.dx.instructions import import_instructions
 from opencontext_core.dx.security_reports import scan_project
 from opencontext_core.dx.tokens import build_token_report
@@ -80,7 +122,7 @@ from opencontext_core.models.context import (
     DataClassification,
 )
 from opencontext_core.models.trace import RuntimeTrace
-from opencontext_core.onboarding.service import is_first_run
+from opencontext_core.onboarding.service import OnboardingService, is_first_run
 from opencontext_core.operating_model import (
     CacheAwarePromptCompiler,
     CacheWarmer,
@@ -151,6 +193,13 @@ def _technology_template_names() -> tuple[str, ...]:
 TECHNOLOGY_TEMPLATE_NAMES = _technology_template_names()
 
 
+def _config_profile_names() -> list[str]:
+    """Return the built-in configuration profile names (PR-013, ``balanced`` first)."""
+    from opencontext_core.config_profiles import profile_names
+
+    return profile_names()
+
+
 def _get_version() -> str:
     """Get installed version via importlib.metadata, with fallback."""
     try:
@@ -162,6 +211,40 @@ def _get_version() -> str:
 
 
 __version__ = _get_version()
+
+
+def _stderr_console() -> BrandConsole:
+    """Brand console bound to STDERR so diagnostics never pollute stdout/JSON."""
+    bc = BrandConsole()
+    inner = getattr(bc, "_console", None)
+    if inner is not None:
+        from rich.console import Console as _Console
+
+        bc._console = _Console(stderr=True)
+    return bc
+
+
+err_console = _stderr_console()
+
+
+def _version_human() -> None:
+    """Render the branded human version banner (logo + version + schema lines).
+
+    The machine-readable block stays available via ``version --json``; this is
+    the default surface so ``opencontext version`` carries the same brand chrome
+    as every other command instead of dumping raw JSON.
+    """
+    from opencontext_core.dx.console_styles import console
+    from opencontext_core.migration.versions import aggregate_versions
+
+    block = aggregate_versions()
+    console.header("OpenContext")
+    console.success(f"OpenContext {block['opencontext']}")
+    console.section("Schema versions")
+    for key, value in block.items():
+        if key == "opencontext":
+            continue
+        console.print(f"  [bold]{key.replace('_', ' '):<16}[/] {value}")
 
 
 def _force_utf8_output() -> None:
@@ -205,48 +288,49 @@ def main() -> None:
         except Exception:
             pass
     except OpenContextError as exc:
-        print(f"Error: {exc}", file=__import__("sys").stderr)
+        eprint(f"Error: {exc}")
         _print_suggestion(args.command if hasattr(args, "command") else "")
         raise SystemExit(1) from exc
     except FileNotFoundError as exc:
-        print(f"Error: File not found - {exc}", file=__import__("sys").stderr)
+        eprint(f"File not found - {exc}")
         raise SystemExit(1) from exc
     except PermissionError as exc:
-        print(f"Error: Permission denied - {exc}", file=__import__("sys").stderr)
+        eprint(f"Permission denied - {exc}")
         raise SystemExit(1) from exc
     except KeyboardInterrupt:
-        print("\nOperation cancelled.")
+        err_console.warning("Operation cancelled.")
         raise SystemExit(130) from None
     except Exception as exc:
         # A raw traceback is a terrible first impression. Show a friendly,
         # actionable message; OPENCONTEXT_DEBUG=1 restores the full traceback.
         if os.environ.get("OPENCONTEXT_DEBUG"):
             raise
-        print(f"Unexpected error: {exc}", file=sys.stderr)
-        print(
+        eprint(f"Unexpected error: {exc}")
+        err_console.dim(
             "  Run 'opencontext doctor' to check your setup, or re-run with "
-            "OPENCONTEXT_DEBUG=1 for the full traceback.",
-            file=sys.stderr,
+            "OPENCONTEXT_DEBUG=1 for the full traceback."
         )
         raise SystemExit(1) from exc
 
 
 def _print_suggestion(command: str) -> None:
-    """Print helpful suggestion after an error."""
+    """Print helpful suggestion after an error (stderr, alongside the error)."""
     if command == "index":
-        print("Try: opencontext install")
+        err_console.dim("Try: opencontext install")
     elif command == "pack":
-        print("Try: opencontext index . && opencontext pack . --query 'Explain this project'")
+        err_console.dim(
+            "Try: opencontext index . && opencontext pack . --query 'Explain this project'"
+        )
     elif command == "knowledge-graph":
-        print("Try: opencontext index .")
+        err_console.dim("Try: opencontext index .")
     elif command in ("install", "setup"):
-        print("Try: opencontext install")
+        err_console.dim("Try: opencontext install")
     elif command == "doctor":
-        print("Try: opencontext install")
+        err_console.dim("Try: opencontext install")
     elif command in ("explain", "demo", "verified-context"):
-        print("Try: opencontext index . first, then re-run.")
+        err_console.dim("Try: opencontext index . first, then re-run.")
     else:
-        print("Run 'opencontext --help' for usage information.")
+        err_console.dim("Run 'opencontext --help' for usage information.")
 
 
 def _check_first_run(command: str) -> None:
@@ -311,16 +395,14 @@ def _notify_outdated(args: argparse.Namespace) -> None:
         return
     check = UpdateChecker.check()
     if check.is_outdated and check.latest_version != check.current_version:
-        print(
+        err_console.warning(
             f"Update available: opencontext {check.current_version} -> {check.latest_version}."
-            " Run 'opencontext upgrade'",
-            file=sys.stderr,
+            " Run 'opencontext upgrade'"
         )
     for eco in EcosystemUpdateChecker.check_cached():
-        print(
+        err_console.warning(
             f"Update available: {eco.name} {eco.current_version} -> {eco.latest_version}."
-            f" Run 'pip install --upgrade {eco.name}'",
-            file=sys.stderr,
+            f" Run 'pip install --upgrade {eco.name}'"
         )
 
 
@@ -329,7 +411,8 @@ class _DeprecationAwareParser(argparse.ArgumentParser):
 
     _DEPRECATED: frozenset[str] = frozenset(
         {
-            "run",
+            # NOTE: 'run' is no longer deprecated — it is the PR-007 OC Flow
+            # execution command (`opencontext run "<task>" --workflow oc-flow`).
             "orchestrate",
             "validate",
             "propose",
@@ -351,19 +434,16 @@ class _DeprecationAwareParser(argparse.ArgumentParser):
         for arg in sys.argv[1:]:
             if not arg.startswith("-"):
                 if arg in self._DEPRECATED:
-                    print(
-                        f"error: '{arg}' has been removed.",
-                        file=sys.stderr,
-                    )
-                    print("  Use 'opencontext harness run' instead.", file=sys.stderr)
-                    print("  See 'opencontext --help' for available commands.", file=sys.stderr)
+                    eprint(f"'{arg}' has been removed.")
+                    err_console.dim("  Use 'opencontext harness run' instead.")
+                    err_console.dim("  See 'opencontext --help' for available commands.")
                     raise SystemExit(2)
                 break
         super().error(message)
 
 
-class _PublicHelpFormatter(argparse.HelpFormatter):
-    """Omit subcommands registered with help=argparse.SUPPRESS from the listing."""
+class _PublicHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Omit SUPPRESS-ed subcommands and keep the grouped epilog newlines intact."""
 
     def _format_action(self, action: argparse.Action) -> str:
         if action.help == argparse.SUPPRESS:
@@ -371,8 +451,26 @@ class _PublicHelpFormatter(argparse.HelpFormatter):
         return super()._format_action(action)
 
 
+# Mental routes through the product, shown at the bottom of `opencontext --help`
+# so the command set reads as paths, not a flat feature list (Workstream A2).
+_COMMAND_GROUPS_EPILOG = """\
+command routes:
+  Observe    demo, explain, pack, context, tokens
+  Integrate  install, setup, mcp, persona, models, capabilities
+  Operate    clarify, loop, harness, workflow, runs
+  Govern     security, privacy, prompt, ci-check, receipt, aicx
+  Learn      memory, skill, plugin, benchmark
+
+Run 'opencontext <command> --help' for details on any command.
+"""
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = _DeprecationAwareParser(prog="opencontext", formatter_class=_PublicHelpFormatter)
+    parser = _DeprecationAwareParser(
+        prog="opencontext",
+        formatter_class=_PublicHelpFormatter,
+        epilog=_COMMAND_GROUPS_EPILOG,
+    )
     parser.add_argument(
         "--config",
         default=_default_config_path(),
@@ -421,6 +519,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Comma-separated agent clients (e.g. opencode,cursor).",
     )
+    init_parser.add_argument(
+        "--profile",
+        choices=_config_profile_names(),
+        default=None,
+        help="Built-in configuration profile (PR-013): governance/routing posture.",
+    )
     install_parser = subparsers.add_parser(
         "install",
         help="Quick project setup wizard — detect, configure, and go.",
@@ -434,6 +538,92 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     install_parser.add_argument("root", nargs="?", default=".", help="Project root.")
     install_parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmations.")
+    install_parser.add_argument(
+        "--agent",
+        default=None,
+        choices=["claude-code", "opencode", "cursor", "codex", "aider", "generic"],
+        help="Target agent (default: auto-detect).",
+    )
+    install_parser.add_argument(
+        "--flow",
+        default="oc-new",
+        choices=["oc-new", "mcp_run", "cli_loop", "instructions_only"],
+        help="Preferred agentic flow (default: oc-new).",
+    )
+    install_parser.add_argument(
+        "--tdd",
+        default=None,
+        choices=["strict", "ask", "off"],
+        help="TDD posture (default: auto-detect from project).",
+    )
+    # NOTE: Agentic-flow flags — resolve to AgenticFlowConfig via preset_config().
+    install_parser.add_argument(
+        "--preset",
+        default=None,
+        choices=[
+            "full-opencontext",
+            "agentic-minimal",
+            "memory-only",
+            "sdd-only",
+            "context-only",
+            "custom",
+        ],
+        help="Agentic preset (default: none — use existing install flow).",
+    )
+    install_parser.add_argument(
+        "--memory",
+        default=None,
+        choices=["auto", "engram", "local", "off"],
+        dest="memory_mode",
+        help="Memory mode for the agentic flow.",
+    )
+    install_parser.add_argument(
+        "--install-engram",
+        action="store_true",
+        default=False,
+        help="Provision Engram if not already installed.",
+    )
+    install_parser.add_argument(
+        "--openspec",
+        default=None,
+        choices=["full", "minimal", "off"],
+        dest="openspec_mode",
+        help="OpenSpec artifact persistence mode.",
+    )
+    install_parser.add_argument(
+        "--budget",
+        default=None,
+        choices=["strict", "warn", "off"],
+        dest="budget_mode",
+        help="Token budget enforcement mode.",
+    )
+    install_parser.add_argument(
+        "--phase-budget",
+        type=int,
+        default=None,
+        dest="phase_budget",
+        help="Token budget per phase (default: 8000).",
+    )
+    install_parser.add_argument(
+        "--git",
+        default=None,
+        choices=["none", "single_pr", "stacked_prs"],
+        dest="git_mode",
+        help="Git work strategy.",
+    )
+    install_parser.add_argument(
+        "--scope",
+        default=None,
+        choices=["global", "workspace"],
+        help="Config scope (global or workspace).",
+    )
+    install_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        dest="dry_run",
+        help="Print the install plan without making any changes.",
+    )
 
     onboard_parser = subparsers.add_parser("onboard", help=argparse.SUPPRESS)
     onboard_parser.add_argument("root", nargs="?", default=".", help="Project root.")
@@ -491,7 +681,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "scope",
         nargs="?",
         default="runtime",
-        choices=["runtime", "security", "project", "providers", "tokens", "tools", "deep"],
+        choices=[
+            "runtime",
+            "security",
+            "project",
+            "providers",
+            "tokens",
+            "tools",
+            "graph",
+            "deep",
+            "metaharness",
+        ],
     )
     doctor_parser.add_argument("--suggest-ignore", action="store_true")
     doctor_parser.add_argument(
@@ -523,6 +723,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--incremental", action="store_true", help="Scaffold incremental mode."
     )
     index_parser.add_argument("--mode", choices=["normal", "deep"], default="normal")
+    index_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit a machine-readable JSON index report (N1/AVH-018).",
+    )
     watch_parser = subparsers.add_parser(
         "watch",
         help=argparse.SUPPRESS,
@@ -677,6 +882,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     recall_parser.add_argument("--root", default=".", help="Project root.")
     recall_parser.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    eval_subparsers.add_parser(
+        "report", help="Summarize persisted AI-evaluation records (personas/skills/harnesses)."
+    )
+    eval_compare = eval_subparsers.add_parser(
+        "compare", help="Diff two AI-evaluation records by id and flag regressions."
+    )
+    eval_compare.add_argument("old", help="Old record file (JSON).")
+    eval_compare.add_argument("new", help="New record file (JSON).")
+
     workflows_parser = subparsers.add_parser("workflows", help=argparse.SUPPRESS)
     workflows_sub = workflows_parser.add_subparsers(dest="workflows_command", required=True)
     workflows_sub.add_parser("list", help="List local workflow packs.")
@@ -712,6 +927,27 @@ def _build_parser() -> argparse.ArgumentParser:
     add_uninstall_parser(subparsers)
     add_stack_parser(subparsers)
     add_profile_parser(subparsers)
+    add_receipt_parser(subparsers)
+    add_run_exec_parser(subparsers)
+    add_run_parser(subparsers)
+    add_simulate_parser(subparsers)
+    add_session_parser(subparsers)
+    add_maturity_parser(subparsers)
+    add_decisions_parser(subparsers)
+    # decision-log: thin alias over the shipped `decisions` Decision Log (CLI-CONV).
+    decision_log_parser = subparsers.add_parser(
+        "decision-log", help="List/show a run's Runtime Brain decisions (alias of `decisions`)."
+    )
+    decision_log_parser.add_argument(
+        "run_id", nargs="?", default=None, help="Run ID (omit to list runs with decisions)."
+    )
+    decision_log_parser.add_argument("--root", default=None, help="Project root.")
+    decision_log_parser.add_argument("--json", action="store_true", help="JSON output.")
+    add_policy_parser(subparsers)
+    add_oc_new_parser(subparsers)
+    add_capabilities_parser(subparsers)
+    add_studio_parser(subparsers)
+    add_aicx_parser(subparsers)
     add_models_parser(subparsers)
     add_persona_parser(subparsers)
     add_sync_parser(subparsers)
@@ -719,6 +955,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_verify_parser(subparsers)
     add_update_parser(subparsers)
     add_upgrade_parser(subparsers)
+    add_engram_parser(subparsers)
     # ── Advanced ──────────────────────────────────────────────────────
     add_benchmark_parser(subparsers)
     add_skill_parser(subparsers)
@@ -808,7 +1045,22 @@ def _build_parser() -> argparse.ArgumentParser:
     release_sub = release_parser.add_subparsers(dest="release_command", required=True)
     release_audit = release_sub.add_parser("audit", help="Audit release artifacts.")
     release_audit.add_argument("--dist", default=".")
-    release_sub.add_parser("gate", help="Run release gate.")
+    release_sub.add_parser("gate", help="Run release gate (leak scan + DoD regression gates).")
+    release_acceptance = release_sub.add_parser(
+        "acceptance", help="Evaluate the doc-57 1.0 acceptance gates (A/B/C/D) honestly."
+    )
+    release_acceptance.add_argument("--root", default=".", help="Repo root.")
+    release_acceptance.add_argument(
+        "--smoke", action="store_true", help="Run the benchmark smoke subset."
+    )
+    release_acceptance.add_argument(
+        "--json", action="store_true", help="JSON output (the default for this command)."
+    )
+    release_acceptance.add_argument(
+        "--release",
+        action="store_true",
+        help="Release mode: an unproven e2e DoD gate FAILS (not NOT_MEASURED).",
+    )
     release_evidence = release_sub.add_parser("evidence", help="Create release evidence.")
     release_evidence.add_argument("--dist", default=".")
     release_evidence.add_argument("--output", default=".opencontext/reports/release-evidence.json")
@@ -874,6 +1126,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "When active, rules from .opencontext/privacy.yaml are enforced.",
     )
     harness_run.add_argument("--json", action="store_true", help="Output results as JSON.")
+    harness_run.add_argument(
+        "--resume",
+        default=None,
+        metavar="RUN_ID",
+        help="Resume a prior run: skip phases that already completed in RUN_ID.",
+    )
 
     harness_list = harness_sub.add_parser(
         "list",
@@ -912,6 +1170,13 @@ def _build_parser() -> argparse.ArgumentParser:
     workflow_resume = workflow_sub.add_parser("resume", help="Resume a paused workflow run.")
     workflow_resume.add_argument("run_id", help="Run ID or path to saved state.json.")
     workflow_resume.add_argument("--root", default=".", help="Project root.")
+
+    # UX façade verbs — delegated to OcNewConductor / OcNewStore / AgenticReceipt.
+    # Mounted under the existing ``workflow`` namespace to avoid colliding with the
+    # top-level ``status`` (main.py:1175) and ``approvals approve`` (main.py:1080).
+    from opencontext_cli.commands.ux_cmd import add_workflow_ux_parser
+
+    add_workflow_ux_parser(workflow_sub)
 
     preset_parser = subparsers.add_parser("preset", help="Workflow preset management.")
     preset_sub = preset_parser.add_subparsers(dest="preset_command", required=True)
@@ -1043,6 +1308,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "import", help="Import memory from an exported JSON file (skips existing ids)."
     )
     memory_import.add_argument("path", help="Path to an exported memory JSON file.")
+    add_memory_benchmark_parser(memory_sub)
+    add_migrate_subparser(memory_sub, "memory", extras=("audit",))
+
+    version_parser = subparsers.add_parser(
+        "version", help="Show the aggregate runtime/schema version block."
+    )
+    version_parser.add_argument("--json", action="store_true", help="Emit JSON (CI-friendly).")
+    add_output_flag(version_parser)
 
     status_parser = subparsers.add_parser("status", help="Show project status.")
     status_parser.add_argument("root", nargs="?", default=".", help="Project root.")
@@ -1055,9 +1328,13 @@ def _build_parser() -> argparse.ArgumentParser:
     add_bridges_parser(subparsers)
     add_routes_parser(subparsers)
     add_telemetry_parser(subparsers)
+    add_health_parser(subparsers)
     add_contract_commands(subparsers)
+    add_architecture_parser(subparsers)
     add_mutation_commands(subparsers)
     add_bytecode_commands(subparsers)
+    add_evolve_parser(subparsers)
+    add_learn_parser(subparsers)
 
     # Additive shorthand namespaces. The flat commands keep working; these are
     # extra entry points that resolve to the same parser (see _ALIAS_TARGETS).
@@ -1159,6 +1436,7 @@ def _dispatch(args: argparse.Namespace) -> None:
             security_mode=getattr(args, "security_mode", None),
             tdd=getattr(args, "tdd", None),
             agent=getattr(args, "agent", None),
+            profile=getattr(args, "profile", None),
         )
         return
     if command == "install":
@@ -1207,6 +1485,14 @@ def _dispatch(args: argparse.Namespace) -> None:
     if command == "agent":
         _agent(args.agent_command, args.target, args.root, args.force)
         return
+    if command == "version":
+        from opencontext_cli.output import OutputMode as _CliOutputMode
+        from opencontext_cli.output import resolve_output_mode
+
+        if resolve_output_mode(args) is _CliOutputMode.json:
+            raise SystemExit(handle_version())  # pure JSON to stdout
+        _version_human()
+        raise SystemExit(0)
     if command == "memory":
         _memory(args)
         return
@@ -1229,13 +1515,19 @@ def _dispatch(args: argparse.Namespace) -> None:
             getattr(args, "privacy_profile", "off"),
             getattr(args, "json", False),
             getattr(args, "run_id", None),
+            getattr(args, "resume", None),
         )
         return
     if command == "workflow":
-        if getattr(args, "workflow_command", None) == "resume":
+        wf_cmd = getattr(args, "workflow_command", None)
+        if wf_cmd == "resume":
             _workflow_resume(getattr(args, "run_id", ""), getattr(args, "root", "."))
+        elif wf_cmd in {"start", "status", "approve", "receipt", "explain"}:
+            from opencontext_cli.commands.ux_cmd import handle_workflow_ux
+
+            handle_workflow_ux(args)
         else:
-            _unreachable(args.workflow_command)
+            _unreachable(wf_cmd)
         return
     if command == "preset":
         _preset(
@@ -1310,6 +1602,9 @@ def _dispatch(args: argparse.Namespace) -> None:
     if command == "telemetry":
         handle_telemetry(args)
         return
+    if command == "health":
+        handle_health(args)
+        return
     if command == "status":
         _status(getattr(args, "root", "."))
         return
@@ -1333,6 +1628,51 @@ def _dispatch(args: argparse.Namespace) -> None:
         return
     if command == "profile":
         sys.exit(handle_profile(args))
+    if command == "receipt":
+        handle_receipt(args)
+        return
+    if command == "run":
+        handle_run_exec(args)
+        return
+    if command == "runs":
+        handle_run_inspect(args)
+        return
+    if command == "simulate":
+        handle_simulate(args)
+        return
+    if command == "session":
+        handle_session(args)
+        return
+    if command == "maturity":
+        handle_maturity(args)
+        return
+    if command == "decisions":
+        handle_decisions(args)
+        return
+    if command == "decision-log":
+        # Alias surface for the shipped `decisions` Decision Log (CLI-CONV).
+        # `decision-log <run_id>` -> `decisions show <run_id>`; bare -> `list`.
+        if getattr(args, "run_id", None):
+            args.decisions_action = "show"
+        else:
+            args.decisions_action = "list"
+        handle_decisions(args)
+        return
+    if command == "policy":
+        handle_policy(args)
+        return
+    if command == "oc-new":
+        handle_oc_new(args)
+        return
+    if command == "capabilities":
+        handle_capabilities(args)
+        return
+    if command == "studio":
+        handle_studio(args)
+        return
+    if command == "aicx":
+        handle_aicx(args)
+        return
     if command == "models":
         sys.exit(handle_models(args))
     if command == "persona":
@@ -1356,7 +1696,7 @@ def _dispatch(args: argparse.Namespace) -> None:
             from opencontext_core.skills.registry import refresh as _skill_refresh
 
             _sr_out = _skill_refresh(_sr_root)
-            print(f"Skill registry written: {_sr_out}")
+            console.success(f"Skill registry written: {_sr_out}")
         return
     if command == "sync":
         handle_sync(args)
@@ -1370,17 +1710,33 @@ def _dispatch(args: argparse.Namespace) -> None:
     if command == "upgrade":
         handle_upgrade(args)
         return
+    if command == "engram":
+        sys.exit(handle_engram(args))
     if command == "contract":
         sys.exit(handle_contract(args))
+    if command == "architecture":
+        sys.exit(handle_architecture(args))
     if command == "mutation":
         sys.exit(handle_mutation(args))
     if command == "loop":
-        return sys.exit(handle_loop(args, config=None))
+        sys.exit(handle_loop(args, config=None))
     if command == "bytecode":
-        return sys.exit(handle_bytecode(args))
-    runtime = _runtime(args.config)
+        sys.exit(handle_bytecode(args))
+    if command == "evolve":
+        handle_evolve(args)
+        return
+    if command == "learn":
+        handle_learn(args)
+        return
+    # `index` persists the graph/manifest under the *root* argument, so it needs a
+    # runtime whose storage is anchored there rather than to cwd (BUG: graph wrote
+    # to cwd/.storage when index ran from outside the project).
     if command == "index":
-        _index(runtime, args.root, args.incremental)
+        runtime = _runtime_for_root(args.config, args.root)
+    else:
+        runtime = _runtime(args.config)
+    if command == "index":
+        _index(runtime, args.root, args.incremental, json_output=getattr(args, "json", False))
     elif command == "watch":
         _watch(
             args.root,
@@ -1442,6 +1798,8 @@ def _dispatch(args: argparse.Namespace) -> None:
     elif command == "eval":
         if args.eval_command == "recall":
             _eval_recall(runtime, args.path, args.root, getattr(args, "json", False))
+        elif args.eval_command in {"compare", "report"}:
+            _eval_records(args)
         else:
             _eval(
                 runtime,
@@ -1477,11 +1835,16 @@ def _init(
     security_mode: str | None = None,
     tdd: str | None = None,
     agent: str | None = None,
+    profile: str | None = None,
 ) -> None:
     """Initialize project with wizard or fast template.
 
     When running interactively without overrides, launches the full wizard.
     With --non-interactive or explicit flags, applies settings directly.
+
+    ``profile`` selects a built-in configuration profile (PR-013): the chosen
+    name is written to the config's ``profile`` key at the canonical
+    ``<root>/opencontext.yaml`` path (the B2 location ``run`` reads).
     """
     root = Path.cwd()
 
@@ -1506,21 +1869,56 @@ def _init(
 
         wizard = OnboardingWizard(root=root)
         wizard.run(non_interactive=False, **kwargs)
+        if profile:
+            _apply_profile_to_config(root / "opencontext.yaml", profile)
         return
 
-    # Fast non-interactive path (original behavior)
-    path = Path(config_path)
+    # Fast non-interactive path (original behavior).
+    # When a profile is requested, write to the CANONICAL <root>/opencontext.yaml
+    # (B2 / ADR-A2) so `run` and the resolver read exactly what we wrote.
+    path = (root / "opencontext.yaml") if profile else Path(config_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     config_data = _template_config(template)
+    if profile:
+        config_data["profile"] = profile
     if path.exists():
-        print(f"Config already exists: {path}")
+        console.header("OpenContext Init")
+        console.warning(f"Config already exists: {path}")
         ensure_workspace(Path("."))
+        # Keep the OC state tree (.opencontext/, .storage/) out of git so a
+        # freshly `init`-ed project does not surface ~100 untracked files.
+        OnboardingService._write_gitignore_storage_block(root)
         return
     path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
     ensure_workspace(Path("."))
-    print(f"Created config: {path}")
-    print(f"Template: {template}")
-    print("Workspace: .opencontext/")
+    # Same managed .gitignore block the wizard/install path writes, so `init`
+    # alone never litters the user's repo with untracked OC artifacts.
+    OnboardingService._write_gitignore_storage_block(root)
+    console.header("OpenContext Init")
+    console.success(f"Created config: {path}")
+    console.info(f"Template: {template}")
+    if profile:
+        console.info(f"Profile: {profile}")
+    console.info("Workspace: .opencontext/")
+
+
+def _apply_profile_to_config(config_path: Path, profile: str) -> None:
+    """Set the ``profile`` key on an existing config file written by the wizard.
+
+    Best-effort: keeps the interactive path honouring ``--profile`` without
+    threading config-profile knowledge into the onboarding wizard.
+    """
+    if not config_path.exists():
+        return
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return
+    if not isinstance(data, dict):
+        return
+    data["profile"] = profile
+    config_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    console.info(f"Profile: {profile}")
 
 
 def _runtime(config_path: str) -> OpenContextRuntime:
@@ -1528,6 +1926,25 @@ def _runtime(config_path: str) -> OpenContextRuntime:
     return OpenContextRuntime(
         config_path=str(resolved) if resolved.exists() else None,
         technology_profiles=first_party_profiles(),
+    )
+
+
+def _runtime_for_root(config_path: str, root: str | Path) -> OpenContextRuntime:
+    """Build a runtime whose storage resolves under the indexed *root*, not cwd.
+
+    ``index <root>`` must persist the knowledge graph + manifest under
+    ``<root>/.storage/opencontext``. The default runtime storage path is relative
+    (``.storage/opencontext``), so when ``index`` runs from a different cwd the
+    graph lands under that cwd instead of the project, and a later
+    ``knowledge-graph status`` run from the project finds nothing. Anchoring the
+    storage path to the resolved root fixes that; ``index .`` is unchanged because
+    cwd == root there.
+    """
+    resolved = Path(config_path)
+    return OpenContextRuntime(
+        config_path=str(resolved) if resolved.exists() else None,
+        technology_profiles=first_party_profiles(),
+        storage_path=Path(root).resolve() / ".storage" / "opencontext",
     )
 
 
@@ -1612,8 +2029,8 @@ def _install_wizard(args: Any, console: Any) -> None:
         from opencontext_core.i18n import t as _t
     except Exception:
 
-        def _t(k, **kw):
-            return k  # type: ignore[misc]
+        def _t(k: str, **kw: str) -> str:  # type: ignore[misc]
+            return k
 
     _c.print()
     _EDITORS = [
@@ -1693,7 +2110,7 @@ def _install_wizard(args: Any, console: Any) -> None:
         pass
 
 
-def _print_agent_instructions(agents: list, console: Any) -> None:
+def _print_agent_instructions(agents: list[Any], console: Any) -> None:
     """Print client-specific usage instructions after install."""
     from rich.panel import Panel
 
@@ -1732,12 +2149,72 @@ def _print_agent_instructions(agents: list, console: Any) -> None:
             )
 
 
+def _install_dry_run(args: argparse.Namespace) -> None:
+    """Print the agentic install plan without making any changes."""
+    from opencontext_core.agentic.config import (
+        AgenticFlowConfig,
+        BudgetMode,
+        GitMode,
+        MemoryMode,
+        OpenSpecMode,
+        PresetId,
+    )
+    from opencontext_core.agentic.install_plan import build_install_plan, render_dry_run
+    from opencontext_core.agentic.presets import preset_config
+
+    preset_str = getattr(args, "preset", None)
+    if preset_str:
+        cfg = preset_config(PresetId(preset_str))
+    else:
+        cfg = AgenticFlowConfig()
+
+    # NOTE: Explicit flags take precedence over preset/default (flag > preset > default).
+    overlay: dict[str, object] = {}
+    if getattr(args, "memory_mode", None):
+        overlay["memory_mode"] = MemoryMode(args.memory_mode)
+    if getattr(args, "budget_mode", None):
+        overlay["budget_mode"] = BudgetMode(args.budget_mode)
+    if getattr(args, "git_mode", None):
+        overlay["git_mode"] = GitMode(args.git_mode)
+    if getattr(args, "openspec", None):
+        overlay["openspec_mode"] = OpenSpecMode(args.openspec)
+    if overlay:
+        cfg = cfg.model_copy(update=overlay)
+
+    plan = build_install_plan(cfg)
+    console.header("Install Plan (Dry Run)")
+    # Payload is a pre-rendered multi-line plan — print raw so rich never tries to
+    # parse stray brackets as markup.
+    print(render_dry_run(plan))
+
+
+def _install_provision_engram(args: argparse.Namespace) -> None:
+    """Provision Engram if not already installed."""
+    from opencontext_core.memory.engram_provisioning import EngramProvisioner
+
+    agent = getattr(args, "agent", None)
+    yes = getattr(args, "yes", False)
+    try:
+        EngramProvisioner().install(agent=agent, yes=yes)
+    except RuntimeError as exc:
+        err_console.warning(f"Engram provisioning: {exc}")
+
+
 def _install(args: argparse.Namespace) -> None:
     """Quick project setup wizard with auto-detection and step-by-step progress."""
     from rich.status import Status
 
     from opencontext_core import prompts
     from opencontext_core.dx.console_styles import console
+
+    # NOTE: Handle --dry-run before any side effects.
+    if getattr(args, "dry_run", False):
+        _install_dry_run(args)
+        return
+
+    # NOTE: Handle --install-engram provisioning before the main flow.
+    if getattr(args, "install_engram", False):
+        _install_provision_engram(args)
 
     try:
         console.clear()
@@ -1785,11 +2262,14 @@ def _install(args: argparse.Namespace) -> None:
         console.print(f"  [bold]Stack:[/]   {', '.join(detected)}")
     console.print()
 
-    tdd = "strict" if has_pytest else "ask"
+    tdd = getattr(args, "tdd", None) or ("strict" if has_pytest else "ask")
+    flow = getattr(args, "flow", "oc-new") or "oc-new"
+    agent_arg = getattr(args, "agent", None)
     console.print("  Will configure:")
     console.print("    • Project index + knowledge graph")
     console.print(f"    • SDD/TDD (mode: {tdd})")
-    console.print("    • Agent integration (your installed agents)")
+    console.print(f"    • Agent integration ({agent_arg or 'auto-detect'})")
+    console.print(f"    • Flow: {flow}")
     console.print("    • Harness workflow")
     console.print()
 
@@ -1818,8 +2298,8 @@ def _install(args: argparse.Namespace) -> None:
 
     # Honor the editor the wizard asked about. Previously hard-coded to "opencode",
     # so a claude-code/codex dev got opencode files and no wiring for their own agent.
-    _chosen_editor = os.environ.get("_OC_WIZARD_EDITOR", "").strip()
-    _have_editor = bool(_chosen_editor) and _chosen_editor != "other"
+    _chosen_editor = agent_arg or os.environ.get("_OC_WIZARD_EDITOR", "").strip()
+    _have_editor = bool(_chosen_editor) and _chosen_editor not in ("other", "generic")
     if _have_editor:
         active_clients = [_chosen_editor]
     else:
@@ -1841,6 +2321,7 @@ def _install(args: argparse.Namespace) -> None:
         sdd_model_profile=_sdd_profile,
         orchestrator_profile="opencontext",
         token_budget_per_phase=3000,
+        workspace_only=(getattr(args, "scope", None) == "workspace"),
     )
     _msg = "Setting up project (config, index, SDD, agents, harness)..."
     with Status(_msg, console=console, spinner="dots"):  # type: ignore[arg-type]
@@ -1862,20 +2343,26 @@ def _install(args: argparse.Namespace) -> None:
         summary.append(f"⚠ Skill install: {exc}")
 
     # Global agent integration (MCP) — once per machine.
-    if mgr._is_installed():
-        summary.append("✓ Global integration (already installed)")
-    else:
-        try:
-            installer = _AgentInstaller(project_root=root)
-            detected = installer.detect_installed_agents()
-            report = installer.install(targets=detected, location="global")
-            mgr._save_state(
-                InstallState(version=mgr.VERSION, components=["agents"], agents=list(detected))
-            )
-            n = report.get("agents_configured", 0)
-            summary.append(f"✓ Global integration ({n} agent(s))" if n else "✓ Global integration")
-        except Exception as exc:
-            summary.append(f"⚠ Global integration: {exc}")
+    # Skipped when --scope workspace is passed to avoid writing to global paths.
+    if getattr(args, "scope", None) != "workspace":
+        if mgr._is_installed():
+            summary.append("✓ Global integration (already installed)")
+        else:
+            try:
+                installer = _AgentInstaller(project_root=root)
+                agent_targets = installer.detect_installed_agents()
+                report = installer.install(targets=agent_targets, location="global")
+                mgr._save_state(
+                    InstallState(
+                        version=mgr.VERSION, components=["agents"], agents=list(agent_targets)
+                    )
+                )
+                n = report.get("agents_configured", 0)
+                summary.append(
+                    f"✓ Global integration ({n} agent(s))" if n else "✓ Global integration"
+                )
+            except Exception as exc:
+                summary.append(f"⚠ Global integration: {exc}")
 
     try:
         from opencontext_core.doctor.checks import run_doctor
@@ -1894,13 +2381,36 @@ def _install(args: argparse.Namespace) -> None:
     for line in summary:
         console.print(f"  [{'green' if line.startswith('✓') else 'yellow'}]{line}[/]")
 
+    # Capability-aware next-step
+    try:
+        from opencontext_core.configurator.capability import build_capability_matrix
+
+        cap_matrix = build_capability_matrix()
+        _target_agent = active_clients[0] if active_clients else "claude-code"
+        _cap = cap_matrix.get(_target_agent)
+        _rec_flow = _cap.recommended_flow if _cap else flow
+        _supports_oc_new = _rec_flow == "native_oc_new"
+        _supports_mcp = _cap.mcp if _cap else True
+        _supports_sampling = _cap.supports_sampling if _cap else False
+        summary.append(
+            f"✓ Capability report: {_target_agent} → flow={_rec_flow}"
+            + (" (MCP)" if _supports_mcp else "")
+            + (" (sampling)" if _supports_sampling else "")
+        )
+    except Exception:
+        _supports_oc_new = flow == "oc-new"
+
     console.print()
     console.print("[bold]Next steps:[/]")
     console.print(
         "  [yellow]↻ Restart your agent (Claude Code / Codex / OpenCode) so it loads "
         "the OpenContext MCP server.[/]"
     )
-    console.print("  [cyan]opencontext harness run --workflow sdd --task 'Your task'[/]")
+    if _supports_oc_new:
+        console.print("  [cyan]/oc-new your task description[/]  ← start a new change")
+        console.print("  [cyan]opencontext oc-new status[/]       ← check run state")
+    else:
+        console.print("  [cyan]opencontext harness run --workflow sdd --task 'Your task'[/]")
     console.print("  [cyan]opencontext config wizard[/]")
     console.print("  [cyan]opencontext pack . --query 'Explain this code' --copy[/]")
     console.print()
@@ -1931,16 +2441,26 @@ def _install(args: argparse.Namespace) -> None:
     console.print("[dim]For help: opencontext --help[/]")
 
 
-def _index(runtime: OpenContextRuntime, root: str, incremental: bool = False) -> None:
+def _index(
+    runtime: OpenContextRuntime,
+    root: str,
+    incremental: bool = False,
+    *,
+    json_output: bool = False,
+) -> None:
+    if json_output:
+        _index_json(runtime, root)
+        return
     manifest = runtime.index_project(root)
-    print(f"Indexed project: {manifest.project_name}")
-    print(f"Root: {manifest.root}")
-    print(f"Files: {len(manifest.files)}")
-    print(f"Symbols: {len(manifest.symbols)}")
-    print(f"Technology profiles: {', '.join(manifest.technology_profiles)}")
-    print("Manifest: .storage/opencontext/project_manifest.json")
+    console.header("Index")
+    console.success(f"Indexed project: {manifest.project_name}")
+    console.info(f"Root: {manifest.root}")
+    console.info(f"Files: {len(manifest.files)}")
+    console.info(f"Symbols: {len(manifest.symbols)}")
+    console.info(f"Technology profiles: {', '.join(manifest.technology_profiles)}")
+    console.info("Manifest: .storage/opencontext/project_manifest.json")
     if incremental:
-        print("Incremental mode scaffold active in v0.1.")
+        console.info("Incremental mode scaffold active in v0.1.")
 
     # Auto-verify after index to catch index rot early
     try:
@@ -1949,13 +2469,45 @@ def _index(runtime: OpenContextRuntime, root: str, incremental: bool = False) ->
         checks = run_doctor(runtime.config)
         failed = [c for c in checks if not c.ok]
         if failed:
-            print(
-                f"\nVerify: {len(failed)} issue(s) detected — run 'opencontext doctor' for details."
+            console.warning(
+                f"Verify: {len(failed)} issue(s) detected — run 'opencontext doctor' for details."
             )
         else:
-            print(f"Verify: {len(checks)} checks passed.")
+            console.success(f"Verify: {len(checks)} checks passed.")
     except Exception:
         pass
+
+
+def _index_json(runtime: OpenContextRuntime, root: str) -> None:
+    """Emit a machine-readable index report (N1 / AVH-018).
+
+    On success: ``{indexed_files, symbol_count, duration_s, status: "ok", error: null}``.
+    On failure: ``{..., status: "error", error: "<message>"}`` with a non-zero exit.
+    Human-readable output stays the default; this branch prints ONLY the JSON object.
+    """
+    import time
+
+    start = time.perf_counter()
+    try:
+        manifest = runtime.index_project(root)
+    except Exception as exc:
+        report = {
+            "indexed_files": 0,
+            "symbol_count": 0,
+            "duration_s": round(time.perf_counter() - start, 3),
+            "status": "error",
+            "error": str(exc),
+        }
+        print(json.dumps(report))
+        raise SystemExit(1) from exc
+    report = {
+        "indexed_files": len(manifest.files),
+        "symbol_count": len(manifest.symbols),
+        "duration_s": round(time.perf_counter() - start, 3),
+        "status": "ok",
+        "error": None,
+    }
+    print(json.dumps(report))
 
 
 def _watch(
@@ -1975,52 +2527,56 @@ def _watch(
     config_path = _default_config_path()
 
     if not project_root.exists():
-        print(f"Error: path does not exist: {project_root}", file=sys.stderr)
+        eprint(f"path does not exist: {project_root}")
         raise SystemExit(1)
 
-    print(f"OpenContext Watch — {project_root}")
-    print(f"  Mode: {'polling' if poll else 'watchdog (OS-native)'}")
-    print(f"  Debounce: {debounce}s")
-    print("  Press Ctrl+C to stop.")
-    print()
+    console.header("OpenContext Watch")
+    console.info(f"Path: {project_root}")
+    console.info(f"Mode: {'polling' if poll else 'watchdog (OS-native)'}")
+    console.info(f"Debounce: {debounce}s")
+    console.dim("Press Ctrl+C to stop.")
+    console.print()
 
     # Use a mutable container so the closure can update it
     runtime_holder: list[OpenContextRuntime | None] = [None]
 
-    # Index once at startup
+    # Index once at startup. Anchor storage to the watched root (same root-relative
+    # fix as `index`) so the graph is persisted under the project, not under cwd.
     try:
-        runtime_holder[0] = _runtime(config_path)
+        runtime_holder[0] = _runtime_for_root(config_path, project_root)
         rt = runtime_holder[0]
         assert rt is not None, "runtime failed to initialize"
         manifest = rt.index_project(project_root)
-        print(f"  Initial index: {len(manifest.files)} files, {len(manifest.symbols)} symbols")
+        console.success(
+            f"Initial index: {len(manifest.files)} files, {len(manifest.symbols)} symbols"
+        )
     except Exception as exc:
-        print(f"  Warning: initial index failed: {exc}", file=sys.stderr)
+        err_console.warning(f"initial index failed: {exc}")
 
     def _reindex(changed: set[str] | None) -> None:
         """Incrementally re-index changed files, or full rebuild when changed is None."""
         rt = runtime_holder[0]
         if rt is None:
             try:
-                rt = _runtime(config_path)
+                rt = _runtime_for_root(config_path, project_root)
                 runtime_holder[0] = rt
             except Exception as exc:
-                print(f"  Re-index failed (runtime init error): {exc}", file=sys.stderr)
+                eprint(f"Re-index failed (runtime init error): {exc}")
                 return
         try:
             if changed:
                 stats = rt.reindex_files(changed, project_root)
-                print(
-                    f"  Re-indexed {stats.get('files', 0)} file(s)"
+                console.success(
+                    f"Re-indexed {stats.get('files', 0)} file(s)"
                     f" — {stats.get('nodes', 0)} nodes, {stats.get('edges', 0)} edges"
                 )
             else:
                 manifest = rt.index_project(project_root)
-                print(
-                    f"  Full re-index: {len(manifest.files)} files, {len(manifest.symbols)} symbols"
+                console.success(
+                    f"Full re-index: {len(manifest.files)} files, {len(manifest.symbols)} symbols"
                 )
         except Exception as exc:
-            print(f"  Re-index failed: {exc}", file=sys.stderr)
+            eprint(f"Re-index failed: {exc}")
 
     # Set up watch service
     service = WatchService(
@@ -2036,7 +2592,8 @@ def _watch(
     shutdown_event = threading.Event()
 
     def _handle_sigint(signum: int, _frame: object) -> None:
-        print("\nShutting down...")
+        console.print()
+        console.info("Shutting down...")
         shutdown_event.set()
 
     signal.signal(signal.SIGINT, _handle_sigint)
@@ -2047,7 +2604,7 @@ def _watch(
         pass
     finally:
         service.stop()
-        print("Watch service stopped.")
+        console.success("Watch service stopped.")
 
 
 def _onboard(
@@ -2175,7 +2732,8 @@ def _onboard(
 def _instructions(action: str) -> None:
     items = import_instructions(Path("."))
     if action == "import":
-        print(f"Imported {len(items)} instruction file(s).")
+        # Status to stderr so stdout stays a clean JSON document.
+        err_console.success(f"Imported {len(items)} instruction file(s).")
     print(
         json.dumps([{"source": item.source, "trusted": item.trusted} for item in items], indent=2)
     )
@@ -2188,7 +2746,7 @@ def _clarify(idea: str, output: str | None) -> None:
 
         idea = prompts.text("Describe your idea or feature").strip()
     if not idea:
-        print("No idea provided.")
+        err_console.warning("No idea provided.")
         return
 
     brief = f"""# Clarification Brief
@@ -2234,8 +2792,9 @@ opencontext loop --task "<objective>" --flow full
 """
     if output:
         Path(output).write_text(brief, encoding="utf-8")
-        print(f"Brief written: {output}")
+        console.success(f"Brief written: {output}")
     else:
+        # Payload (markdown brief) — print raw so rich never parses its brackets.
         print(brief)
 
 
@@ -2354,6 +2913,11 @@ def _doctor(
 ) -> None:
     from opencontext_core.dx.console_styles import console
 
+    # ── MetaHarness ───────────────────────────────────────────────────
+    if scope == "metaharness":
+        handle_doctor_metaharness(type("Args", (), {"json_output": json_output})())
+        return
+
     # ── Deep Diagnostics ──────────────────────────────────────────────
     if scope == "deep":
         from opencontext_core.doctor.deep import run_deep_diagnostics
@@ -2416,10 +2980,97 @@ def _doctor(
             console.print(f"\n[bold red]✗ {report.failures} diagnostic(s) failed[/bold red]")
         return
 
+    # ── Graph health ──────────────────────────────────────────────────
+    if scope == "graph":
+        from opencontext_core.indexing.graph_health import compute_graph_health
+
+        graph_report = compute_graph_health(".storage/opencontext/context_graph.db")
+
+        if json_output:
+            json.dump(graph_report.model_dump(), sys.stdout, indent=2)
+            sys.stdout.write("\n")
+            sys.exit(0 if graph_report.ok() else 1)
+
+        console.header("Graph Health")
+        style = {
+            "healthy": "green",
+            "degraded": "yellow",
+            "empty": "yellow",
+            "unavailable": "red",
+        }.get(graph_report.status, "white")
+        console.print(f"Status: [{style}]{graph_report.status}[/]")
+        console.table(
+            "Graph Metrics",
+            ["Metric", "Value"],
+            [
+                ["Nodes", str(graph_report.nodes)],
+                ["Edges", str(graph_report.edges)],
+                ["Files", str(graph_report.files)],
+                ["Orphan symbols", str(graph_report.orphan_symbols)],
+                ["Dangling edges", str(graph_report.dangling_edges)],
+                [
+                    "Languages",
+                    ", ".join(f"{k}:{v}" for k, v in graph_report.languages.items()) or "-",
+                ],
+            ],
+        )
+        for warning in graph_report.warnings:
+            console.warning(warning)
+        if strict and not graph_report.ok():
+            sys.exit(1)
+        return
+
     # ── Standard scopes ───────────────────────────────────────────────
     checks = (
         run_security_doctor(runtime.config) if scope == "security" else run_doctor(runtime.config)
     )
+
+    # CI-friendly JSON: pure JSON to stdout, no logo/panel/human text.
+    if json_output:
+        payload: dict[str, Any]
+        if scope == "tokens":
+            tr = build_token_report(Path("."))
+            payload = {
+                "scope": scope,
+                "indexable_files": tr.baseline_indexable_files,
+                "total_tokens": tr.total_indexable_tokens,
+                "raw_characters": tr.baseline_raw_character_count,
+                "compression_savings": tr.compression_savings,
+                "cache_savings": tr.cache_savings,
+            }
+        elif scope == "providers":
+            payload = {
+                "scope": scope,
+                "default_provider": "mock/mock-llm",
+                "external_providers": "disabled",
+            }
+        elif scope == "tools":
+            payload = {
+                "scope": scope,
+                "mcp_enabled": runtime.config.tools.mcp.enabled,
+                "native_enabled": runtime.config.tools.native.enabled,
+            }
+        else:
+            rows = [
+                {
+                    "name": getattr(c, "name", "unknown"),
+                    "ok": bool(getattr(c, "ok", False)),
+                    "details": getattr(c, "details", ""),
+                }
+                for c in checks
+            ]
+            passed_n = sum(1 for r in rows if r["ok"])
+            payload = {
+                "scope": scope,
+                "checks": rows,
+                "passed": passed_n,
+                "failed": len(rows) - passed_n,
+            }
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        if strict and int(payload.get("failed", 0)):
+            sys.exit(1)
+        return
 
     console.header(f"Doctor Check: {scope}")
 
@@ -2505,16 +3156,18 @@ def _clean(root: str, dry_run: bool, force: bool) -> None:
         if path.exists():
             candidates.append(path)
 
+    console.header("Clean")
     if not candidates:
-        print("No OpenContext data found.")
+        console.info("No OpenContext data found.")
         return
 
-    print(f"OpenContext data in {project_root}:")
+    console.section(f"OpenContext data in {project_root}")
     for c in candidates:
-        print(f"  - {c}")
+        console.print(f"  - {c}")
 
     if dry_run:
-        print("\nDry run: no files were removed.")
+        console.print()
+        console.info("Dry run: no files were removed.")
         return
 
     # confirm (unless --force)
@@ -2522,7 +3175,7 @@ def _clean(root: str, dry_run: bool, force: bool) -> None:
         from opencontext_core import prompts
 
         if not prompts.confirm("Remove all OpenContext data?", default=False):
-            print("Aborted.")
+            console.warning("Aborted.")
             return
 
     for c in candidates:
@@ -2531,7 +3184,8 @@ def _clean(root: str, dry_run: bool, force: bool) -> None:
         else:
             c.unlink(missing_ok=True)
 
-    print(f"\nRemoved {len(candidates)} items.")
+    console.print()
+    console.success(f"Removed {len(candidates)} items.")
 
 
 def _tokens(
@@ -2551,7 +3205,7 @@ def _tokens(
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rendered, encoding="utf-8")
-        print(f"Wrote token report: {path}")
+        console.success(f"Wrote token report: {path}")
         return
     print(rendered)
 
@@ -2596,7 +3250,7 @@ def _security(
             path = Path(output_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
-            print(f"Wrote security scan: {path}")
+            console.success(f"Wrote security scan: {path}")
             return
         if json_out:
             print(result.model_dump_json(indent=2))
@@ -2604,14 +3258,17 @@ def _security(
         # Human-readable output
         findings = result.findings
         warnings = getattr(result, "warnings", [])
+        console.header("Security Scan")
         if not findings:
-            print("✓ No secret leakage patterns found.")
+            console.success("No secret leakage patterns found.")
         else:
-            print(f"Security Scan — {len(findings)} finding(s)\n")
+            console.warning(f"{len(findings)} finding(s)")
+            # Findings/warnings are arbitrary text — print raw so rich never tries
+            # to parse stray brackets as markup.
             for f in findings:
-                print(f"  ⚠  {f}")
+                print(f"  ! {f}")
         for w in warnings:
-            print(f"\n  i  {w}")
+            print(f"  i {w}")
         return
     _unreachable(action)
 
@@ -2733,11 +3390,13 @@ def _agent_context(
     content = "\n".join(parts)
     if copy:
         copied = _copy_to_clipboard(content)
-        print(
-            "  ✓ Copied to clipboard."
-            if copied
-            else "  ✗ No clipboard (install xclip or wl-clipboard). Printed output instead."
-        )
+        if copied:
+            err_console.success("Copied to clipboard.")
+        else:
+            err_console.warning(
+                "No clipboard (install xclip or wl-clipboard). Printed output instead."
+            )
+    # Payload (markdown context) — print raw so rich never parses its brackets.
     print(content)
 
 
@@ -2815,7 +3474,7 @@ def _setup_mcp_for_opencode() -> None:
             pass
 
     mcp_config_path.write_text(json.dumps(mcp_config, indent=2), encoding="utf-8")
-    print(f"MCP config written to: {mcp_config_path}")
+    console.success(f"MCP config written to: {mcp_config_path}")
 
 
 def _prompt(args: argparse.Namespace, config_path: str) -> None:
@@ -2859,7 +3518,7 @@ def _prompt(args: argparse.Namespace, config_path: str) -> None:
             path = Path(args.output)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(rendered, encoding="utf-8")
-            print(f"Wrote prompt/context SBOM: {path}")
+            console.success(f"Wrote prompt/context SBOM: {path}")
             return
         print(rendered)
         return
@@ -2884,13 +3543,79 @@ def _release(args: argparse.Namespace) -> None:
         print(report.model_dump_json(indent=2))
         return
     if args.release_command == "gate":
+        from opencontext_core.operating_model.release_gate import (
+            ReleaseBaselineStore,
+            ReleaseGateRunner,
+            ReleaseMetrics,
+        )
+
         report = ReleaseLeakScanner().scan(".")
+        # The four DoD regression gates vs a stored baseline (first run seeds it).
+        store = ReleaseBaselineStore(Path(".opencontext/release-baseline.json"))
+        baseline = store.load()
+        current = ReleaseMetrics()
+        dod = ReleaseGateRunner().evaluate(current, baseline)
+        if baseline is None:
+            store.save(current)
+        blocked_dod = [g for g in dod if g.status.value == "failed"]
         payload = {
-            "status": "blocked" if report.blocked else "passed",
-            "blocked": report.blocked,
-            "findings": [finding.model_dump(mode="json") for finding in report.findings],
+            "status": "blocked" if (report.blocked or blocked_dod) else "passed",
+            "blocked": bool(report.blocked or blocked_dod),
+            "leak_findings": [finding.model_dump(mode="json") for finding in report.findings],
+            "dod_gates": [g.model_dump(mode="json") for g in dod],
         }
         print(json.dumps(payload, indent=2))
+        if payload["blocked"]:
+            raise SystemExit(1)
+        return
+    if args.release_command == "acceptance":
+        from opencontext_core.operating_model.release_gate import (
+            AcceptanceEvaluator,
+            ReleaseBaselineStore,
+            ReleaseGateRunner,
+            ReleaseMetrics,
+            read_ci_gates,
+            read_dod_proof,
+            read_release_evidence,
+        )
+
+        root = Path(getattr(args, "root", "."))
+        # VDM-006/007: inject measured evidence so the C/B/D gates report MET from real
+        # signals. Anything not supplied stays honestly NOT_MEASURED — never faked.
+        functional, governance = read_release_evidence(root)
+        regression = read_ci_gates(root)
+        e2e_proof = read_dod_proof(root)
+        # VDM-006 / REL-11: the four DoD baseline-delta gates vs a stored baseline
+        # (the first run seeds the baseline and passes without blocking).
+        baseline_store = ReleaseBaselineStore(root / ".opencontext" / "release-baseline.json")
+        baseline = baseline_store.load()
+        current = ReleaseMetrics()
+        dod_gates = ReleaseGateRunner().evaluate(current, baseline)
+        if baseline is None:
+            baseline_store.save(current)
+        verdict = AcceptanceEvaluator(repo_root=root).evaluate(
+            bench_root=getattr(args, "root", "."),
+            smoke=getattr(args, "smoke", False),
+            release_mode=getattr(args, "release", False),
+            functional=functional or None,
+            governance=governance or None,
+            regression=regression or None,
+            dod_gates=dod_gates,
+            e2e_proof=e2e_proof,
+        )
+        rendered = verdict.model_dump_json(indent=2)
+        print(rendered)
+        # Persist the last verdict so read-only Studio can surface the release-gate
+        # panel (N2/AVH-019) without re-running the evaluator.
+        try:
+            report_path = root / ".opencontext" / "reports" / "acceptance.json"
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(rendered, encoding="utf-8")
+        except OSError:
+            pass
+        # An honest verdict never blocks on NOT_MEASURED — only a real FAILED gate.
+        if verdict.failed:
+            raise SystemExit(1)
         return
     if args.release_command == "evidence":
         evidence = ReleaseEvidenceBuilder().build(args.dist)
@@ -2898,7 +3623,7 @@ def _release(args: argparse.Namespace) -> None:
         path = Path(args.output)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rendered, encoding="utf-8")
-        print(f"Wrote release evidence: {path}")
+        console.success(f"Wrote release evidence: {path}")
         return
     _unreachable(args.release_command)
 
@@ -2961,6 +3686,7 @@ def _harness(
     privacy_profile: str = "off",
     json_output: bool = False,
     run_id: str | None = None,
+    resume_from: str | None = None,
 ) -> None:
     """Handle harness commands (run, list)."""
     from opencontext_core.harness.models import BudgetMode, PrivacyProfile
@@ -3043,13 +3769,12 @@ def _harness(
         if json_output:
             print(json.dumps(workflows, indent=2))
         else:
-            print("Available Harness Workflows")
-            print("=" * 50)
-            for name, info in workflows.items():
-                print(f"\n  {name}")
-                print(f"    {info['description']}")
-                print(f"    Phases: {' -> '.join(info['phases'])}")
-            print()
+            console.header("Harness Workflows")
+            rows = [
+                [name, str(info["description"]), " -> ".join(info["phases"])]
+                for name, info in workflows.items()
+            ]
+            console.table("Workflows", ["Workflow", "Description", "Phases"], rows)
         return
 
     if command == "run":
@@ -3066,6 +3791,7 @@ def _harness(
                 workflow=workflow,
                 task=task,
                 budget_mode=BudgetMode(budget_mode),
+                resume_from=resume_from,
             )
             output = {
                 "status": "completed",
@@ -3106,28 +3832,31 @@ def _harness(
             if json_output:
                 print(json.dumps(output, indent=2))
             else:
-                print(f"Harness Run: {result.run_id}")
-                print(f"  Workflow: {result.workflow}")
+                console.header("Harness Run")
+                console.success(f"Run: {result.run_id}")
+                console.info(f"Workflow: {result.workflow}")
+                # Task is user-supplied — print raw so rich never parses its brackets.
                 print(f"  Task: {result.task}")
-                print(f"  Status: {result.status}")
+                console.info(f"Status: {result.status}")
                 if privacy_profile != "off":
-                    print(f"  Privacy: {privacy_profile} (enforced)")
-                print(f"  Phases: {len(result.ledgers)}")
-                for ledger in result.ledgers:
-                    status_str = (
-                        ledger.status.value
-                        if hasattr(ledger.status, "value")
-                        else str(ledger.status)
-                    )
-                    print(
-                        f"    {ledger.phase}: {ledger.used_tokens}"
-                        f"/{ledger.budget_tokens} tokens — {status_str}"
-                    )
-                print(f"  Gates: {len(result.gates)}")
-                print(f"  Trace IDs: {len(result.trace_ids)}")
-                if result.warnings:
-                    for w in result.warnings:
-                        print(f"  ⚠ {w}")
+                    console.info(f"Privacy: {privacy_profile} (enforced)")
+                phase_rows = [
+                    [
+                        ledger.phase,
+                        f"{ledger.used_tokens}/{ledger.budget_tokens}",
+                        (
+                            ledger.status.value
+                            if hasattr(ledger.status, "value")
+                            else str(ledger.status)
+                        ),
+                    ]
+                    for ledger in result.ledgers
+                ]
+                console.table("Phases", ["Phase", "Tokens", "Status"], phase_rows)
+                console.info(f"Gates: {len(result.gates)}")
+                console.info(f"Trace IDs: {len(result.trace_ids)}")
+                for w in result.warnings:
+                    console.warning(str(w))
 
             if budget_mode == "strict" and result.status in ("failed",):
                 sys.exit(1)
@@ -3138,10 +3867,10 @@ def _harness(
             if json_output:
                 print(json.dumps(output, indent=2))
             else:
-                print(f"Error: {error_msg}")
+                eprint(error_msg)
                 if hint:
-                    print(f"Hint: {hint}")
-                print("Run 'opencontext harness run --help' for usage.")
+                    err_console.dim(f"Hint: {hint}")
+                err_console.dim("Run 'opencontext harness run --help' for usage.")
     elif command == "report":
         _harness_report(run_id, root=root, json_output=json_output)
     else:
@@ -3161,12 +3890,12 @@ def _harness_report(run_id: str | None, root: str = ".", json_output: bool = Fal
     if run_id:
         target = runs_dir / run_id
         if not target.exists():
-            print(f"Error: Run not found: {run_id}")
+            eprint(f"Run not found: {run_id}")
             return
     else:
         # Find the most recent run by modification time
         if not runs_dir.exists():
-            print("Error: No runs found. Run 'opencontext harness run' first.")
+            eprint("No runs found. Run 'opencontext harness run' first.")
             return
         runs = sorted(
             (d for d in runs_dir.iterdir() if d.is_dir()),
@@ -3174,7 +3903,7 @@ def _harness_report(run_id: str | None, root: str = ".", json_output: bool = Fal
             reverse=True,
         )
         if not runs:
-            print("Error: No runs found. Run 'opencontext harness run' first.")
+            eprint("No runs found. Run 'opencontext harness run' first.")
             return
         target = runs[0]
 
@@ -3196,10 +3925,10 @@ def _harness_report(run_id: str | None, root: str = ".", json_output: bool = Fal
         report_label = "run"
 
     if not report_file:
-        print(f"Error: No report found in {target}")
-        print("Available files:")
+        eprint(f"No report found in {target}")
+        err_console.dim("Available files:")
         for f in sorted(target.iterdir()):
-            print(f"  {f.name}")
+            print(f"  {f.name}", file=sys.stderr)
         return
 
     with open(report_file, encoding="utf-8") as fh:
@@ -3210,68 +3939,74 @@ def _harness_report(run_id: str | None, root: str = ".", json_output: bool = Fal
         return
 
     # Human-readable summary
-    print(f"\n{'=' * 60}")
-    print(f"  Harness Run Report — {target.name}")
-    print(f"  Report: {report_label}")
-    print(f"{'=' * 60}")
+    console.header("Harness Run Report")
+    console.info(f"Run: {target.name}")
+    console.info(f"Report: {report_label}")
 
     if data.get("task"):
-        print(f"\n  Task: {data['task']}")
+        # Task is user-supplied — print raw so rich never parses its brackets.
+        print(f"  Task: {data['task']}")
 
     if "created_at" in data:
-        print(f"  Created: {data['created_at']}")
+        console.info(f"Created: {data['created_at']}")
 
     if "summary" in data:
-        print(f"\n  Summary: {data['summary']}")
+        print(f"  Summary: {data['summary']}")
 
     # Phases table
     if data.get("phases"):
-        print(f"\n  Phases ({len(data['phases'])} completed)")
-        print(f"  {'Phase':<12} {'Status':<10} {'Budget':>8} {'Used':>8}")
-        print(f"  {'-' * 40}")
-        for phase_name, phase_info in data["phases"].items():
-            status = phase_info.get("status", "unknown")
-            budget = phase_info.get("budget_tokens", 0)
-            used = phase_info.get("used_tokens", 0)
-            print(f"  {phase_name:<12} {status:<10} {budget:>7} {used:>7}")
+        console.section(f"Phases ({len(data['phases'])} completed)")
+        phase_rows = [
+            [
+                str(phase_name),
+                str(phase_info.get("status", "unknown")),
+                str(phase_info.get("budget_tokens", 0)),
+                str(phase_info.get("used_tokens", 0)),
+            ]
+            for phase_name, phase_info in data["phases"].items()
+        ]
+        console.table("Phases", ["Phase", "Status", "Budget", "Used"], phase_rows)
 
     # Gates summary
     if "gates" in data:
-        print("\n  Gates")
-        print(f"  {'Passed':<10} {'Warning':<10} {'Failed':<10}")
-        print(f"  {'-' * 32}")
         g = data["gates"]
-        print(f"  {g.get('passed', 0):<10} {g.get('warning', 0):<10} {g.get('failed', 0):<10}")
+        console.section("Gates")
+        console.table(
+            "Gates",
+            ["Passed", "Warning", "Failed"],
+            [[str(g.get("passed", 0)), str(g.get("warning", 0)), str(g.get("failed", 0))]],
+        )
 
     # Warnings
     if data.get("warnings"):
         warnings_list = data["warnings"]
-        print(f"\n  Warnings ({len(warnings_list)})")
+        console.section(f"Warnings ({len(warnings_list)})")
+        # Warning text is arbitrary — print raw so rich never parses its brackets.
         for w in warnings_list[:10]:
-            print(f"    ⚠ {w}")
+            print(f"    ! {w}")
         if len(warnings_list) > 10:
             print(f"    ... and {len(warnings_list) - 10} more")
 
     # Artifacts
     if "artifacts" in data:
         artifacts = data["artifacts"]
-        print(f"\n  Artifacts ({len(artifacts)})")
+        console.section(f"Artifacts ({len(artifacts)})")
         for a in artifacts[:15]:
             kind = a.get("kind", "?")
             phase = a.get("phase", "?")
             path = a.get("path", "")
             short_path = Path(path).name if path else "(none)"
             desc = a.get("description", "")[:40]
+            # Arbitrary artifact fields — print raw to avoid rich markup parsing.
             print(f"    [{phase:<8}] {kind:<16} {short_path}")
             if desc:
                 print(f"               {desc}")
 
     # Missing artifacts (archive)
     if data.get("missing_artifacts"):
-        print(f"\n  Missing artifacts: {', '.join(data['missing_artifacts'])}")
+        console.warning(f"Missing artifacts: {', '.join(data['missing_artifacts'])}")
 
-    print(f"\n  Report file: {report_file}")
-    print(f"{'=' * 60}\n")
+    console.info(f"Report file: {report_file}")
 
 
 def _workflow_resume(run_id: str, root: str = ".") -> None:
@@ -3475,7 +4210,7 @@ def _inspect(
                 path = Path(output_path)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(rendered, encoding="utf-8")
-                print(f"Wrote repo map: {path}")
+                console.success(f"Wrote repo map: {path}")
                 return
             print(rendered)
             return
@@ -3517,13 +4252,14 @@ def _ask(runtime: OpenContextRuntime, question: str, output_mode: str | None = N
         else ["code", "commands", "paths", "symbols", "warnings", "numbers"],
     )
     output_result = budget.apply(safe_answer, mode=output_mode)
+    # Answer payload — print raw so rich never parses its brackets.
     print(output_result.content)
-    print()
-    print(f"Trace ID: {result.trace_id}")
-    print(f"Selected context items: {result.selected_context_count}")
-    print("Token usage:")
+    console.section("Details")
+    console.info(f"Trace ID: {result.trace_id}")
+    console.info(f"Selected context items: {result.selected_context_count}")
+    console.print("[bold]Token usage:[/]")
     for key, value in result.token_usage.items():
-        print(f"  {key}: {value}")
+        console.print(f"  {key}: {value}")
 
 
 def _verified_context(runtime: OpenContextRuntime, args: argparse.Namespace) -> None:
@@ -3541,12 +4277,14 @@ def _verified_context(runtime: OpenContextRuntime, args: argparse.Namespace) -> 
     if args.json:
         print(json.dumps(body, indent=2, sort_keys=True))
     else:
+        # Context payload — print raw so rich never parses its brackets.
         print(body["context"])
-        print(f"Risk: {body['risk_level']}")
-        print(f"Trace ID: {body['trace_id']}")
+        console.section("Verified Context")
+        console.info(f"Risk: {body['risk_level']}")
+        console.info(f"Trace ID: {body['trace_id']}")
         failed = [gate for gate in body["gates"] if not gate["passed"]]
         if failed:
-            print("Failed gates:")
+            console.warning("Failed gates:")
             for gate in failed:
                 print(f"  {gate['name']}: {gate['reason']}")
     if not args.allow_failed_gates and any(not gate["passed"] for gate in body["gates"]):
@@ -3574,15 +4312,17 @@ def _pack(
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rendered, encoding="utf-8")
-        print(f"Wrote context pack: {path}")
+        console.success(f"Wrote context pack: {path}")
     if copy:
         copied = _copy_to_clipboard(rendered)
-        print(
-            "  ✓ Copied to clipboard."
-            if copied
-            else "  ✗ No clipboard (install xclip or wl-clipboard). Printed output instead."
-        )
+        if copied:
+            err_console.success("Copied to clipboard.")
+        else:
+            err_console.warning(
+                "No clipboard (install xclip or wl-clipboard). Printed output instead."
+            )
     if output_path is None:
+        # Pack payload — print raw so rich never parses its brackets.
         print(rendered)
 
     # Record telemetry — estimate naive tokens from all project text files
@@ -3750,7 +4490,7 @@ def _trace(
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(trace.model_dump_json(indent=2), encoding="utf-8")
-        print(f"Wrote trace: {path}")
+        console.success(f"Wrote trace: {path}")
         return
     summary = {
         "run_id": trace.run_id,
@@ -3811,6 +4551,39 @@ def _eval_recall(runtime: OpenContextRuntime, path: str, root: str, json_output:
         print(format_recall_report(report))
 
 
+def _eval_records(args: argparse.Namespace) -> None:
+    """`eval report` (summarize persisted records) and `eval compare` (diff two)."""
+    from opencontext_core.evaluation.ai_eval import compare_records, load_records
+    from opencontext_core.evaluation.models import EvaluationRecord
+
+    if args.eval_command == "report":
+        records = load_records()
+        if not records:
+            err_console.info("No evaluation records yet. Run an AI-eval suite to populate them.")
+            return
+        print(
+            json.dumps(
+                [
+                    {
+                        "target": f"{r.target_kind}:{r.target_id}",
+                        "success_rate": r.success_rate,
+                        "local_validation_pass_rate": r.local_validation_pass_rate,
+                        "benchmark_version": r.benchmark_version,
+                    }
+                    for r in records
+                ],
+                indent=2,
+            )
+        )
+        return
+    old = EvaluationRecord.model_validate_json(Path(args.old).read_text(encoding="utf-8"))
+    new = EvaluationRecord.model_validate_json(Path(args.new).read_text(encoding="utf-8"))
+    deltas = compare_records(old, new)
+    print(json.dumps([d.model_dump() for d in deltas], indent=2))
+    if any(d.regressed for d in deltas):
+        raise SystemExit(1)
+
+
 def _eval(
     runtime: OpenContextRuntime,
     eval_command: str,
@@ -3852,7 +4625,7 @@ def _eval(
     if eval_command != "run":
         _unreachable(eval_command)
     if path is None:
-        print(
+        console.warning(
             "No eval file provided. Create a YAML or JSON file and run "
             "`opencontext eval run <path>`."
         )
@@ -3865,7 +4638,8 @@ def _eval(
 def _agent_memory_store(args: argparse.Namespace) -> Any:
     """The canonical SQLite AgentMemoryStore (source of truth), or None."""
     try:
-        return _runtime(getattr(args, "config", None))._v2_memory_store
+        cfg: str = getattr(args, "config", None) or ""
+        return _runtime(cfg)._v2_memory_store
     except Exception:
         return None
 
@@ -3873,14 +4647,19 @@ def _agent_memory_store(args: argparse.Namespace) -> Any:
 def _memory(args: argparse.Namespace) -> None:
     """Handle memory subcommands."""
     command = args.memory_command
+    if command == "migrate":
+        raise SystemExit(handle_migrate("memory", args))
+    if command == "audit":
+        raise SystemExit(_memory_audit(args))
     repo = ContextRepository(Path("."))
     if command == "init":
         created = repo.init_layout()
-        print("Initialized context repository.")
+        console.success("Initialized context repository.")
         for path in created:
-            print(f"- {path}")
+            print(f"  - {path}")
         return
     if command == "list":
+        console.header("Memory")
         # Canonical SQLite store first (what the agent recalls), markdown second.
         shown = False
         store = _agent_memory_store(args)
@@ -3894,16 +4673,23 @@ def _memory(args: argparse.Namespace) -> None:
             )
             shown = True
         if not shown:
-            print("No memory yet. Run 'opencontext memory harvest' or an agentic loop.")
+            console.info("No memory yet. Run 'opencontext memory harvest' or an agentic loop.")
         return
     if command == "search":
         seen: set[str] = set()
         hit = False
         store = _agent_memory_store(args)
         if store is not None:
-            for rec in store.search(args.query, limit=10):
+            results = store.search(args.query, limit=10)
+            if results:
+                console.dim("Use `memory get <id>` for full content.")
+            # Record lines embed arbitrary content/keys — print raw so rich never
+            # parses their brackets as markup.
+            for rec in results:
                 seen.add(rec.id)
-                print(f"{rec.id} [{rec.layer.value}]: {rec.content[:100]}...")
+                ts = rec.updated_at.strftime("%Y-%m-%d %H:%M") if rec.updated_at else "?"
+                score = f"{rec.confidence:.2f}"
+                print(f"{rec.id} [{rec.layer.value}] ts={ts} score={score}: {rec.content[:100]}...")
                 hit = True
         for item in repo.search(args.query):
             if item.id in seen:
@@ -3911,7 +4697,7 @@ def _memory(args: argparse.Namespace) -> None:
             print(f"{item.id} [{item.kind}]: {item.content[:100]}... [md]")
             hit = True
         if not hit:
-            print(f"No memories match '{args.query}'.")
+            console.info(f"No memories match '{args.query}'.")
         return
     if command == "show":
         store = _agent_memory_store(args)
@@ -3932,28 +4718,31 @@ def _memory(args: argparse.Namespace) -> None:
             store = _agent_memory_store(args)
             rec = store.get(args.memory_id) if store is not None and hasattr(store, "get") else None
             if rec is not None:
+                # Message embeds a literal "[md]" token — print raw so rich does
+                # not parse it as markup.
                 print(
                     f"'{args.memory_id}' is an agent (SQLite) memory record; "
                     f"{command} operates on markdown memory ([md] items in 'memory list'). "
                     "Agent records support reinforce/supersede/decay, not pin/promote."
                 )
             else:
-                print(f"Memory item not found: {args.memory_id}")
+                console.warning(f"Memory item not found: {args.memory_id}")
             return
 
     if command == "expand":
         expansion = MemoryExpansionTool(repo)
         item = expansion.expand(args.memory_id)
+        # Memory content payload — print raw so rich never parses its brackets.
         print(item.content)
         return
     manager = PinnedMemoryManager(repo)
     if command == "pin":
         item = manager.pin(args.memory_id)
-        print(f"Pinned: {item.id}")
+        console.success(f"Pinned: {item.id}")
         return
     if command == "unpin":
         item = manager.unpin(args.memory_id)
-        print(f"Unpinned: {item.id}")
+        console.success(f"Unpinned: {item.id}")
         return
     recorder = SessionMemoryRecorder(repo, require_approval=not getattr(args, "yes", False))
     if command in ("collect", "harvest"):
@@ -3966,7 +4755,7 @@ def _memory(args: argparse.Namespace) -> None:
                 trace = runtime.latest_trace()
             except MemoryStoreError:
                 # Empty state, not a failure: no agentic runs have produced traces.
-                print(
+                console.info(
                     "No traces to harvest yet. Run an agentic flow first "
                     '(e.g. `opencontext loop -t "..."`), then harvest.'
                 )
@@ -3978,50 +4767,62 @@ def _memory(args: argparse.Namespace) -> None:
             trace_data = json.loads(trace_path.read_text(encoding="utf-8"))
             trace = RuntimeTrace.model_validate(trace_data)
         result = recorder.harvest(trace)
-        print(f"Harvested {len(result.candidates)} candidates, stored {len(result.stored)} items.")
+        console.success(
+            f"Harvested {len(result.candidates)} candidates, stored {len(result.stored)} items."
+        )
         if result.approval_required:
-            print("Approval required for some items.")
+            console.warning("Approval required for some items.")
         return
     if command == "promote":
         item = repo.move(args.memory_id, args.to)
-        print(f"Promoted: {item.id} -> {args.to}")
+        console.success(f"Promoted: {item.id} -> {args.to}")
         return
     if command == "demote":
         item = repo.move(args.memory_id, args.to)
-        print(f"Demoted: {item.id} -> {args.to}")
+        console.success(f"Demoted: {item.id} -> {args.to}")
         return
     if command == "prune":
         gc = MemoryGarbageCollector(repo)
         report = gc.run()
-        print(f"Pruned {len(report.pruned_ids)} items: {report.reason}")
+        console.success(f"Pruned {len(report.pruned_ids)} items: {report.reason}")
         return
     if command == "gc":
         dry_run = getattr(args, "dry_run", False)
         gc = MemoryGarbageCollector(repo)
         report = gc.run(dry_run=dry_run)
         if dry_run:
-            print(f"Dry run: {len(report.pruned_ids)} item(s) would be pruned.")
+            console.info(f"Dry run: {len(report.pruned_ids)} item(s) would be pruned.")
             for mid in report.pruned_ids:
-                print(f"  {mid}")
+                console.print(f"  {mid}")
         else:
-            print(f"Garbage collected {len(report.pruned_ids)} items.")
+            console.success(f"Garbage collected {len(report.pruned_ids)} items.")
         return
     if command == "maintain":
         from opencontext_core.memory.graph import LocalMemoryStore
 
         db_path = Path(".storage/opencontext/memory.db")
         if not db_path.exists():
-            print(f"No memory store at {db_path} yet — nothing to maintain.")
+            console.info(f"No memory store at {db_path} yet — nothing to maintain.")
             return
         store = LocalMemoryStore(db_path)
         m = store.maintain()
-        print(
+        console.success(
             f"Memory maintenance: scanned {m.keys_scanned} keys, "
             f"consolidated {m.keys_consolidated}, pruned {m.records_pruned} stale records."
         )
+        # PR-009: regenerate the eight curated project-memory files from the store.
+        try:
+            from opencontext_core.memory.project_files import generate as _gen_project_files
+
+            written = _gen_project_files(store, Path("."))
+            console.success(
+                f"Regenerated {len(written)} project-memory files under .opencontext/memory/."
+            )
+        except Exception as exc:
+            eprint(f"project-memory files not regenerated: {exc}")
         if m.reviews_due:
-            print(
-                f"  {m.reviews_due} high-stakes memories due for review "
+            console.warning(
+                f"{m.reviews_due} high-stakes memories due for review "
                 f"— run 'opencontext memory review'."
             )
         return
@@ -4033,20 +4834,23 @@ def _memory(args: argparse.Namespace) -> None:
 
         db_path = Path(".storage/opencontext/memory.db")
         if not db_path.exists():
-            print(f"No memory store at {db_path} yet — nothing to review.")
+            console.info(f"No memory store at {db_path} yet — nothing to review.")
             return
         store = LocalMemoryStore(db_path)
         if args.confirm:
             ok = store.mark_reviewed(args.confirm)
-            print(f"Confirmed: {args.confirm}" if ok else f"Not found: {args.confirm}")
+            if ok:
+                console.success(f"Confirmed: {args.confirm}")
+            else:
+                console.warning(f"Not found: {args.confirm}")
             return
         if args.supersede:
             if not args.content:
-                print("--supersede requires --content with the corrected memory.")
+                console.warning("--supersede requires --content with the corrected memory.")
                 return
             old = store.get(args.supersede)
             if old is None:
-                print(f"Not found: {args.supersede}")
+                console.warning(f"Not found: {args.supersede}")
                 return
             now = datetime.now(UTC)
             replacement = old.model_copy(
@@ -4062,17 +4866,19 @@ def _memory(args: argparse.Namespace) -> None:
                 }
             )
             new_id = store.supersede(args.supersede, replacement)
-            print(f"Superseded {args.supersede} -> {new_id}")
+            console.success(f"Superseded {args.supersede} -> {new_id}")
             return
         due = store.review_due()
         if not due:
-            print("No memories due for review.")
+            console.info("No memories due for review.")
             return
-        print(f"{len(due)} memories due for review:")
+        console.section(f"{len(due)} memories due for review")
+        # Record lines embed arbitrary content — print raw so rich never parses
+        # their brackets as markup.
         for rec in due:
             kind = next((t.split(":", 1)[1] for t in rec.tags if t.startswith("kind:")), "?")
             print(f"  {rec.id} [{kind}] {rec.content[:80]}")
-        print("Confirm with 'memory review --confirm <id>' or correct with --supersede <id>.")
+        console.dim("Confirm with 'memory review --confirm <id>' or correct with --supersede <id>.")
         return
     if command == "export":
         _memory_export(repo, args.output)
@@ -4082,6 +4888,9 @@ def _memory(args: argparse.Namespace) -> None:
         return
     if command == "doctor":
         _memory_doctor()
+        return
+    if command == "benchmark":
+        handle_memory_benchmark(args)
         return
     _unreachable(command)
 
@@ -4097,7 +4906,7 @@ def _memory_export(repo: Any, output: str) -> None:
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Exported {len(items)} memory item(s) to {out}")
+    console.success(f"Exported {len(items)} memory item(s) to {out}")
 
 
 def _memory_import(repo: Any, path: str) -> None:
@@ -4106,7 +4915,7 @@ def _memory_import(repo: Any, path: str) -> None:
 
     source = Path(path)
     if not source.exists():
-        print(f"Error: file not found: {source}")
+        eprint(f"file not found: {source}")
         raise SystemExit(1)
     payload = json.loads(source.read_text(encoding="utf-8"))
     items = payload.get("items", []) if isinstance(payload, dict) else []
@@ -4129,7 +4938,7 @@ def _memory_import(repo: Any, path: str) -> None:
             metadata=entry.get("metadata") or {},
         )
         imported += 1
-    print(f"Imported {imported} item(s), skipped {skipped} (already present or invalid).")
+    console.success(f"Imported {imported} item(s), skipped {skipped} (already present or invalid).")
 
 
 def _memory_doctor() -> None:
@@ -4182,14 +4991,46 @@ def _memory_doctor() -> None:
         checks.append(("conflict_check", False, f"Conflict check failed: {exc}"))
 
     # Print results
+    console.header("Memory Doctor")
     all_ok = all(ok for _, ok, _ in checks)
+    # Detail text is arbitrary (may include exception text) — print raw so rich
+    # never parses its brackets as markup.
     for name, ok, msg in checks:
         status = "OK  " if ok else "FAIL"
         print(f"  [{status}] {name}: {msg}")
     if all_ok:
-        print("\nmemory doctor: all checks passed.")
+        console.success("memory doctor: all checks passed.")
     else:
-        print("\nmemory doctor: some checks failed. Review above.")
+        console.warning("memory doctor: some checks failed. Review above.")
+
+
+def _memory_audit(args: argparse.Namespace) -> int:
+    """Audit the LIVE memory store (counts, stale, duplicates, conflicts, quality).
+
+    Reads the same canonical AgentMemoryStore that ``memory list``/``memory doctor``
+    use, plus the markdown context repository. With no store yet it reports a clean
+    empty state and exits 0 — it never assumes a legacy ``memory.json`` migration.
+    """
+    from opencontext_core.memory.stale_audit import audit_live_memory
+
+    store = _agent_memory_store(args)
+    report = audit_live_memory(store)
+
+    repo = ContextRepository(Path("."))
+    try:
+        markdown_items = len(repo.list_items(include_archive=True))
+    except Exception:
+        markdown_items = 0
+    report["markdown_items"] = markdown_items
+
+    if report["total"] == 0 and markdown_items == 0:
+        console.info(
+            "No memory store yet. Run 'opencontext memory harvest' or an agentic "
+            "loop to populate it, then audit."
+        )
+        return 0
+    print(json.dumps(report, indent=2))
+    return 0
 
 
 def _render_data(data: Any, output_format: str = "json") -> str:
@@ -4198,7 +5039,7 @@ def _render_data(data: Any, output_format: str = "json") -> str:
     return ContextSerializer().serialize(data, SerializationFormat(output_format))
 
 
-def _unreachable(value: str) -> NoReturn:
+def _unreachable(value: object) -> NoReturn:
     raise SystemExit(f"Unsupported command: {value}")
 
 

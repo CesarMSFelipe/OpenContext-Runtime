@@ -100,6 +100,21 @@ class FileWatcher:
                 stacklevel=2,
             )
 
+    def add_callback(self, callback: Callable[[str, str], None]) -> None:
+        """Register an additional change consumer (e.g. a cache invalidator).
+
+        Composes with the existing callback so both fire on every change, without
+        rewriting the watcher's dispatch. Used by ``cache/invalidation.py`` to drop
+        cache entries whose source files changed (book doc 58 — Cache leaf seam).
+        """
+        existing = self.callback
+
+        def _combined(rel_path: str, change: str) -> None:
+            existing(rel_path, change)
+            callback(rel_path, change)
+
+        self.callback = _combined
+
     def start(self) -> None:
         """Start watching files."""
         self._running = True
@@ -110,19 +125,29 @@ class FileWatcher:
             self._scan_all()
 
     def _start_watchdog(self) -> None:
-        """Start watchdog-based observer."""
-        self._observer = Observer(timeout=self.poll_interval)
-        handler = _WatchdogHandler(self)
-        self._observer.schedule(handler, str(self.root), recursive=True)
-        self._observer.start()
+        """Start watchdog-based observer; degrade to polling if the OS can't start it."""
+        try:
+            self._observer = Observer(timeout=self.poll_interval)
+            handler = _WatchdogHandler(self)
+            self._observer.schedule(handler, str(self.root), recursive=True)
+            self._observer.start()
+        except OSError:
+            # e.g. inotify instance/watch limit reached — fall back to polling so the
+            # watcher degrades gracefully instead of leaving a half-started observer.
+            self._observer = None
+            self._scan_all()
 
     def stop(self) -> None:
         """Stop watching files."""
         self._running = False
 
         if self._observer is not None:
-            self._observer.stop()
-            self._observer.join(timeout=5)
+            try:
+                self._observer.stop()
+                if self._observer.is_alive():  # guard: never join an unstarted observer
+                    self._observer.join(timeout=5)
+            except RuntimeError:
+                pass
             self._observer = None
 
     def scan(self) -> list[tuple[str, str]]:

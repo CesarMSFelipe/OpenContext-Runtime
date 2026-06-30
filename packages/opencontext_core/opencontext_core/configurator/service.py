@@ -25,6 +25,7 @@ from opencontext_core.configurator.filemerge import (
     write_text_atomic,
 )
 from opencontext_core.configurator.mcp_strategy import (
+    McpShape,
     plan_mcp_servers,
     remove_mcp_server,
 )
@@ -57,7 +58,12 @@ class Configurator:
         return [a.agent_id for a in iter_adapters() if a.config_dir.exists()]
 
     def configure(
-        self, agents: list[str], scope: str = "local", *, dry_run: bool = False
+        self,
+        agents: list[str],
+        scope: str = "local",
+        *,
+        dry_run: bool = False,
+        project_only: bool = False,
     ) -> dict[str, Any]:
         """Configure ``agents`` and return a structured report.
 
@@ -69,9 +75,17 @@ class Configurator:
         per-agent by the adapter: AGENTS.md-honoring agents get project-root
         instructions, while MCP config, personas, and CLAUDE.md/GEMINI.md agents
         always write to the agent's own config dir under home.
+
+        When ``project_only`` is true, ONLY repo-local files are written (the
+        project-root ``.mcp.json``); the agent's home-dir config (home MCP,
+        CLAUDE.md, settings) and the home backup are skipped. This is what a
+        ``--scope workspace`` install uses so it never touches ``$HOME``.
         """
 
-        results = [self.configure_one(agent_id, scope, dry_run=dry_run) for agent_id in agents]
+        results = [
+            self.configure_one(agent_id, scope, dry_run=dry_run, project_only=project_only)
+            for agent_id in agents
+        ]
         status_key = "planned" if dry_run else "configured"
         configured = sum(1 for r in results if r["status"] == status_key)
         return {
@@ -84,7 +98,12 @@ class Configurator:
         }
 
     def configure_one(
-        self, agent_id: str, scope: str = "local", *, dry_run: bool = False
+        self,
+        agent_id: str,
+        scope: str = "local",
+        *,
+        dry_run: bool = False,
+        project_only: bool = False,
     ) -> dict[str, Any]:
         """Configure a single agent; returns its per-agent result entry."""
 
@@ -97,6 +116,19 @@ class Configurator:
                 "agent": agent_id,
                 "status": "planned",
                 "plan": plan_actions(targets),
+            }
+
+        # project_only: write nothing under $HOME — no home backup. Write every
+        # planned file that lives under the project root (repo .mcp.json, project
+        # commands, agents, delegates) and skip home-dir files (home MCP, CLAUDE.md,
+        # settings). Used by --scope workspace installs.
+        if project_only:
+            files = self._write_project_local_only(adapter)
+            return {
+                "agent": agent_id,
+                "status": "configured",
+                "files": files,
+                "backup_id": None,
             }
 
         backup = BackupStore().create([agent_id], targets, source="configure")
@@ -115,6 +147,23 @@ class Configurator:
             "files": files,
             "backup_id": backup.id if backup is not None else None,
         }
+
+    def _write_project_local_only(self, adapter: Adapter) -> list[str]:
+        """Write every planned file under the project root; touch nothing under $HOME."""
+        root = self.project_root.resolve()
+        files: list[str] = []
+        for path, content in self._plan(adapter):
+            try:
+                resolved = path.resolve()
+            except OSError:
+                resolved = path
+            if root != resolved and root not in resolved.parents:
+                continue  # home-dir file — skip in project-only mode
+            if content is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_text_atomic(path, content)
+            files.append(str(path))
+        return files
 
     # ------------------------------------------------------------------
 
@@ -176,16 +225,20 @@ class Configurator:
                     else:
                         instructions_path.unlink()  # file held only our block
                     changed.append(str(instructions_path))
-            # 2. Remove our MCP server entry in the agent's native shape.
+            # 2. Remove our MCP server entry in the agent's native shape. If the
+            #    file is now empty (it only ever held our entry), unlink it so
+            #    install leaves no `{}` orphan — mirrors the instructions unlink.
             if remove_mcp_server(
                 adapter.mcp_config_path, constants.MCP_LABEL, shape=adapter.mcp_shape
             ):
                 changed.append(str(adapter.mcp_config_path))
+                _unlink_if_empty_mcp(adapter.mcp_config_path, adapter.mcp_shape)
             # 2b. Remove the project-scoped MCP entry (e.g. repo-root .mcp.json).
             if project_mcp_path is not None and remove_mcp_server(
                 project_mcp_path, constants.MCP_LABEL, shape=adapter.mcp_shape
             ):
                 changed.append(str(project_mcp_path))
+                _unlink_if_empty_mcp(project_mcp_path, adapter.mcp_shape)
             # 3. Reverse agent-specific extras.
             changed.extend(self._remove_extras(adapter))
         except Exception:
@@ -218,7 +271,16 @@ class Configurator:
                             data["permissions"]["allow"] = kept
                         else:
                             data["permissions"].pop("allow", None)
-                        write_text_atomic(path, json.dumps(data, indent=2) + "\n")
+                        # Drop an emptied permissions block, then unlink a
+                        # settings.json that now holds nothing — install created it
+                        # for our allow-list, so a leftover {"permissions": {}} is
+                        # an orphan. User keys (theme, other perms) keep the file.
+                        if isinstance(data.get("permissions"), dict) and not data["permissions"]:
+                            data.pop("permissions", None)
+                        if not data:
+                            path.unlink()
+                        else:
+                            write_text_atomic(path, json.dumps(data, indent=2) + "\n")
                         changed.append(str(path))
         if adapter.agent_id == "opencode":
             path = adapter.config_dir / "agents" / "sdd-orchestrator.json"
@@ -227,13 +289,21 @@ class Configurator:
                 changed.append(str(path))
         subdir = constants.global_agents_subdir(adapter.agent_id)
         if subdir:
-            from opencontext_core.personas import PERSONAS
+            from opencontext_core.personas import public_personas
 
-            for persona in PERSONAS:
-                path = adapter.config_dir / subdir / f"{persona.id}.md"
+            agents_dir = adapter.config_dir / subdir
+            for persona in public_personas():
+                path = agents_dir / f"{persona.id}.md"
                 if path.exists():
                     path.unlink()
                     changed.append(str(path))
+            # Remove the global agents dir if our personas were its only contents —
+            # install created it, so an empty leftover is an orphan. rmdir only
+            # succeeds when empty, so any user-authored file always keeps it.
+            try:
+                agents_dir.rmdir()
+            except OSError:
+                pass
         ignore_name = constants.ignore_filename(adapter.agent_id)
         if ignore_name:
             path = self.project_root / ignore_name
@@ -256,14 +326,15 @@ class Configurator:
                     changed.append(str(path))
         persona_rel = constants.persona_dir(adapter.agent_id)
         if persona_rel:
-            from opencontext_core.personas import PERSONAS
+            from opencontext_core.personas import public_personas
 
             persona_dir = self.project_root / persona_rel
-            for persona in PERSONAS:
+            for persona in public_personas():
                 path = persona_dir / f"{persona.id}.md"
                 if path.exists():
                     path.unlink()  # whole file we created
                     changed.append(str(path))
+        changed.extend(self._remove_hidden_delegation_personas(adapter))
         return changed
 
     def _plan(self, adapter: Adapter) -> list[PlanEntry]:
@@ -348,15 +419,55 @@ class Configurator:
             entries.extend(self._plan_commands(adapter))
         if constants.persona_dir(adapter.agent_id):
             entries.extend(self._plan_personas(adapter))
+        if constants.hidden_delegation_dir(adapter.agent_id):
+            entries.extend(self._plan_hidden_delegation_personas(adapter))
         return entries
+
+    def _plan_hidden_delegation_personas(self, adapter: Adapter) -> list[PlanEntry]:
+        """Plan hidden delegation persona files under a hidden subdirectory."""
+        from opencontext_core.personas import hidden_delegation_personas
+
+        rel = constants.hidden_delegation_dir(adapter.agent_id)
+        if rel is None:
+            return []
+
+        root = self.project_root / rel
+        entries: list[PlanEntry] = []
+
+        for persona in hidden_delegation_personas():
+            path = root / f"{persona.id}.md"
+            content = _render_persona(persona)
+            entries.append((path, _content_if_changed(path, content)))
+
+        return entries
+
+    def _remove_hidden_delegation_personas(self, adapter: Adapter) -> list[str]:
+        """Remove hidden delegation persona files."""
+        rel = constants.hidden_delegation_dir(adapter.agent_id)
+        if rel is None:
+            return []
+
+        root = self.project_root / rel
+        changed: list[str] = []
+
+        if root.exists():
+            for path in root.glob("oc-*.md"):
+                path.unlink()
+                changed.append(str(path))
+            try:
+                root.rmdir()
+            except OSError:
+                pass
+
+        return changed
 
     def _plan_personas(self, adapter: Adapter) -> list[PlanEntry]:
         """Plan the agent's persona/subagent files (OC Orchestrator/Professor/Reviewer)."""
-        from opencontext_core.personas import PERSONAS
+        from opencontext_core.personas import public_personas
 
         persona_dir = self.project_root / str(constants.persona_dir(adapter.agent_id))
         entries: list[PlanEntry] = []
-        for persona in PERSONAS:
+        for persona in public_personas():
             path = persona_dir / f"{persona.id}.md"
             content = _render_persona(persona)
             entries.append((path, _content_if_changed(path, content)))
@@ -397,12 +508,12 @@ class Configurator:
 
     def _plan_global_personas(self, adapter: Adapter) -> list[PlanEntry]:
         """Write OC personas to the agent's global agents dir (e.g. ~/.config/opencode/agents/)."""
-        from opencontext_core.personas import PERSONAS
+        from opencontext_core.personas import public_personas
 
         subdir = constants.global_agents_subdir(adapter.agent_id)
         agents_dir = adapter.config_dir / str(subdir)
         entries: list[PlanEntry] = []
-        for persona in PERSONAS:
+        for persona in public_personas():
             path = agents_dir / f"{persona.id}.md"
             content = _render_persona(persona)
             entries.append((path, _content_if_changed(path, content)))
@@ -418,6 +529,51 @@ class Configurator:
         path = adapter.config_dir / "agents" / "sdd-orchestrator.json"
         content = json.dumps(profile, indent=2) + "\n"
         return path, _content_if_changed(path, content)
+
+
+def _mcp_config_is_empty(path: Path, shape: McpShape) -> bool:
+    """True when an MCP config holds no remaining configuration of its declared shape.
+
+    Only consulted right after our own server entry was removed, so an empty result
+    means OpenContext created the file (or it has nothing left worth keeping) and it
+    is safe to unlink — the same "file held only our block" rule used for CLAUDE.md.
+    A file with any other server or top-level key is reported non-empty and kept.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not text.strip():
+        return True
+    if shape in (McpShape.JSON_MCP_SERVERS, McpShape.JSON_SERVERS):
+        try:
+            return bool(json.loads(text) == {})
+        except json.JSONDecodeError:
+            return False
+    if shape is McpShape.YAML_MCP_SERVERS:
+        import yaml
+
+        try:
+            return yaml.safe_load(text) in (None, {})
+        except yaml.YAMLError:
+            return False
+    if shape is McpShape.TOML_MCP_SERVERS:
+        import tomllib
+
+        try:
+            return tomllib.loads(text) == {}
+        except tomllib.TOMLDecodeError:
+            return False
+    return False
+
+
+def _unlink_if_empty_mcp(path: Path, shape: McpShape) -> None:
+    """Unlink an MCP config file that holds nothing after our server was removed."""
+    if path.exists() and _mcp_config_is_empty(path, shape):
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def _content_if_changed(path: Path, content: str) -> str | None:

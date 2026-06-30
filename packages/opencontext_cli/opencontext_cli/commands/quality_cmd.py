@@ -114,8 +114,11 @@ def _record_evolution(root: Path, report: Any) -> Any:
             entry_from_health,
         )
 
+        entry = entry_from_health(report.health, timestamp=datetime.now(UTC).isoformat())
         return EvolutionStore(root / EVOLUTION_FILENAME).append(
-            **entry_from_health(report.health, timestamp=datetime.now(UTC).isoformat())
+            timestamp=str(entry["timestamp"]),
+            score=int(entry["score"]),  # type: ignore[arg-type]
+            sub_scores={k: int(v) for k, v in entry.get("sub_scores", {}).items()},  # type: ignore[union-attr]
         )
     except Exception:
         return None  # evolution logging is best-effort; never block the check

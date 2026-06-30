@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import fnmatch
 import logging
 import re
 from collections import defaultdict
@@ -39,6 +40,79 @@ from opencontext_core.retrieval.scoring import (
 from opencontext_core.safety.redaction import SinkGuard
 
 _log = logging.getLogger(__name__)
+
+# Patterns for OC-generated or OC-configuration files that should never appear
+# in context retrieval results. Applied as a post-retrieval filter in plan().
+_OC_GENERATED_PATTERNS: tuple[str, ...] = (
+    ".mcp.json",
+    ".claude/agents/oc-*.md",
+    ".claude/agents/.opencontext-delegates/**",
+    ".claude/commands/oc-*.md",
+    "opencontext.yaml",
+    "harness.yaml",
+    "openspec/changes/**/receipt.json",
+)
+
+
+def _is_oc_generated(path: str) -> bool:
+    """Return True if *path* matches any OC-generated file pattern.
+
+    Used to filter context items so that OC's own config/artifact files
+    are never included in retrieval results returned to the user.
+    """
+    # Normalise to forward slashes and strip leading "./"
+    normalised = path.replace("\\", "/").lstrip("./")
+    for pattern in _OC_GENERATED_PATTERNS:
+        pat = pattern.lstrip("./")
+        if fnmatch.fnmatch(normalised, pat):
+            return True
+        # Also check just the basename for simple name patterns (e.g. ".mcp.json")
+        basename = normalised.rsplit("/", 1)[-1]
+        pat_base = pat.rsplit("/", 1)[-1]
+        if "/" not in pat and fnmatch.fnmatch(basename, pat_base):
+            return True
+    return False
+
+
+_OC_GITIGNORE_SENTINEL_START = "# opencontext:storage:start"
+_OC_GITIGNORE_SENTINEL_END = "# opencontext:storage:end"
+
+
+def _is_oc_only_gitignore(root: Path, source: str) -> bool:
+    """Return True if *source* is .gitignore and its non-blank content is solely
+    the OC managed storage sentinel block.
+
+    A .gitignore that has user-authored lines beyond the OC block returns False
+    so that it remains eligible for context retrieval.
+    """
+    # Check if source refers to a .gitignore file (root-level or nested).
+    src_path = Path(source)
+    if src_path.name != ".gitignore":
+        return False
+    # Resolve the actual filesystem path relative to root.
+    try:
+        gitignore_path = (root / src_path).resolve()
+        text = gitignore_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    # Collect all non-blank lines.
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        # Empty .gitignore — treat as OC-only (nothing meaningful for the user).
+        return True
+    # Find the OC managed block boundaries.
+    try:
+        start_idx = next(
+            i for i, ln in enumerate(lines) if ln.strip() == _OC_GITIGNORE_SENTINEL_START
+        )
+        end_idx = next(i for i, ln in enumerate(lines) if ln.strip() == _OC_GITIGNORE_SENTINEL_END)
+    except StopIteration:
+        # No OC sentinel block present — user-only content; include in context.
+        return False
+    # All lines must fall within the sentinel block (inclusive).
+    oc_block = set(range(start_idx, end_idx + 1))
+    return all(i in oc_block for i in range(len(lines)))
+
 
 # The 9 v2 ``RankingConfig`` weight fields map 1:1 onto identically-named
 # ``RetrievalWeights`` fields (B1-REQ-3). The four non-mapped ``RetrievalWeights``
@@ -277,6 +351,9 @@ class VectorRetrievalSource:
         return bool(project == self._project_name)
 
 
+# DEPRECATED(2.0): legacy retrieval planner; superseded by the PR-008 KG v2 path + PR-010
+# ContextEngine. Still the live default; remove when runtime.kg_v2_enabled +
+# context_engine_enabled are default + legacy removed (milestone-D).
 class RetrievalPlanner:
     """Composes retrieval sources and returns deduplicated context candidates."""
 
@@ -303,6 +380,19 @@ class RetrievalPlanner:
         # RetrievalWeights() defaults, so the default path is byte-identical.
         self._weights = weights
         self.omissions: list[str] = []
+
+    def retrieve_memory(self, query: Any, *, emitter: Any | None = None) -> list[Any]:
+        """Budgeted, ordered memory retrieval keyed by a ``MemoryQuery`` (PR-009).
+
+        Delegates to ``memory.retrieval`` (which owns the per-node budget table and
+        the book retrieval order) over this planner's memory store. Returns [] when
+        no memory store is wired so the default retrieval path is unaffected.
+        """
+        if self._memory_store is None:
+            return []
+        from opencontext_core.memory.retrieval import retrieve_memory as _retrieve
+
+        return _retrieve(self._memory_store, query, emitter=emitter)
 
     @classmethod
     def from_config(
@@ -538,6 +628,16 @@ class RetrievalPlanner:
         # near-duplicates of already-chosen evidence before truncating to top_k.
         context_items = _redact_selected(select_diverse(ranked, top_k))
 
+        # Drop OC-generated / OC-configuration files from context results so
+        # that OpenContext's own config never appears as context for user tasks.
+        # Also drop .gitignore when its content is solely the OC managed storage block.
+        context_items = [
+            item
+            for item in context_items
+            if not _is_oc_generated(item.source)
+            and not _is_oc_only_gitignore(request.root, item.source)
+        ]
+
         evidence = [_context_item_to_evidence(item, request.surface) for item in context_items]
         fallback_actions = _fallback_actions_for(request, evidence)
         trust_decision = _trust_decision(request, evidence, fallback_actions)
@@ -625,6 +725,33 @@ class RetrievalPlanner:
 def _looks_like_test(source: str) -> bool:
     base = source.rsplit("/", 1)[-1].lower()
     return base.startswith("test_") or base.endswith("_test.py") or "/tests/" in source.lower()
+
+
+def full_file_reason_required(item: ContextItem) -> bool:
+    """Whether ``item`` is a whole-file load that must carry a reason (book §8).
+
+    A ``file`` item with no narrower symbol/line/span anchor is a whole-file read;
+    the book forbids reasonless whole-file inclusions (PR-010 CTX-CONV).
+    """
+    if item.source_type != "file":
+        return False
+    md = item.metadata
+    return not (md.get("line_start") or md.get("symbol_kind") or md.get("span"))
+
+
+def ensure_full_file_reason(item: ContextItem, reason: str = "") -> ContextItem:
+    """Stamp a ``full_file_reason`` on a reasonless whole-file inclusion.
+
+    No-op for non-whole-file items or items already carrying a reason, so it is safe
+    to apply over an entire selection.
+    """
+    if not full_file_reason_required(item) or item.metadata.get("full_file_reason"):
+        return item
+    metadata = dict(item.metadata)
+    metadata["full_file_reason"] = (
+        reason or "whole-file load: no narrower symbol or snippet was available"
+    )
+    return item.model_copy(update={"metadata": metadata})
 
 
 # Symbol kinds that constitute a DEFINITION a developer would open to "add/modify X".

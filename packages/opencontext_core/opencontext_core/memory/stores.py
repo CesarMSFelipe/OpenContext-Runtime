@@ -32,6 +32,10 @@ def _manifest_write_lock(lock_path: Path) -> Generator[None, None, None]:
                 yield
             finally:
                 fcntl.flock(fh, fcntl.LOCK_UN)  # type: ignore[attr-defined,unused-ignore]
+                # Remove the 0-byte lockfile after use, matching the Windows
+                # branch, so it does not linger as artifact litter in the repo.
+                with contextlib.suppress(OSError):
+                    lock_file.unlink()
     except ImportError:
         # Windows fallback: busy-wait on a lockfile (good enough for CLI use)
         import time

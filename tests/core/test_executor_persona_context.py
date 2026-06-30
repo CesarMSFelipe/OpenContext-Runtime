@@ -32,8 +32,8 @@ def test_phase_persona_mapping() -> None:
     assert persona_for_phase("design").id == "oc-architect"
     assert persona_for_phase("apply").id == "oc-builder"
     assert persona_for_phase("test").id == "oc-tester"
-    assert persona_for_phase("verify").id == "oc-reviewer"
-    assert persona_for_phase("spec").id == "oc-orchestrator"
+    assert persona_for_phase("verify").id == "oc-harness-verifier"
+    assert persona_for_phase("spec").id == "oc-requirements"
 
 
 def test_executor_injects_persona_system_prompt_and_context() -> None:
@@ -45,7 +45,7 @@ def test_executor_injects_persona_system_prompt_and_context() -> None:
 
     req = gw.last
     assert req is not None
-    # Persona auto-switch: spec runs as the orchestrator.
+    # Persona auto-switch: spec runs as oc-requirements.
     assert req.system_prompt == persona_for_phase("spec").system_prompt
     assert req.system_prompt  # non-empty
     # Verified context is fed to the model, not just the bare task.
@@ -67,15 +67,22 @@ def test_persona_models_resolve_to_their_phases(tmp_path) -> None:
     from opencontext_core.harness.runner import HarnessRunner
 
     data = default_config_data()
-    data["sdd"]["persona_models"] = {"oc-orchestrator": "opus", "oc-architect": "haiku"}
+    data["sdd"]["persona_models"] = {
+        "oc-orchestrator": "opus",
+        "oc-requirements": "sonnet",
+        "oc-planner": "sonnet",
+        "oc-architect": "haiku",
+    }
     (tmp_path / "opencontext.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
 
     phase_models = HarnessRunner(root=tmp_path)._phase_model_map()
 
-    # Orchestrator drives propose/spec/tasks -> all opus.
+    # Orchestrator drives propose -> opus.
     assert phase_models["propose"] == "opus"
-    assert phase_models["spec"] == "opus"
-    assert phase_models["tasks"] == "opus"
+    # oc-requirements drives spec -> sonnet.
+    assert phase_models["spec"] == "sonnet"
+    # oc-planner drives tasks -> sonnet.
+    assert phase_models["tasks"] == "sonnet"
     # Architect drives design -> haiku.
     assert phase_models["design"] == "haiku"
     # Builder (apply) has no override and there is no SDD profile here -> absent.

@@ -1,0 +1,18 @@
+# Evaluation Harness (PR-006, book doc 07 §22) — measure runtime quality.
+schema_version: opencontext.harness.v1
+id: evaluation
+version: "1.0"
+type: evaluation
+description: Measure runtime quality — benchmarks, cost, success, regressions.
+default_mode: warn
+required_capabilities: [benchmark]
+inputs: [run_result]
+outputs: [benchmark_result]
+gates:
+  - benchmark_result_created
+  - cost_recorded
+  - success_criteria_checked
+  - regression_checked
+metrics: [success_rate, cost, latency]
+receipts: [evaluation_receipt]
+failure_modes: [regression_detected]

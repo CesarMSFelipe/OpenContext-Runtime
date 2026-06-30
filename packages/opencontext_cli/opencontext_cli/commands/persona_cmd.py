@@ -11,12 +11,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from rich.console import Console
-from rich.table import Table
 
-from opencontext_core.personas import PERSONAS, get_persona
-
-console = Console()
+from opencontext_cli.output import eprint
+from opencontext_core.dx.console_styles import console
+from opencontext_core.personas import PERSONAS, delegation_personas, get_persona, public_personas
 
 
 def add_persona_parser(subparsers: Any) -> None:
@@ -34,7 +32,9 @@ def add_persona_parser(subparsers: Any) -> None:
         ),
     )
     sub = parser.add_subparsers(dest="persona_command", required=True)
-    sub.add_parser("list", help="List available personas.")
+    lst = sub.add_parser("list", help="List available personas.")
+    lst.add_argument("--all", action="store_true", help="Include delegation subagents.")
+    lst.add_argument("--delegates", action="store_true", help="Show only delegation subagents.")
     show = sub.add_parser("show", help="Show a persona's description and prompt.")
     show.add_argument("id", help="Persona id (e.g. oc-orchestrator, oc-architect, oc-builder).")
     sub.add_parser("models", help="Show per-persona model assignments.")
@@ -47,25 +47,31 @@ def add_persona_parser(subparsers: Any) -> None:
 def handle_persona(args: Any) -> int:
     """Dispatch a ``persona`` subcommand. Returns a process exit code."""
     if args.persona_command == "list":
-        table = Table(title=f"OpenContext personas ({len(PERSONAS)})")
-        table.add_column("Id", style="cyan")
-        table.add_column("Name", style="bold")
-        table.add_column("Description")
-        for persona in PERSONAS:
-            table.add_row(persona.id, persona.name, persona.description)
-        console.print(table)
+        if getattr(args, "all", False):
+            rows = PERSONAS
+        elif getattr(args, "delegates", False):
+            rows = delegation_personas()
+        else:
+            rows = public_personas()
+        console.header("Personas")
+        console.table(
+            f"OpenContext Personas ({len(rows)})",
+            ["Id", "Name", "Description"],
+            [[persona.id, persona.name, persona.description] for persona in rows],
+        )
         return 0
 
     if args.persona_command == "show":
-        persona = get_persona(args.id)
-        if persona is None:
-            console.print(f"[red]Unknown persona:[/] {args.id}")
-            console.print(f"  Available: {', '.join(p.id for p in PERSONAS)}")
+        found = get_persona(args.id)
+        if found is None:
+            eprint(f"Unknown persona: {args.id}")
+            console.dim(f"  Available: {', '.join(p.id for p in PERSONAS)}")
             return 1
-        console.print(f"[bold]{persona.name}[/] [dim]({persona.id})[/]")
-        console.print(persona.description)
+        console.header(found.name)
+        console.dim(found.id)
+        console.print(found.description)
         console.print()
-        console.print(persona.system_prompt)
+        console.print(found.system_prompt)
         return 0
 
     if args.persona_command == "models":
@@ -74,28 +80,28 @@ def handle_persona(args: Any) -> int:
         if cfg_path.exists():
             data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
             assignments = (data.get("sdd") or {}).get("persona_models", {}) or {}
-        table = Table(title="Per-persona model assignments")
-        table.add_column("Persona", style="cyan")
-        table.add_column("Model")
-        for persona in PERSONAS:
-            table.add_row(persona.id, assignments.get(persona.id) or "[dim]default[/]")
-        console.print(table)
+        console.header("Persona Models")
+        console.table(
+            "Per-Persona Model Assignments",
+            ["Persona", "Model"],
+            [[persona.id, assignments.get(persona.id) or "default"] for persona in PERSONAS],
+        )
         return 0
 
     if args.persona_command == "set-model":
         if get_persona(args.id) is None:
-            console.print(f"[red]Unknown persona:[/] {args.id}")
-            console.print(f"  Available: {', '.join(p.id for p in PERSONAS)}")
+            eprint(f"Unknown persona: {args.id}")
+            console.dim(f"  Available: {', '.join(p.id for p in PERSONAS)}")
             return 1
         cfg_path = Path(getattr(args, "root", ".")) / "opencontext.yaml"
         if not cfg_path.exists():
-            console.print(f"[red]No opencontext.yaml at {cfg_path}[/] — run `opencontext install`.")
+            eprint(f"No opencontext.yaml at {cfg_path} — run `opencontext install`.")
             return 1
         data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         sdd = data.setdefault("sdd", {})
         persona_models = sdd.setdefault("persona_models", {})
         persona_models[args.id] = args.model
         cfg_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-        console.print(f"[green]✓[/] {args.id} → [cyan]{args.model}[/]")
+        console.success(f"{args.id} → {args.model}")
         return 0
     return 1

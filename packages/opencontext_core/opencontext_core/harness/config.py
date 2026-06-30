@@ -14,6 +14,11 @@ class PhaseConfig:
 
     budget_tokens: int = 6000
     gates: list[str] = field(default_factory=list)
+    # First-class per-phase harness declaration (spec PR-004 REQ-05). Names the
+    # harness subsystems / gate ids this phase requires. Defaults (via
+    # ``__post_init__``) to the phase's declared ``gates`` so behaviour is
+    # unchanged on upgrade — one source of truth, additive.
+    required_harnesses: list[str] = field(default_factory=list)
     confidence_threshold: float | None = None
     # Override for ConfidenceGate's baseline complexity (0.0=trivial, 1.0=very complex).
     # If None, ConfidenceGate uses its built-in defaults per phase.
@@ -28,6 +33,13 @@ class PhaseConfig:
     # impossible to disable surgical-from-yaml without editing code).
     surgical_explore: bool | None = None
     surgical_coverage_floor: float | None = None
+
+    def __post_init__(self) -> None:
+        # Default the first-class harness declaration to the phase's gate ids so
+        # a phase that declares gates always exposes a non-empty
+        # ``required_harnesses`` (spec PR-004 REQ-05) with zero behaviour change.
+        if not self.required_harnesses:
+            self.required_harnesses = list(self.gates)
 
 
 @dataclass
@@ -192,6 +204,10 @@ class HarnessConfig:
             "curl | bash",
         ]
     )
+    # CMD-1 bug-fix: until PR-005 ``forbidden_commands`` was loaded but read by no
+    # execution path. When enforced, a command matching the deny-list is refused
+    # before execution. Default-on; set ``False`` to restore advisory-only behaviour.
+    command_enforcement: bool = True
 
     @classmethod
     def from_yaml_file(cls, path: Path) -> HarnessConfig:
@@ -256,6 +272,7 @@ class HarnessConfig:
                 config.phases[phase_name] = PhaseConfig(
                     budget_tokens=phase_cfg.get("budget_tokens", 6000),
                     gates=phase_cfg.get("gates", []),
+                    required_harnesses=phase_cfg.get("required_harnesses", []),
                     confidence_threshold=phase_cfg.get("confidence_threshold"),
                     complexity=phase_cfg.get("complexity"),
                     surgical_explore=phase_surgical,
@@ -272,5 +289,8 @@ class HarnessConfig:
         if isinstance(safety, dict):
             config.forbidden_paths = safety.get("forbidden_paths", config.forbidden_paths)
             config.forbidden_commands = safety.get("forbidden_commands", config.forbidden_commands)
+            config.command_enforcement = safety.get(
+                "command_enforcement", config.command_enforcement
+            )
 
         return config

@@ -189,11 +189,12 @@ OPENCONTEXT_COMMANDS: tuple[tuple[str, str, str], ...] = (
         "Start a new spec-driven change and drive the whole flow in order by "
         "SPAWNING each phase's persona subagent with the Task tool (the main "
         "thread sequences and gates, it does not do the work):\n"
-        "explore -> `subagent_type: oc-explorer`; propose/spec/tasks -> "
-        "`subagent_type: oc-orchestrator`; design -> `subagent_type: oc-architect`; "
+        "explore -> `subagent_type: oc-explorer`; propose -> "
+        "`subagent_type: oc-orchestrator`; spec -> `subagent_type: oc-requirements`; "
+        "tasks -> `subagent_type: oc-planner`; design -> `subagent_type: oc-architect`; "
         "approval gate; apply (tests first) -> `subagent_type: oc-tester` then "
-        "`subagent_type: oc-builder`; verify -> `subagent_type: oc-reviewer`; "
-        "archive -> `subagent_type: oc-orchestrator`.\n"
+        "`subagent_type: oc-builder`; verify -> `subagent_type: oc-harness-verifier`; "
+        "archive -> `subagent_type: oc-archivist`.\n"
         "Memory loop every phase: derive a change `<slug>`; each persona PRIMES at "
         "start with `opencontext_memory_context` for `change:<slug>` and SAVES at "
         "end with `opencontext_memory_save` (`key`/`tags` = `change:<slug>`; layer "
@@ -226,6 +227,16 @@ def persona_dir(agent_id: str) -> str | None:
     """Project-relative persona (subagent) directory for an agent, or None."""
 
     return _PERSONA_DIR.get(agent_id)
+
+
+_HIDDEN_DELEGATION_DIRS: dict[str, str] = {
+    "claude-code": ".claude/agents/.opencontext-delegates",
+}
+
+
+def hidden_delegation_dir(agent_id: str) -> str | None:
+    """Return the hidden delegation subdirectory for agent_id, or None if unsupported."""
+    return _HIDDEN_DELEGATION_DIRS.get(agent_id)
 
 
 # Agents with a global (home-dir-relative) agents directory — persona .md files go here.

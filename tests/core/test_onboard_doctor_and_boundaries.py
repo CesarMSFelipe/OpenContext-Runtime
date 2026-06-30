@@ -13,28 +13,18 @@ from opencontext_core.workspace.layout import ensure_workspace
 
 
 def test_workspace_onboard_layout(tmp_path: Path) -> None:
+    # ensure_workspace now materialises only non-empty starter files and returns
+    # them; it no longer eagerly creates empty placeholder directories.
     created = ensure_workspace(tmp_path)
-    created_names = sorted(path.name for path in created)
-    assert created_names == [
-        "agents",
-        "cache",
-        "context-packs",
-        "evals",
-        "memory",
-        "models",
-        "plugins",
-        "policies",
-        "reports",
-        "rules",
-        "state",
-        "templates",
-        "traces",
-        "workflows",
-    ]
+    assert created
     for path in created:
         assert path.exists()
-        assert path.is_dir()
+        assert path.is_file()
+        assert path.stat().st_size > 0
     assert (tmp_path / ".opencontext/policies/tool-policy.yaml").read_text(encoding="utf-8")
+    # The old eager-mkdir empty dirs are gone (artifact-footprint fix).
+    for empty in ("cache", "context-packs", "plugins", "state", "traces", "memory"):
+        assert not (tmp_path / ".opencontext" / empty).exists()
 
 
 def test_security_doctor_defaults_fail_closed() -> None:

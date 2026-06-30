@@ -5,7 +5,12 @@
 <h1 align="center">OpenContext Runtime</h1>
 
 <p align="center">
-  <strong>Deterministic context for AI coding agents.</strong>
+  <strong>Local control plane for AI software engineering agents.</strong>
+</p>
+
+<p align="center">
+  Verified context · governed workflows · secure MCP tools · project memory<br>
+  · quality gates · auditable receipts — across your existing coding agents.
 </p>
 
 <p align="center">
@@ -22,6 +27,16 @@
 <p align="center">
   <img src="docs/assets/runtime-strip.svg" alt="offline-first · call-graph traced · deterministic · MCP ready · claims tested" width="720">
 </p>
+
+<p align="center">
+  <img src="docs/assets/release-candidate-status.svg" alt="OpenContext product status: stable, release candidate, host dependent, opt-in" width="720">
+</p>
+
+### Product status
+
+| Stable | Release candidate | Host dependent | Opt-in |
+|---|---|---|---|
+| index · KG · pack · verified-context · memory · uninstall | `oc-new` · TUI cockpit · graph · leases/signals | MCP sampling · generative phases | Engram · providers · semantic/vector |
 
 <p align="center">
   <img src="docs/assets/hero-runtime.svg" alt="From agent request to verified context in one call: an AI coding agent asks; OpenContext Runtime traces the call graph, ranks symbols, locks a token budget and checks gates; a verified context pack is returned in one call" width="720">
@@ -61,13 +76,57 @@ OpenContext is the layer **between your coding agent and your codebase** — it 
 | **Your model, per persona** | Pick the model for each SDD phase in `opencontext.yaml`; it is sent to your agent as an MCP sampling hint. |
 | **Persistent memory** | Local store by default (five layers); co-resident Engram coexistence is opt-in. Progressive, token-aware recall. |
 | **Security by default** | Redaction, secret scanning, fail-closed posture, offline-first. |
-| **19 MCP tools** | Search, context, call graph, impact, symbol edits, memory, quality — inside Claude Code, OpenCode, Codex. |
+| **32 MCP tools** | Search, context, call graph, impact, symbol edits, memory, quality, session steps, workflow/profile explain, config doctor — inside Claude Code, OpenCode, Codex. |
 
 </td>
 </tr>
 </table>
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/all-systems.svg" alt="OpenContext, all systems at a glance: it sits between your coding agent and your codebase. The runtime holds six systems — context and code graph, controlled SDD loop, model per persona, persistent memory, security by default, and 32 MCP tools. The codebase is indexed once and queried offline." width="720">
+</p>
+
+<p align="center">
+  <sub>All systems · the layer between your agent and your codebase · six systems, one runtime</sub>
+</p>
+
+<p align="center">
+  <img src="docs/assets/divider.svg" alt="" width="720">
+</p>
+
+<!-- ─────────────── PRODUCT UI ─────────────── -->
+
+<div id="product-ui" align="center">
+
+<table>
+<tr>
+<td width="760">
+
+<h3>The runtime UI shows state, not slogans</h3>
+
+The TUI and CLI use the same node logo as this README, then show live project
+state: install/index status, KG health, memory backend, active run, current
+phase, gates, and next action.
+
+</td>
+</tr>
+</table>
+
+</div>
+
+<p align="center">
+  <img src="docs/assets/tui-cockpit.svg" alt="TUI cockpit with runtime state, active run, phase and next action" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/assets/config-menu.svg" alt="Configuration menu with current value, effect, recommendation, risk and CLI equivalent" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/assets/graph-viewer.svg" alt="Graph viewer showing knowledge graph and run nodes" width="720">
+</p>
 
 <p align="center">
   <img src="docs/assets/divider.svg" alt="" width="720">
@@ -442,7 +501,7 @@ opencontext bridges scan . --type HTTP --json
 
 <h3>Agent Interface</h3>
 
-19 MCP tools. OpenContext ships adapters for 20+ agent clients (Claude Code, OpenCode, Cursor, Copilot, Windsurf, Codex, Gemini CLI, Zed, Aider, Cline, and more). Support level varies by client — some get MCP + instruction files, others get documented setup patterns.
+32 MCP tools. OpenContext ships adapters for 20+ agent clients (Claude Code, OpenCode, Cursor, Copilot, Windsurf, Codex, Gemini CLI, Zed, Aider, Cline, and more). Support level varies by client — some get MCP + instruction files, others get documented setup patterns.
 
 `opencontext install` writes seven OC personas to your editor's agents directory. In OpenCode, press **Tab** to switch to one. In Claude Code, they appear as subagents. Each SDD phase runs as the persona suited to it.
 
@@ -486,11 +545,11 @@ Two independent axes, both delivered as sampling hints: **phases** (≙ personas
 </div>
 
 <p align="center">
-  <img src="docs/assets/mcp-tools.svg" alt="19 MCP tools: 9 read tools (search, context, callers, callees, impact, node, files, status, trace), 4 symbol-level edit tools, an in-process agentic run tool, 4 memory tools (save, search, context, judge), and 1 architecture-quality tool" width="720">
+  <img src="docs/assets/mcp-tools.svg" alt="32 MCP tools: 9 read tools (search, context, callers, callees, impact, node, files, status, trace), 4 symbol-level edit tools, an in-process agentic run tool, 4 memory tools (save, search, context, judge), 1 architecture-quality tool, 8 session step tools (start, next, observe, apply, inspect, status, resume, archive), 4 workflow/profile meta tools (workflow list/explain, profile list/explain), and 1 config-doctor tool" width="720">
 </p>
 
 <p align="center">
-  <sub>Agent Interface · 19 MCP tools · 9 read + 4 symbol-level edits + 1 agentic run + 4 memory + 1 quality</sub>
+  <sub>Agent Interface · 32 MCP tools · 9 read + 4 symbol-level edits + 1 agentic run + 4 memory + 1 quality + 8 session + 4 workflow/profile meta + 1 config doctor</sub>
 </p>
 
 <div align="center">

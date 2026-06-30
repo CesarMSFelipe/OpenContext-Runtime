@@ -62,8 +62,13 @@ from opencontext_core.harness.phases import (
     VerifyPhase,
 )
 from opencontext_core.models.trace import RunEvent
+from opencontext_core.workflow.delegation_validator import (
+    DelegationValidationError,
+    DelegationValidator,
+)
 
 _log = logging.getLogger(__name__)
+_delegation_validator = DelegationValidator()
 
 
 class HarnessState:
@@ -74,6 +79,18 @@ class HarnessState:
         self.root = root
         self.task = task
         self.max_tokens = max_tokens
+        # PR-002 durable evidence layer. ``session_id`` scopes the on-disk
+        # sessions/<id>/runs/<run_id> tree; ``durable_artifacts`` gates the whole
+        # layer (off = PR-001 flat dump). Both are populated by ``create_run``.
+        self.session_id: str = ""
+        self.durable_artifacts: bool = False
+        # Strict SDD posture (runtime.sdd_strict). When True a phase whose output
+        # is a detected scaffold/placeholder is FAILED (blocking) rather than
+        # WARNed (spec PR-004 SDD-CONV). Default False = legacy advisory posture.
+        self.sdd_strict: bool = False
+        # PR-000 ProgramPlan attached to the run for meta-plan-aware phase scoping
+        # (spec PR-004 SDD-CONV). None when no program plan is present.
+        self.program_plan: Any = None
         self.ledgers: list[PhaseLedger] = []
         self.gates: list[PhaseGate] = []
         self.artifacts: list[HarnessArtifact] = []
@@ -147,6 +164,17 @@ class HarnessRunner:
         # back to no executor (honest planned/executor-absent) for mock/local.
         self._llm_gateway = llm_gateway
 
+        # PR-003 workflow registry rollback flag (pr-000-0 CL-005). Default off →
+        # legacy _WORKFLOW_TRACK_ALIASES/WORKFLOW_TRACKS resolution runs verbatim
+        # (spec FLAG1). Read defensively so an absent runtime block is harmless.
+        self._registry_enabled = False
+        self._durable_artifacts = False
+        self._memory_v2 = False
+        # Strict SDD scaffold-blocking posture (runtime.sdd_strict, spec PR-004
+        # SDD-CONV). Default off → legacy advisory scaffold reporting.
+        self._sdd_strict = False
+        self._workflow_registry: Any = None
+
         # Agent memory store. This MUST resolve to the same DB (path + provider)
         # the runtime's recall path reads, or every harvested memory lands in a
         # store recall never opens (write-only memory). The runtime recalls from
@@ -158,6 +186,21 @@ class HarnessRunner:
             from opencontext_core.config import load_config_or_defaults
 
             oc_config = load_config_or_defaults(self.root / "opencontext.yaml", auto_detect=False)
+            self._registry_enabled = bool(
+                getattr(getattr(oc_config, "runtime", None), "registry_enabled", False)
+            )
+            # PR-002 durable evidence layer flag (default off → PR-001 flat dump).
+            self._durable_artifacts = bool(
+                getattr(getattr(oc_config, "runtime", None), "durable_artifacts", False)
+            )
+            self._sdd_strict = bool(
+                getattr(getattr(oc_config, "runtime", None), "sdd_strict", False)
+            )
+            # PR-009 Memory v2: route harvested writes through the MemoryHarness
+            # (sole durable writer). Default off → legacy direct harvester writes.
+            self._memory_v2 = bool(
+                getattr(getattr(oc_config, "runtime", None), "memory_v2_enabled", False)
+            )
             storage_path = self.root / ".storage" / "opencontext"
             storage_path.mkdir(parents=True, exist_ok=True)
             self._memory_store = BackendFactory.create_memory_store(oc_config, storage_path)
@@ -181,10 +224,41 @@ class HarnessRunner:
             task=task,
             max_tokens=self.config.max_context_tokens,
         )
+        # PR-002: mint a session id and propagate the durable flag. The session
+        # tree is only materialised when durable_artifacts is on (ApplyPhase /
+        # persist_run guard on state.durable_artifacts), so this is a no-op
+        # otherwise and the PR-001 flat dump is unaffected.
+        from opencontext_core.runtime.ids import new_session_id
+
+        state.session_id = new_session_id()
+        state.durable_artifacts = self._durable_artifacts
+        state.sdd_strict = self._sdd_strict
+        # Meta-plan awareness: attach a PR-000 ProgramPlan when one is present so
+        # the work phases can seed scope from it (canonical phase order preserved).
+        state.program_plan = self._load_program_plan()
         delegate = self._build_executor()
         if delegate is not None:
             state.delegate = delegate
         return state
+
+    def _load_program_plan(self) -> Any:
+        """Load a PR-000 ``ProgramPlan`` for this run root, or ``None`` if absent.
+
+        Reads ``.opencontext/program-plan.json`` (the canonical drop location for
+        a program plan the SDD flow should consume). Best-effort: a missing or
+        unparseable file yields ``None`` so a run without a plan is unaffected
+        (spec PR-004 SDD-CONV: meta-plan awareness).
+        """
+        try:
+            path = self.root / ".opencontext" / "program-plan.json"
+            if not path.exists():
+                return None
+            from opencontext_core.planning.program import ProgramPlan
+
+            return ProgramPlan.model_validate_json(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # advisory — never break a run on a bad plan file
+            _log.warning("program plan load failed (advisory): %s", exc)
+            return None
 
     def _build_executor(self) -> Any:
         """Build the work-producing-phase executor from the configured gateway.
@@ -206,6 +280,38 @@ class HarnessRunner:
             # gateway could not be constructed. Phases fall back to honest
             # planned/executor-absent reporting.
             return None
+
+    def _validate_phase_delegation_result(
+        self,
+        result: Any,
+        *,
+        phase: str,
+        requires_envelope: bool = False,
+        expected_artifacts: list[str] | None = None,
+    ) -> None:
+        """Validate a sub-agent result returned by real delegation.
+
+        LOCAL and MOCK delegation leave ``result.envelope=None``; this method is
+        a no-op for those paths (``requires_envelope=False`` and no envelope
+        present).  Only validates when the caller explicitly sets
+        ``requires_envelope=True`` or when ``result.envelope`` is populated by a
+        real delegated phase.
+
+        Raises:
+            DelegationValidationError: If the result fails validation.
+        """
+        has_envelope = getattr(result, "envelope", None) is not None
+        if not requires_envelope and not has_envelope:
+            return
+        try:
+            _delegation_validator.validate(
+                result,
+                requires_envelope=requires_envelope,
+                expected_artifacts=expected_artifacts,
+            )
+        except DelegationValidationError as exc:
+            _log.warning("phase %s delegation validation failed: %s", phase, exc)
+            raise
 
     def _generate_apply_edits(self, state: HarnessState) -> list[Any]:
         """Produce concrete file edits for the apply phase via the live gateway.
@@ -341,6 +447,9 @@ class HarnessRunner:
     # ------------------------------------------------------------------
 
     # Maps a runner ``workflow`` name to a declared WORKFLOW_TRACKS track.
+    # DEPRECATED(2.0): legacy workflow alias resolution; superseded by the PR-003
+    # WorkflowRegistry. runtime.registry_enabled is now default but this rollback path
+    # remains; remove when the legacy track scheduler is removed (milestone-C).
     _WORKFLOW_TRACK_ALIASES: ClassVar[dict[str, str]] = {
         "sdd": "full",
         "full": "full",
@@ -414,6 +523,141 @@ class HarnessRunner:
         deps_subset = {p: [d for d in PHASE_DEPENDENCIES.get(p, []) if d in subset] for p in subset}
         return self.resolve_dag(subset, deps_subset)
 
+    def _resolve_workflow(
+        self, workflow: str, state: HarnessState
+    ) -> tuple[list[str], list[RunEvent]]:
+        """Resolve the phase order, optionally through the PR-003 registry.
+
+        Flag off (default): returns the verbatim legacy ``schedule_phases`` order and
+        no events (spec FLAG1). Flag on: resolves through ``WorkflowResolver``,
+        emits ``workflow.alias_resolved`` (if an alias was used),
+        ``workflow.validation.passed`` and ``workflow.resolved`` events (spec EVT1),
+        writes the workflow-selection receipt (spec RCPT1), and returns the resolved
+        order. Any resolver/validation failure falls back to the legacy order with a
+        ``workflow.validation.failed`` event (task 3.2 fallback).
+        """
+        if not self._registry_enabled:
+            return self.schedule_phases(workflow), []
+
+        from opencontext_core.workflows import (
+            WorkflowRegistry,
+            WorkflowResolver,
+        )
+        from opencontext_core.workflows.resolver import WorkflowResolutionError
+        from opencontext_core.workflows.validation import (
+            WorkflowProfileError,
+            WorkflowValidationError,
+        )
+
+        events: list[RunEvent] = []
+        try:
+            if self._workflow_registry is None:
+                self._workflow_registry = WorkflowRegistry.with_builtins()
+            resolver = WorkflowResolver(self._workflow_registry)
+            resolved = resolver.resolve(workflow)
+        except (WorkflowResolutionError, WorkflowValidationError, WorkflowProfileError) as exc:
+            events.append(
+                RunEvent(
+                    index=0,
+                    phase="workflow",
+                    action="workflow.validation.failed",
+                    inputs_summary=f"workflow={workflow}",
+                    status="failed",
+                    observation=f"registry resolution failed; using legacy path: {exc}",
+                    metadata={"family": "workflow", "requested": workflow},
+                )
+            )
+            return self.schedule_phases(workflow), events
+
+        if resolved.alias_used:
+            events.append(
+                RunEvent(
+                    index=len(events),
+                    phase="workflow",
+                    action="workflow.alias_resolved",
+                    inputs_summary=f"alias={resolved.alias_used}",
+                    status="passed",
+                    observation=resolved.reason,
+                    metadata={
+                        "family": "workflow",
+                        "alias": resolved.alias_used,
+                        "workflow_id": resolved.definition.id,
+                        "profile": resolved.profile,
+                    },
+                )
+            )
+        events.append(
+            RunEvent(
+                index=len(events),
+                phase="workflow",
+                action="workflow.validation.passed",
+                inputs_summary=f"workflow={resolved.definition.id}",
+                status="passed",
+                observation=f"workflow {resolved.definition.id!r} passed validation",
+                metadata={"family": "workflow", "workflow_uid": resolved.definition.uid},
+            )
+        )
+        events.append(
+            RunEvent(
+                index=len(events),
+                phase="workflow",
+                action="workflow.resolved",
+                inputs_summary=f"requested={workflow}",
+                status="passed",
+                observation=resolved.reason,
+                metadata={
+                    "family": "workflow",
+                    "requested": resolved.requested,
+                    "resolved": resolved.definition.id,
+                    "workflow_uid": resolved.definition.uid,
+                    "profile": resolved.profile,
+                    "alias_used": resolved.alias_used,
+                    "phase_order": list(resolved.phase_order),
+                },
+            )
+        )
+        self._write_selection_receipt(state, resolver.build_receipt(resolved))
+        return list(resolved.phase_order), events
+
+    def _write_selection_receipt(self, state: HarnessState, receipt: Any) -> None:
+        """Persist the workflow-selection receipt into the run dir (spec RCPT1)."""
+        try:
+            run_dir = self.root / ".opencontext" / "runs" / state.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "workflow-selection.json").write_text(
+                json.dumps(receipt.model_dump(mode="json"), indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:  # advisory — must never fail the run
+            _log.warning("workflow-selection receipt write failed (advisory): %s", exc)
+
+    def completed_phases(self, run_id: str) -> set[str]:
+        """Phases that finished (passed/warning) in a persisted run.
+
+        Reads ``.opencontext/runs/<run_id>/events.json`` — the append-only phase
+        ledger. A phase counts as completed only if its ``run_phase`` event has a
+        passing outcome, so a failed/blocked phase is re-run on resume, not
+        skipped. Returns an empty set when the run or ledger is absent.
+        """
+        import json as _json
+
+        events_path = self.root / ".opencontext" / "runs" / run_id / "events.json"
+        if not events_path.exists():
+            return set()
+        try:
+            data = _json.loads(events_path.read_text(encoding="utf-8"))
+        except (OSError, _json.JSONDecodeError):
+            return set()
+        done: set[str] = set()
+        for event in data.get("events", []) if isinstance(data, dict) else []:
+            if not isinstance(event, dict):
+                continue
+            if event.get("action") == "run_phase" and event.get("status") in ("passed", "warning"):
+                phase = event.get("phase")
+                if isinstance(phase, str):
+                    done.add(phase)
+        return done
+
     def run(
         self,
         workflow: str,
@@ -422,6 +666,7 @@ class HarnessRunner:
         *,
         apply_edits: list[Any] | None = None,
         approved_phases: set[str] | None = None,
+        resume_from: str | None = None,
     ) -> HarnessRunResult:
         """Execute a full workflow with all phases.
 
@@ -433,6 +678,16 @@ class HarnessRunner:
                 ApplyPhase. Each item is a ``{"path", "content"}`` dict.
             approved_phases: Phases for which human approval has been granted.
                 Used by the ``approval_required_for_writes`` pre-gate.
+            resume_from: Run id of a prior run to resume. Phases that completed
+                (passed/warning) in that run are skipped and recorded as
+                ``skipped`` events in this run's ledger; execution picks up at the
+                first incomplete phase.
+                # NOTE (spec PR-004 REQ-10): a fresh run_id is minted on resume, so
+                # the prior run's passed-phase artifacts are now rehydrated into
+                # this run's dir via ``_carry_over_artifacts`` BEFORE the phase
+                # loop, so a downstream phase (e.g. spec reading proposal.json)
+                # resumed mid-flow finds the earlier phase's output and runs to
+                # completion.
         """
         state = self.create_run(workflow, task)
         if apply_edits:
@@ -451,11 +706,51 @@ class HarnessRunner:
         # Warn if knowledge graph has not been indexed (ExplorePhase depends on it)
         self._warn_if_kg_not_indexed(state)
 
-        # Single spine: resolve the phases to run through the folded DAG/track
-        # scheduler (PHASE_DEPENDENCIES / WORKFLOW_TRACKS), not a hardcoded list.
-        phase_ids = self.schedule_phases(workflow)
+        # Single spine: resolve the phases to run. With runtime.registry_enabled on,
+        # this routes through the PR-003 WorkflowRegistry (declarative resolution +
+        # events + selection receipt) but still hands the resolved order to the
+        # unchanged scheduler/executor below (spec INT1). With the flag off it is the
+        # verbatim legacy DAG/track scheduler (PHASE_DEPENDENCIES / WORKFLOW_TRACKS).
+        phase_ids, workflow_events = self._resolve_workflow(workflow, state)
+        events.extend(workflow_events)
+
+        # Resume: phases that already completed in a prior run are skipped here and
+        # recorded as skipped events, so the ledger stays honest about what re-ran.
+        resume_completed = self.completed_phases(resume_from) if resume_from else set()
+
+        # REQ-10: rehydrate the prior run's passed-phase artifacts into THIS run's
+        # dir before scheduling, so a downstream phase resumed mid-flow (e.g. spec
+        # reading proposal.json) finds the earlier phase's output. create_run mints
+        # a fresh run_id, so without this copy the resumed phase would not find it.
+        if resume_from and resume_completed:
+            self._carry_over_artifacts(resume_from, state.run_id, resume_completed)
+
+        # PR-002 (RES-02): on the durable path, validate the prior run's manifest +
+        # artifact integrity BEFORE scheduling any phase. A missing/corrupt required
+        # artifact raises a typed ResumeIntegrityError here, aborting safely with no
+        # state mutated. Off → legacy phase-skip resume (RES-01) is unchanged.
+        if resume_from and self._durable_artifacts:
+            from opencontext_core.harness.resume import ResumeManager
+            from opencontext_core.harness.sessions import find_run_root
+
+            prior_dir = find_run_root(self.root, resume_from)
+            if prior_dir is not None and (prior_dir / "manifest.json").exists():
+                ResumeManager(prior_dir).validate()
 
         for phase_id in phase_ids:
+            if phase_id in resume_completed:
+                events.append(
+                    RunEvent(
+                        index=len(events),
+                        phase=phase_id,
+                        action="skip_phase",
+                        inputs_summary=f"resumed from {resume_from}",
+                        status="skipped",
+                        observation="phase already completed in the resumed run",
+                    )
+                )
+                continue
+
             # Evaluate ConfidenceGate before running the phase
             phase_config = self.config.phases.get(phase_id)
             if phase_config is not None and phase_config.confidence_threshold is not None:
@@ -578,11 +873,29 @@ class HarnessRunner:
             # Record one typed event for this executed phase (action + observation).
             events.append(self._phase_event(len(events), phase_id, state, result, dispatched))
 
-            if result.status in (GateStatus.FAILED, GateStatus.WARNING) and not hard_failed:
+            # REQ-06 / SDD-CONV: emit one uniform per-phase decision receipt
+            # (phase id, status, artifacts, gate digest, decisions) through the
+            # PR-002 ReceiptStore, and a handoff artifact naming the next phase's
+            # inputs. Both are advisory side-cars — they never alter run status.
+            self._write_phase_receipt(state, phase_id, result, dispatched, workflow)
+            self._write_handoff_artifact(state, phase_id, phase_ids, result, workflow)
+
+            # Strict SDD posture (runtime.sdd_strict) blocks specifically on a
+            # detected SCAFFOLD — the guardrail gate is FAILED only when the phase
+            # produced a placeholder (spec PR-004 SDD-CONV). Other FAILED results
+            # (e.g. explore's missing-index gates) keep the legacy WARNING posture.
+            scaffold_blocked = getattr(state, "sdd_strict", False) and any(
+                g.id == "guardrails" and g.status == GateStatus.FAILED for g in result.gates
+            )
+            if result.status == GateStatus.FAILED:
+                if budget_mode is BudgetMode.STRICT or scaffold_blocked:
+                    final_status = GateStatus.FAILED
+                    hard_failed = True
+                    break
+                if not hard_failed:
+                    final_status = GateStatus.WARNING
+            elif result.status == GateStatus.WARNING and not hard_failed:
                 final_status = GateStatus.WARNING
-            if result.status == GateStatus.FAILED and budget_mode is BudgetMode.STRICT:
-                final_status = GateStatus.FAILED
-                break
 
         # Bounded apply->gate->fix loop: feed failing verify findings back to the
         # Builder for a re-attempt (revives quality rules' max_fix_loops). No-op
@@ -632,7 +945,75 @@ class HarnessRunner:
 
         self.persist_run(state, run_result)
         self._post_run_update(state)
+        self._post_run_evolution(state, run_result)
         return run_result
+
+    def _post_run_evolution(self, state: HarnessState, run_result: Any) -> None:
+        """Generate and persist evolution proposals from the completed run.
+
+        When ``config.learning.loop.enabled`` is ``True`` (PR-000.4, default off)
+        this delegates to the unified, non-blocking ``LearningLoop`` (Decision Log
+        + benchmark-gated learning candidates). Otherwise the legacy
+        ``config.learning.in_loop`` propose-only evolution hook runs unchanged.
+        Any exception is swallowed and appended as a warning — this hook MUST NOT
+        abort or modify the run result.
+        """
+        try:
+            loop_cfg = getattr(getattr(self.config, "learning", None), "loop", None)
+            if loop_cfg is not None and getattr(loop_cfg, "enabled", False):
+                try:
+                    from opencontext_core.learning.loop import LearningLoop
+
+                    LearningLoop(state.root, config=self.config).run_after(run_result)
+                except Exception as _loop_exc:  # non-blocking — never abort the run
+                    state.warnings.append(f"learning-loop: {_loop_exc}")
+                return
+
+            in_loop = bool(getattr(getattr(self.config, "learning", None), "in_loop", False))
+            if not in_loop:
+                return
+
+            from opencontext_core.learning.evolution_engine import EvolutionEngine
+            from opencontext_core.learning.evolution_store import EvolutionStore
+
+            learned_patterns: list[Any] = []
+            optimized_budgets: list[Any] = []
+            memories_written: list[Any] = []
+
+            # Optionally call LearningOrchestrator if available
+            try:
+                from opencontext_core.learning.learning_orchestrator import LearningOrchestrator
+
+                orch = LearningOrchestrator(
+                    storage_path=state.root / ".storage" / "opencontext" / "learning",
+                    kg_db_path=state.root / ".storage" / "opencontext" / "context_graph.db",
+                )
+                orch.learn()
+                learned_patterns = list(orch.patterns.get_all_patterns().values())
+                optimized_budgets = list(orch.optimizer._budgets.values())
+            except Exception as _lo_exc:
+                _log.debug("post-run-evolution: LearningOrchestrator unavailable: %s", _lo_exc)
+
+            engine = EvolutionEngine()
+            proposals = engine.propose_from_run(
+                run_result=run_result,
+                learned_patterns=learned_patterns or None,
+                optimized_budgets=optimized_budgets or None,
+                memories_written=memories_written or None,
+            )
+
+            if proposals:
+                store = EvolutionStore(state.root)
+                for proposal in proposals:
+                    store.save(proposal)
+                _log.debug(
+                    "post-run-evolution: saved %d proposal(s) to EvolutionStore",
+                    len(proposals),
+                )
+
+        except Exception as _ev_exc:
+            state.warnings.append(f"post-run-evolution: {_ev_exc}")
+            _log.warning("post-run-evolution failed (non-fatal): %s", _ev_exc)
 
     def _post_run_update(self, state: HarnessState) -> None:
         """Re-index changed files after a run.
@@ -736,6 +1117,157 @@ class HarnessRunner:
             observation=observation,
             metadata=metadata,
         )
+
+    def _write_phase_receipt(
+        self,
+        state: HarnessState,
+        phase_id: str,
+        result: PhaseResult,
+        dispatched: list[PhaseGate],
+        workflow: str,
+    ) -> None:
+        """Emit one uniform per-phase decision receipt via the PR-002 ReceiptStore.
+
+        Records phase id, status, the artifacts the phase produced, a gate digest
+        (gate id -> status across phase + dispatched gates), the phase's declared
+        required harnesses, the decisions that drove it and the trace id (spec
+        PR-004 REQ-06 / SDD-CONV phase-level decision receipts). Advisory: a write
+        failure is logged and never fails the run.
+        """
+        try:
+            from opencontext_core.harness.receipt_store import ReceiptStore
+            from opencontext_core.models.receipt import PhaseReceipt
+
+            run_dir = self.root / ".opencontext" / "runs" / state.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            gate_digest = {
+                g.id: (g.status.value if hasattr(g.status, "value") else str(g.status))
+                for g in (*result.gates, *dispatched)
+            }
+            phase_config = self.config.phases.get(phase_id)
+            required = list(getattr(phase_config, "required_harnesses", []) or [])
+            receipt = PhaseReceipt(
+                run_id=state.run_id,
+                session_id=getattr(state, "session_id", "") or "",
+                workflow_id=workflow,
+                phase=phase_id,
+                status=result.status.value
+                if hasattr(result.status, "value")
+                else str(result.status),
+                artifact_refs=[str(a.path) for a in result.artifacts],
+                gate_digest=gate_digest,
+                required_harnesses=required,
+                decision_refs=[
+                    str(getattr(d, "id", "")) for d in result.decisions if getattr(d, "id", "")
+                ],
+                trace_id=result.trace_id,
+            )
+            ReceiptStore(run_dir).write(receipt)
+        except Exception as exc:  # advisory — must never fail the run
+            _log.warning("phase receipt write failed for %s (advisory): %s", phase_id, exc)
+
+    def _write_handoff_artifact(
+        self,
+        state: HarnessState,
+        phase_id: str,
+        phase_ids: list[str],
+        result: PhaseResult,
+        workflow: str,
+    ) -> None:
+        """Write a handoff artifact naming the next phase's inputs (SDD-CONV).
+
+        Built as an ``AgentHandoff`` (run identity + the next phase's persona /
+        required inputs / expected outputs from ``OC_NEW_FLOW``), projected onto
+        the PR-006 ``PersonaHandoff`` view and persisted through the PR-002
+        ``ArtifactStore`` (kind ``task-contract`` — a handoff is the input contract
+        for the next phase). Only on a passed/warning transition with a real next
+        phase. Advisory: a failure is logged and never fails the run.
+        """
+        try:
+            if result.status not in (GateStatus.PASSED, GateStatus.WARNING):
+                return
+            try:
+                idx = phase_ids.index(phase_id)
+            except ValueError:
+                return
+            if idx + 1 >= len(phase_ids):
+                return
+            next_phase = phase_ids[idx + 1]
+
+            from opencontext_core.harness.artifact_store import ArtifactStore
+            from opencontext_core.models.artifact import ArtifactWriteRequest
+            from opencontext_core.oc_new.flow import OC_NEW_FLOW
+            from opencontext_core.personas import PHASE_PERSONAS
+            from opencontext_core.personas.handoff import PersonaHandoff
+
+            next_def = next((p for p in OC_NEW_FLOW if p.name == next_phase), None)
+            required_inputs = list(getattr(next_def, "required_artifacts", []) or [])
+            expected_outputs = list(getattr(next_def, "expected_artifacts", []) or [])
+
+            from opencontext_core.oc_new.models import AgentHandoff
+
+            handoff = AgentHandoff(
+                run_id=state.run_id,
+                change_id=state.task,
+                trace_id=result.trace_id or "",
+                phase=next_phase,  # type: ignore[arg-type]
+                persona=PHASE_PERSONAS.get(next_phase, ""),
+                task=state.task,
+                memory_key=f"change:{state.task}",
+                required_inputs=required_inputs,
+                expected_outputs=expected_outputs,
+                previous_phase_summary=f"{phase_id} completed with status {result.status}",
+            )
+            persona_handoff = PersonaHandoff.from_agent_handoff(
+                handoff, from_persona=PHASE_PERSONAS.get(phase_id, "")
+            )
+
+            run_dir = self.root / ".opencontext" / "runs" / state.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            ArtifactStore(run_dir).write(
+                ArtifactWriteRequest(
+                    run_id=state.run_id,
+                    session_id=getattr(state, "session_id", "") or "",
+                    workflow_id=workflow,
+                    node_id=next_phase,
+                    kind="task-contract",
+                    content=persona_handoff.model_dump_json(indent=2),
+                    media_type="application/json",
+                    produced_by="HarnessRunner",
+                    metadata={
+                        "handoff": True,
+                        "from_phase": phase_id,
+                        "to_phase": next_phase,
+                    },
+                )
+            )
+        except Exception as exc:  # advisory — must never fail the run
+            _log.warning("handoff artifact write failed after %s (advisory): %s", phase_id, exc)
+
+    def _carry_over_artifacts(
+        self, resume_from: str, new_run_id: str, resume_completed: set[str]
+    ) -> None:
+        """Copy a prior run's passed-phase artifacts into the resumed run's dir.
+
+        Enumerates the prior run's passed-phase artifact files (via
+        ``RunStore.passed_phase_artifacts``) and copies each, by basename, into the
+        new run dir so downstream phases (e.g. spec reading ``proposal.json``) find
+        the earlier phase's output (spec PR-004 REQ-10). Advisory: any failure is
+        logged and never fails the run.
+        """
+        try:
+            import shutil
+
+            from opencontext_core.harness.run_store import RunStore
+
+            new_dir = self.root / ".opencontext" / "runs" / new_run_id
+            new_dir.mkdir(parents=True, exist_ok=True)
+            for src in RunStore(self.root).passed_phase_artifacts(resume_from, resume_completed):
+                dest = new_dir / src.name
+                if not dest.exists():
+                    shutil.copy2(src, dest)
+        except Exception as exc:  # advisory — never break resume on a copy failure
+            _log.warning("resume artifact carry-over failed (advisory): %s", exc)
 
     def _harness_governance(self) -> tuple[str, bool]:
         """Resolve effective (tdd_mode, approval_required_for_writes).
@@ -1546,7 +2078,12 @@ class HarnessRunner:
         if phase_id == "review":
             return ReviewPhase(phase_config, budget_mode)
         if phase_id == "archive":
-            return ArchivePhase(phase_config, budget_mode, memory_store=memory_store)
+            return ArchivePhase(
+                phase_config,
+                budget_mode,
+                memory_store=memory_store,
+                memory_v2=getattr(self, "_memory_v2", False),
+            )
         if phase_id == "judgment":
             return JudgmentDayPhase(phase_config, budget_mode)
         if phase_id == "gga":
@@ -1716,4 +2253,80 @@ class HarnessRunner:
             (run_dir / filename).write_text(
                 json.dumps(data, indent=2, default=str), encoding="utf-8"
             )
+
+        # VerifyReport: serialized alongside the run artifacts when the verify phase ran.
+        # Written only when a ComplianceMatrix was produced by VerifyPhase.
+        try:
+            verify_phase_result = next(
+                (a for a in result.artifacts if getattr(a, "kind", "") == "verify-report"),
+                None,
+            )
+            if verify_phase_result is not None:
+                # Pull compliance matrix from run state metadata (set by VerifyPhase)
+                # by inspecting gates for the compliance_matrix gate metadata.
+                from opencontext_core.verify.compliance import ComplianceMatrix
+                from opencontext_core.verify.report import VerifyReport
+
+                _cm_data: Any = None
+                for gate in result.gates:
+                    if getattr(gate, "id", "") == "compliance_matrix":
+                        _cm_data = (getattr(gate, "metadata", None) or {}).get("matrix")
+                        break
+
+                if _cm_data is not None:
+                    _matrix = ComplianceMatrix.model_validate(_cm_data)
+                    _vreport = VerifyReport.compute_verdict(_matrix)
+                    _vreport_path = run_dir / "verify-report-compliance.json"
+                    _vreport_path.write_text(
+                        json.dumps(_vreport.model_dump(mode="json"), indent=2),
+                        encoding="utf-8",
+                    )
+                    files["verify-report-compliance.json"] = _vreport.model_dump(mode="json")
+        except Exception as _vr_exc:
+            _log.warning("persist_run: VerifyReport write failed (advisory): %s", _vr_exc)
+
+        # Index the run so `opencontext run list/show/artifacts` (and any API
+        # consumer) can resolve run_id -> artifact dir without re-scanning disk.
+        # Best-effort: a failed index write must not fail the run itself.
+        try:
+            from opencontext_core.harness.run_store import RunStore
+
+            RunStore(self.root).register(state.run_id, run_dir)
+        except Exception:
+            # Indexing is advisory — a failed index write must not fail the run.
+            pass
+
+        # PR-002: when durable_artifacts is on, additionally materialise the
+        # session run tree and write the immutable RunManifest indexing this run's
+        # artifacts/receipts/checkpoints (MAN-01, SES-01). Additive to the flat
+        # dump above so `run list/show` keep working; off → none of this runs.
+        if self._durable_artifacts and state.session_id:
+            try:
+                from opencontext_core.harness.sessions import (
+                    build_run_manifest,
+                    ensure_layout,
+                    write_run_manifest,
+                )
+
+                durable_dir = ensure_layout(self.root, state.session_id, state.run_id)
+                events_rel = "events.jsonl"
+                (durable_dir / events_rel).write_text(
+                    "".join(e.model_dump_json() + "\n" for e in result.events),
+                    encoding="utf-8",
+                )
+                status_str = (
+                    result.status.value if hasattr(result.status, "value") else str(result.status)
+                )
+                manifest = build_run_manifest(
+                    durable_dir,
+                    session_id=state.session_id,
+                    run_id=state.run_id,
+                    workflow_id=result.workflow,
+                    status=status_str,
+                    events_path=events_rel,
+                )
+                write_run_manifest(durable_dir, manifest)
+            except Exception as _man_exc:
+                _log.warning("persist_run: durable manifest write failed (advisory): %s", _man_exc)
+
         return run_dir

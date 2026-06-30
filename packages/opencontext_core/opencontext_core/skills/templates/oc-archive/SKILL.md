@@ -12,9 +12,8 @@ version: 0.1.0
 # oc-archive
 
 Archive a verified SDD change: persist memory and graph deltas, sync the specs,
-and close out the cycle. Run this phase **as the OC Orchestrator subagent** — it
-owns sequencing and persistence. (Archive is not a harness driver phase, so it has
-no `PHASE_PERSONAS` entry; the Orchestrator drives it.)
+and close out the cycle. Run this phase **as the OC Archivist subagent** — it
+owns the memory harvest and receipt writing.
 
 ## When to use
 
@@ -22,7 +21,7 @@ Use after `oc-verify` passes and the change is complete.
 
 ## Run as the persona
 
-- **Task tool**, `subagent_type: oc-orchestrator`.
+- **Task tool**, `subagent_type: oc-archivist`.
 - Pass the change `<slug>` and the `trace_id`; delegate the close-out to it.
 
 ## Steps (the spawned subagent performs these)

@@ -1,0 +1,176 @@
+"""Tests for D5: AgentCoordinationStore lease acquire/release/signal round-trip."""
+
+from __future__ import annotations
+
+import tempfile
+from datetime import UTC, timedelta
+from pathlib import Path
+
+import pytest
+
+from opencontext_core.workflow.leases import AgentCoordinationStore, AgentLeaseStatus
+from opencontext_core.workflow.signals import AgentSignalKind
+
+
+class TestAgentLeaseFields:
+    def test_lease_fields_accessible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease = store.acquire("agent-1", "run-1", "explore", timedelta(hours=1))
+            assert lease.lease_id
+            assert lease.agent_id == "agent-1"
+            assert lease.acquired_at is not None
+            assert lease.expires_at is not None
+            assert lease.status == AgentLeaseStatus.ACTIVE
+
+
+class TestAgentCoordinationStoreRoundTrip:
+    def test_acquire_release_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease = store.acquire("agent-2", "run-2", "design", timedelta(minutes=30))
+            assert lease.status == AgentLeaseStatus.ACTIVE
+
+            store.release(lease.lease_id)
+            retrieved = store.get_lease(lease.lease_id)
+            assert retrieved is not None
+            assert retrieved.status == AgentLeaseStatus.RELEASED
+
+    def test_acquire_signal_release_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease = store.acquire("agent-3", "run-3", "apply", timedelta(hours=2))
+
+            signal = store.signal(lease.lease_id, AgentSignalKind.STARTED)
+            assert signal.lease_id == lease.lease_id
+            assert signal.kind == AgentSignalKind.STARTED
+
+            store.release(lease.lease_id)
+            signals = store.get_signals(lease.lease_id)
+            assert len(signals) == 1
+            assert signals[0].kind == AgentSignalKind.STARTED
+
+            final = store.get_lease(lease.lease_id)
+            assert final.status == AgentLeaseStatus.RELEASED
+
+    def test_get_signals_for_run_and_active_leases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease1 = store.acquire("agent-a", "run-a", "explore")
+            lease2 = store.acquire("agent-b", "run-b", "explore")
+            store.signal(lease1.lease_id, AgentSignalKind.STARTED)
+            store.signal(lease2.lease_id, AgentSignalKind.STARTED)
+
+            assert [s.lease_id for s in store.get_signals_for_run("run-a")] == [lease1.lease_id]
+            assert {lease.lease_id for lease in store.get_active_leases("run-a")} == {
+                lease1.lease_id
+            }
+            assert {lease.lease_id for lease in store.get_active_leases()} == {
+                lease1.lease_id,
+                lease2.lease_id,
+            }
+
+    def test_lease_survives_store_restart(self) -> None:
+        """Lease written to SQLite must be readable after re-opening the store."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "coord.db"
+            store1 = AgentCoordinationStore(db_path)
+            lease = store1.acquire("agent-4", "run-4", "verify", timedelta(hours=1))
+            lease_id = lease.lease_id
+
+            # Re-open store (simulates process restart).
+            store2 = AgentCoordinationStore(db_path)
+            retrieved = store2.get_lease(lease_id)
+            assert retrieved is not None
+            assert retrieved.status == AgentLeaseStatus.ACTIVE
+            assert retrieved.agent_id == "agent-4"
+
+    def test_duplicate_acquire_raises_when_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            store.acquire("agent-5", "run-5", "spec", timedelta(hours=1))
+            with pytest.raises(RuntimeError, match="Active lease"):
+                store.acquire("agent-5b", "run-5", "spec", timedelta(hours=1))
+
+    def test_expired_lease_allows_new_acquire(self) -> None:
+        """An expired lease (past expires_at) should allow a new acquire."""
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "coord.db"
+            store = AgentCoordinationStore(db_path)
+            lease = store.acquire("agent-6", "run-6", "tasks", timedelta(seconds=1))
+
+            # Manually backdate expires_at to simulate expiry.
+            from datetime import datetime
+
+            past = datetime(2020, 1, 1, tzinfo=UTC).isoformat()
+            conn = sqlite3.connect(str(db_path))
+            conn.execute(
+                "UPDATE agent_leases SET expires_at = ? WHERE lease_id = ?",
+                (past, lease.lease_id),
+            )
+            conn.commit()
+            conn.close()
+
+            # Should succeed because old lease is now expired.
+            new_lease = store.acquire("agent-6b", "run-6", "tasks", timedelta(hours=1))
+            assert new_lease.lease_id != lease.lease_id
+            assert new_lease.status == AgentLeaseStatus.ACTIVE
+
+
+class TestCoordinatorPolicyUnchanged:
+    def test_coordinator_policy_still_raises_on_non_main_thread(self) -> None:
+        """D5 must not weaken CoordinatorPolicy.assert_allowed."""
+        import threading
+
+        from opencontext_core.workflow.coordinator_policy import CoordinatorPolicy
+
+        policy = CoordinatorPolicy()
+        # Main thread should be allowed.
+        policy.assert_allowed(thread_id=threading.get_ident())
+
+        # A synthetic non-main thread_id should raise.
+        with pytest.raises((RuntimeError, ValueError, AssertionError)):
+            policy.assert_allowed(thread_id=-1)
+
+
+class TestSignalStructuredPayloads:
+    """T1: signal() must accept dict and list payloads (round-trip via JSON string)."""
+
+    def test_signal_dict_payload_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease = store.acquire("agent-d1", "run-d1", "apply")
+            sig = store.signal(lease.lease_id, AgentSignalKind.STARTED, {"step": 1})
+            assert sig.payload == '{"step": 1}'
+            sigs = store.get_signals(lease.lease_id)
+            assert len(sigs) == 1
+            import json
+
+            assert json.loads(sigs[0].payload) == {"step": 1}
+
+    def test_signal_list_payload_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease = store.acquire("agent-l1", "run-l1", "explore")
+            sig = store.signal(lease.lease_id, AgentSignalKind.PROGRESS, [1, 2, 3])
+            assert sig.payload == "[1, 2, 3]"
+            sigs = store.get_signals(lease.lease_id)
+            import json
+
+            assert json.loads(sigs[0].payload) == [1, 2, 3]
+
+    def test_signal_str_payload_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease = store.acquire("agent-s1", "run-s1", "spec")
+            sig = store.signal(lease.lease_id, AgentSignalKind.COMPLETED, "plain-string")
+            assert sig.payload == "plain-string"
+
+    def test_signal_none_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AgentCoordinationStore(Path(tmp) / "coord.db")
+            lease = store.acquire("agent-n1", "run-n1", "verify")
+            sig = store.signal(lease.lease_id, AgentSignalKind.HEARTBEAT, None)
+            assert sig.payload is None

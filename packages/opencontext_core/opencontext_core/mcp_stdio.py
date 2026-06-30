@@ -26,6 +26,7 @@ from opencontext_core.tools.policy import ToolPermissionPolicy
 if TYPE_CHECKING:
     from opencontext_core.indexing.graph_db import Node
     from opencontext_core.runtime import OpenContextRuntime
+    from opencontext_core.runtime.api import RuntimeApi
 
 
 # Adaptive max_nodes tiers based on indexed file count
@@ -138,6 +139,124 @@ def _to_tool_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Per-tool output schemas (workstream C3).
+#
+# Every tool's structured result is an object. On the failure/denied path
+# ``_call_tool`` returns a ToolResultEnvelope (schema_version/tool/status/
+# warnings/policy) plus the back-compat ``error``/``reason`` keys; on success a
+# handler returns its own domain dict. A single rigid schema can't describe both
+# arms, so each tool advertises a PERMISSIVE object schema: documented top-level
+# keys (optional, no ``required``) for discoverability, with
+# ``additionalProperties: true`` so neither the success dict nor the envelope is
+# rejected. Honest metadata, not a contract the handlers would have to be
+# rewritten to satisfy.
+# --------------------------------------------------------------------------- #
+
+# Envelope/error keys that any tool may return on the failure path.
+_ENVELOPE_OUTPUT_KEYS: tuple[str, ...] = (
+    "schema_version",
+    "tool",
+    "status",
+    "warnings",
+    "policy",
+    "error",
+    "reason",
+)
+
+# Conservative top-level success keys per tool (additionalProperties covers the
+# nested detail). Derived from each handler's return shape.
+_TOOL_SUCCESS_KEYS: dict[str, tuple[str, ...]] = {
+    "opencontext_search": ("results", "count"),
+    "opencontext_context": ("context", "estimated_tokens", "coverage", "symbol"),
+    "opencontext_callers": ("callers", "symbol", "file"),
+    "opencontext_callees": ("callees", "symbol", "file"),
+    "opencontext_impact": (
+        "symbol",
+        "affected_files",
+        "affected_nodes",
+        "risk_level",
+        "centrality",
+        "test_files",
+    ),
+    "opencontext_node": ("name", "kind", "file", "line", "signature", "docstring", "container"),
+    "opencontext_files": ("indexed", "files", "nodes", "edges", "languages", "directories"),
+    "opencontext_status": ("indexed", "nodes", "edges", "files"),
+    "opencontext_trace": ("found", "path", "hops", "code", "depth_exceeded"),
+    "opencontext_quality": ("diff",),
+    "opencontext_replace_symbol_body": (
+        "applied",
+        "symbol",
+        "file",
+        "changed_range",
+        "approval_required",
+        "hint",
+    ),
+    "opencontext_insert_before_symbol": ("applied", "symbol", "file", "approval_required", "hint"),
+    "opencontext_insert_after_symbol": ("applied", "symbol", "file", "approval_required", "hint"),
+    "opencontext_rename_symbol": ("applied", "symbol", "file", "new_name", "approval_required"),
+    "opencontext_run": (
+        "schema_version",
+        "session_id",
+        "run_id",
+        "workflow",
+        "status",
+        "summary",
+        "artifacts",
+        "receipts",
+        "gates",
+        "cost",
+        "confidence",
+        "next_recommended",
+        "warnings",
+        "host_model_used",
+    ),
+    "opencontext_session_start": ("session_id", "status", "session_path"),
+    "opencontext_session_next": ("kind", "node_id", "reason"),
+    "opencontext_session_observe": ("session_id", "status", "node", "last_event_id"),
+    "opencontext_session_apply": ("applied", "status", "reason"),
+    "opencontext_session_inspect": ("session_id", "status", "run_count", "event_count"),
+    "opencontext_session_status": ("session_id", "status", "active_run_id"),
+    "opencontext_session_resume": ("session_id", "status", "last_event_id"),
+    "opencontext_session_archive": ("session_id", "archived", "status"),
+    "opencontext_workflow_list": ("workflows",),
+    "opencontext_workflow_explain": ("id", "when", "cost", "phases", "harnesses"),
+    "opencontext_profile_list": ("config_profiles", "model_profiles"),
+    "opencontext_profile_explain": ("id", "family", "security", "approvals"),
+    "opencontext_doctor": ("ok", "failed", "findings"),
+    "opencontext_memory_save": (
+        "id",
+        "layer",
+        "key",
+        "backend",
+        "degraded",
+        "run_id",
+        "provenance",
+    ),
+    "opencontext_memory_search": ("results", "count"),
+    "opencontext_memory_context": ("context", "count"),
+    "opencontext_memory_judge": ("id", "relation", "ok"),
+}
+
+
+def _tool_output_schema(name: str) -> dict[str, Any]:
+    """Permissive per-tool output schema for ``tools/list`` (C3).
+
+    Documents the keys a tool may return (success keys + envelope/error keys) as
+    optional properties; ``additionalProperties: true`` keeps both response arms
+    valid.
+    """
+    keys = (*_TOOL_SUCCESS_KEYS.get(name, ()), *_ENVELOPE_OUTPUT_KEYS)
+    # Each documented key accepts any type (the value here is "this key appears",
+    # not its exact shape — that stays open for handler freedom).
+    properties: dict[str, dict[str, Any]] = {key: {} for key in keys}
+    return {
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": True,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Memory tools (workstream A) — agent-driven write/read/curate over the
 # existing CompositeMemoryStore reached as ``runtime._v2_memory_store``.
 # --------------------------------------------------------------------------- #
@@ -185,6 +304,11 @@ def _make_memory_record(params: dict[str, Any]) -> Any:
     tags = params.get("tags") or []
     now = datetime.now(UTC)
 
+    # Provenance (G): link a memory back to the run that produced it and record
+    # how it was created. Optional — a content-only save still works unchanged.
+    run_id = params.get("run_id")
+    provenance = params.get("provenance")
+
     return MemoryRecord(
         id=uuid.uuid4().hex,
         layer=layer,
@@ -197,6 +321,8 @@ def _make_memory_record(params: dict[str, Any]) -> Any:
         updated_at=now,
         # topic_key stays None unless the caller asked for topic-keyed upsert.
         topic_key=params.get("topic_key"),
+        run_id=str(run_id) if run_id is not None else None,
+        provenance=str(provenance) if provenance is not None else None,
     )
 
 
@@ -441,6 +567,14 @@ class MCPServer:
                         "items": {"type": "string"},
                         "description": "Optional free-form tags",
                     },
+                    "run_id": {
+                        "type": "string",
+                        "description": "Optional run id this memory came from (provenance)",
+                    },
+                    "provenance": {
+                        "type": "string",
+                        "description": "Optional origin: agent|harvest|manual|import",
+                    },
                 },
             },
             "opencontext_memory_search": {
@@ -495,6 +629,78 @@ class MCPServer:
                         "default": None,
                     },
                 },
+            },
+            # ── PR-013 session step tools (route through RuntimeApi) ──────────
+            "opencontext_session_start": {
+                "description": "Start a runtime session for a task (returns session_id).",
+                "parameters": {
+                    "task": {"type": "string", "description": "Task to start a session for"},
+                    "profile": {"type": "string", "default": "balanced"},
+                    "root": {"type": "string", "description": "Project root (optional)"},
+                },
+            },
+            "opencontext_session_next": {
+                "description": "Ask the runtime what the next action for a session is.",
+                "parameters": {"session_id": {"type": "string"}},
+            },
+            "opencontext_session_observe": {
+                "description": "Record an observation event on a session.",
+                "parameters": {
+                    "session_id": {"type": "string"},
+                    "type": {"type": "string", "default": "note"},
+                    "status": {"type": "string", "default": "ok"},
+                    "message": {"type": "string"},
+                },
+            },
+            "opencontext_session_apply": {
+                "description": "Record a mutation intent on a session (governed).",
+                "parameters": {
+                    "session_id": {"type": "string"},
+                    "kind": {"type": "string", "default": "edit"},
+                },
+            },
+            "opencontext_session_inspect": {
+                "description": "Inspect a session (runs/events/live state).",
+                "parameters": {
+                    "session_id": {"type": "string"},
+                    "scope": {"type": "string", "default": "session"},
+                },
+            },
+            "opencontext_session_status": {
+                "description": "Return a session's current status.",
+                "parameters": {"session_id": {"type": "string"}},
+            },
+            "opencontext_session_resume": {
+                "description": "Resume a paused session from its last checkpoint.",
+                "parameters": {"session_id": {"type": "string"}},
+            },
+            "opencontext_session_archive": {
+                "description": "Archive a session (terminal).",
+                "parameters": {"session_id": {"type": "string"}},
+            },
+            # ── PR-013 meta tools ────────────────────────────────────────────
+            "opencontext_workflow_list": {
+                "description": "List available workflows with cost and when-to-use.",
+                "parameters": {"root": {"type": "string", "description": "Project root."}},
+            },
+            "opencontext_workflow_explain": {
+                "description": "Explain a workflow: when/when-not/cost/phases/harnesses.",
+                "parameters": {
+                    "workflow": {"type": "string", "description": "Workflow id (e.g. sdd)"},
+                    "root": {"type": "string"},
+                },
+            },
+            "opencontext_profile_list": {
+                "description": "List config profiles and per-phase model profiles.",
+                "parameters": {},
+            },
+            "opencontext_profile_explain": {
+                "description": "Explain a profile: security/budget/approvals/observability.",
+                "parameters": {"profile": {"type": "string", "description": "Profile id"}},
+            },
+            "opencontext_doctor": {
+                "description": "Validate configuration; return actionable findings.",
+                "parameters": {"root": {"type": "string", "description": "Project root."}},
             },
         }
 
@@ -617,6 +823,7 @@ class MCPServer:
                         "type": "object",
                         "properties": info["parameters"],
                     },
+                    "outputSchema": _tool_output_schema(name),
                 }
                 for name, info in self.tools.items()
             ]
@@ -639,26 +846,71 @@ class MCPServer:
         before the handler runs. This is the single chokepoint for all MCP
         tools; the handler map below is only consulted if the policy allows
         the call.
+
+        Returns a :class:`~opencontext_core.mcp.schemas.ToolResultEnvelope`
+        dict for all outcomes. Success payload is under ``data``; denied/failed
+        cases also include backward-compat ``error``/``reason`` keys so callers
+        that check ``"error" in result`` still work.
         """
+
+        from opencontext_core.mcp.schemas import (
+            ToolPolicyDecision,
+            ToolResultEnvelope,
+            ToolWarning,
+        )
 
         # 1. Policy gate. No tool executes without a prior policy check.
         if not self.policy.allows(name):
-            return {
-                "error": f"Tool '{name}' denied by policy",
-                "reason": "tool_not_allowlisted",
-                "policy": "ToolPermissionPolicy",
-            }
+            d = ToolResultEnvelope(
+                tool=name,
+                status="denied",
+                policy=ToolPolicyDecision(
+                    decision="denied",
+                    reason="tool_not_allowlisted",
+                    policy="ToolPermissionPolicy",
+                ),
+            ).model_dump()
+            # NOTE: backward compat — callers that check "error"/"reason" keys
+            d["error"] = f"Tool '{name}' denied by policy"
+            d["reason"] = "tool_not_allowlisted"
+            return d
 
         handlers = self._handlers()
-
         handler = handlers.get(name)
         if handler is None:
-            return {"error": f"Unknown tool: {name}"}
+            d = ToolResultEnvelope(
+                tool=name,
+                status="failed",
+                warnings=[ToolWarning(code="unknown_tool", message=f"Unknown tool: {name}")],
+            ).model_dump()
+            d["error"] = f"Unknown tool: {name}"
+            return d
 
         try:
-            return cast("dict[str, Any]", handler(params))
+            payload = cast("dict[str, Any]", handler(params))
+            # Handlers that detect their own errors return {"error": ...} dicts.
+            # Surface the error key so _to_tool_result sets isError=True.
+            if "error" in payload:
+                d = ToolResultEnvelope(
+                    tool=name,
+                    status="failed",
+                    data=payload,
+                ).model_dump()
+                d["error"] = payload["error"]
+                return d
+            return ToolResultEnvelope(
+                tool=name,
+                status="passed",
+                data=payload,
+            ).model_dump()
         except Exception as exc:
-            return {"error": str(exc)}
+            d = ToolResultEnvelope(
+                tool=name,
+                status="failed",
+                warnings=[ToolWarning(code="exception", message=str(exc))],
+            ).model_dump()
+            d["error"] = str(exc)
+            return d
 
     def _handlers(self) -> dict[str, Any]:
         """Return the mapping of tool name -> handler. Kept as a method so
@@ -689,11 +941,32 @@ class MCPServer:
             "opencontext_memory_context": self._handle_memory_context,
             "opencontext_memory_judge": self._handle_memory_judge,
             "opencontext_quality": self._handle_quality,
+            # PR-013 session step tools.
+            "opencontext_session_start": self._handle_session_start,
+            "opencontext_session_next": self._handle_session_next,
+            "opencontext_session_observe": self._handle_session_observe,
+            "opencontext_session_apply": self._handle_session_apply,
+            "opencontext_session_inspect": self._handle_session_inspect,
+            "opencontext_session_status": self._handle_session_status,
+            "opencontext_session_resume": self._handle_session_resume,
+            "opencontext_session_archive": self._handle_session_archive,
+            # PR-013 meta tools.
+            "opencontext_workflow_list": self._handle_workflow_list,
+            "opencontext_workflow_explain": self._handle_workflow_explain,
+            "opencontext_profile_list": self._handle_profile_list,
+            "opencontext_profile_explain": self._handle_profile_explain,
+            "opencontext_doctor": self._handle_doctor,
         }
 
     def _default_tool_names(self) -> list[str]:
-        """Tool names registered at construction time. Used as the default
-        allowlist so a vanilla :class:`MCPServer` keeps working unchanged."""
+        """Safe-by-default read-only + memory tool allowlist.
+
+        Code-write tools (replace_symbol_body, insert_*, rename_symbol) and
+        opencontext_run are NOT included here — they require an explicit
+        policy opt-in so a vanilla server can't silently mutate source files.
+        Pass ``policy=ToolPermissionPolicy(allowed_tools=set(server.tools.keys()))``
+        to restore the full allowlist when needed (e.g. in write-tool tests).
+        """
 
         return [
             "opencontext_search",
@@ -705,51 +978,260 @@ class MCPServer:
             "opencontext_files",
             "opencontext_status",
             "opencontext_trace",
-            "opencontext_replace_symbol_body",
-            "opencontext_insert_before_symbol",
-            "opencontext_insert_after_symbol",
-            "opencontext_rename_symbol",
-            "opencontext_run",
             "opencontext_memory_save",
             "opencontext_memory_search",
             "opencontext_memory_context",
             "opencontext_memory_judge",
             "opencontext_quality",
+            # PR-013 read-only meta tools are safe by default. The session step
+            # tools (start/next/observe/apply/resume/archive) write session state
+            # and stay opt-in, like opencontext_run.
+            "opencontext_session_inspect",
+            "opencontext_session_status",
+            "opencontext_workflow_list",
+            "opencontext_workflow_explain",
+            "opencontext_profile_list",
+            "opencontext_profile_explain",
+            "opencontext_doctor",
         ]
 
     def _handle_run(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Drive the agentic harness in-process using the host's model.
+        """Drive the agentic harness in-process through the shared Runtime API.
 
-        This is the in-process LLM consumer that makes MCP sampling reachable: the
-        harness runs in THIS process, where the host sampler was registered during
-        ``initialize`` (the standalone ``opencontext loop`` runs in a separate
-        process where the sampler is absent). The runner resolves a
-        ``SamplingGateway`` from the live sampler, so spec/design/tasks and apply
-        codegen use the host's selected model with zero provider config.
+        Routes through ``runtime.api.RuntimeApi`` (the single boundary both the CLI
+        and MCP share, SPEC-CLI-013-17) so the harness runs in THIS process, where
+        the host sampler was registered during ``initialize`` (the standalone
+        ``opencontext loop`` runs in a separate process where the sampler is
+        absent). Returns the full :class:`RunContract` — ``session_id``/``summary``/
+        ``artifacts{}``/``receipts{}``/``gates{}``/``cost{}``/``confidence{}``/
+        ``next_recommended`` — never bare counts (SPEC-CLI-013-15).
         """
         from pathlib import Path
 
-        from opencontext_core.harness.runner import HarnessRunner
+        from opencontext_core.llm.sampling_gateway import get_host_sampler
+        from opencontext_core.runtime.api import (
+            RunRequest,
+            RuntimeApi,
+            StartSessionRequest,
+        )
+        from opencontext_core.runtime.errors import RuntimeFailure
+        from opencontext_core.runtime.run_contract import build_run_contract
 
         task = str(params.get("task", "")).strip()
         if not task:
-            return {"error": "task is required"}
+            return {
+                "error": "task is required",
+                "code": "output_contract_failed",
+                "next_action": "pass a non-empty 'task' argument",
+                "recoverable": True,
+            }
         workflow = str(params.get("workflow", "sdd")) or "sdd"
+        profile = str(params.get("profile", "balanced")) or "balanced"
+        root = Path(params.get("root") or Path.cwd()).resolve()
 
-        from opencontext_core.llm.sampling_gateway import get_host_sampler
+        resolved = self._resolve_config(root)
+        api = RuntimeApi(root=root, config=resolved.config)
+        ref = api.start_session(StartSessionRequest(task=task, root=str(root), profile=profile))
+        self._write_snapshot(resolved, ref.session_id, root)
+
+        try:
+            result = api.run(RunRequest(session_id=ref.session_id, workflow_id=workflow, task=task))
+        except RuntimeFailure as exc:
+            return {
+                "error": exc.message,
+                "code": str(exc.code),
+                "next_action": exc.next_action,
+                "recoverable": exc.recoverable,
+                "session_id": ref.session_id,
+                "run_id": "",
+                "workflow": workflow,
+                "status": "failed",
+            }
+
+        contract = build_run_contract(
+            session_id=ref.session_id,
+            run_id=result.run_id,
+            workflow=workflow,
+            status=result.status,
+            legacy=result.legacy,
+            host_model_used=get_host_sampler() is not None,
+        )
+        return contract.model_dump()
+
+    # ------------------------------------------------------------------ #
+    # Runtime-API-backed session + meta tools (PR-013, SPEC-CLI-013-16). #
+    # Each routes through the shared RuntimeApi facade and is governed by #
+    # the same policy gate as every other tool (see ``_call_tool``).     #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _best_effort_config(root: Path) -> Any:
+        try:
+            from opencontext_core.config import find_config, load_config
+
+            path = find_config(root)
+            return load_config(path) if path is not None else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _resolve_config(root: Path) -> Any:
+        """Resolve the seven-layer config (always returns a config + provenance)."""
+        from opencontext_core.config_resolver import resolve
+
+        return resolve(root)
+
+    @staticmethod
+    def _write_snapshot(resolved: Any, session_id: str, root: Path) -> None:
+        """Persist the per-session config snapshot (best-effort; never fails a run)."""
+        try:
+            from opencontext_core.config_snapshot import write_snapshot
+
+            write_snapshot(
+                resolved.config,
+                session_id,
+                root,
+                provenance=getattr(resolved.provenance, "by_key", None),
+            )
+        except Exception:
+            pass
+
+    def _runtime_api(self, params: dict[str, Any]) -> RuntimeApi:
+        from pathlib import Path
+
+        from opencontext_core.runtime.api import RuntimeApi
 
         root = Path(params.get("root") or Path.cwd()).resolve()
-        runner = HarnessRunner(root=root)
-        result = runner.run(workflow, task)
-        return {
-            "run_id": result.run_id,
-            "workflow": workflow,
-            "status": getattr(result.status, "value", str(result.status)),
-            "host_model_used": get_host_sampler() is not None,
-            "artifacts": len(getattr(result, "artifacts", [])),
-            "gates": len(getattr(result, "gates", [])),
-            "warnings": list(getattr(result, "warnings", []))[:10],
-        }
+        return RuntimeApi(root=root, config=self._best_effort_config(root))
+
+    def _handle_session_start(self, params: dict[str, Any]) -> dict[str, Any]:
+        from pathlib import Path
+
+        from opencontext_core.runtime.api import RuntimeApi, StartSessionRequest
+
+        task = str(params.get("task", "")).strip()
+        if not task:
+            return {"error": "task is required", "next_action": "pass a 'task'"}
+        root = Path(params.get("root") or Path.cwd()).resolve()
+        resolved = self._resolve_config(root)
+        api = RuntimeApi(root=root, config=resolved.config)
+        ref = api.start_session(
+            StartSessionRequest(
+                task=task,
+                root=str(root),
+                profile=str(params.get("profile", "balanced")),
+            )
+        )
+        self._write_snapshot(resolved, ref.session_id, root)
+        return ref.model_dump()
+
+    def _handle_session_next(self, params: dict[str, Any]) -> dict[str, Any]:
+        sid = str(params.get("session_id", "")).strip()
+        if not sid:
+            return {"error": "session_id is required"}
+        return self._runtime_api(params).next(sid).model_dump()
+
+    def _handle_session_observe(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.runtime.api import RuntimeEventInput
+
+        sid = str(params.get("session_id", "")).strip()
+        if not sid:
+            return {"error": "session_id is required"}
+        event = RuntimeEventInput(
+            type=str(params.get("type", "note")),
+            status=str(params.get("status", "ok")),
+            message=str(params.get("message", "")),
+            metadata=dict(params.get("metadata") or {}),
+        )
+        return self._runtime_api(params).observe(sid, event).model_dump()
+
+    def _handle_session_apply(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.runtime.api import MutationRequest
+
+        sid = str(params.get("session_id", "")).strip()
+        if not sid:
+            return {"error": "session_id is required"}
+        mutation = MutationRequest(
+            kind=str(params.get("kind", "edit")), payload=dict(params.get("payload") or {})
+        )
+        return self._runtime_api(params).apply(sid, mutation).model_dump()
+
+    def _handle_session_inspect(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.runtime.api import InspectionScope
+
+        sid = str(params.get("session_id", "")).strip()
+        if not sid:
+            return {"error": "session_id is required"}
+        scope_raw = str(params.get("scope", "session"))
+        try:
+            scope = InspectionScope(scope_raw)
+        except ValueError:
+            scope = InspectionScope.session
+        return self._runtime_api(params).inspect(sid, scope).model_dump()
+
+    def _handle_session_status(self, params: dict[str, Any]) -> dict[str, Any]:
+        sid = str(params.get("session_id", "")).strip()
+        if not sid:
+            return {"error": "session_id is required"}
+        from opencontext_core.runtime.api import InspectionScope
+
+        return self._runtime_api(params).inspect(sid, InspectionScope.session).model_dump()
+
+    def _handle_session_resume(self, params: dict[str, Any]) -> dict[str, Any]:
+        sid = str(params.get("session_id", "")).strip()
+        if not sid:
+            return {"error": "session_id is required"}
+        return self._runtime_api(params).resume(sid).model_dump()
+
+    def _handle_session_archive(self, params: dict[str, Any]) -> dict[str, Any]:
+        sid = str(params.get("session_id", "")).strip()
+        if not sid:
+            return {"error": "session_id is required"}
+        return self._runtime_api(params).archive(sid).model_dump()
+
+    def _handle_workflow_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.explain import list_workflows
+
+        root = params.get("root") or "."
+        return {"workflows": list_workflows(root)}
+
+    def _handle_workflow_explain(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.explain import explain_workflow
+
+        workflow_id = str(params.get("workflow", "")).strip()
+        if not workflow_id:
+            return {"error": "workflow is required"}
+        return explain_workflow(workflow_id, params.get("root") or ".")
+
+    def _handle_profile_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.explain import list_profiles_all
+
+        return list_profiles_all()
+
+    def _handle_profile_explain(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.explain import explain_profile
+
+        profile_id = str(params.get("profile", "")).strip()
+        if not profile_id:
+            return {"error": "profile is required"}
+        return explain_profile(profile_id)
+
+    def _handle_doctor(self, params: dict[str, Any]) -> dict[str, Any]:
+        from opencontext_core.config_doctor import validate
+
+        root = params.get("root") or "."
+        diags = validate(root)
+        findings = [
+            {
+                "name": d.name,
+                "status": d.status,
+                "message": d.message,
+                "recommendation": d.recommendation,
+            }
+            for d in diags
+        ]
+        failed = sum(1 for d in diags if d.status in ("failed", "error"))
+        return {"ok": failed == 0, "failed": failed, "findings": findings}
 
     # ----------------------------------------------------------------------- #
     # Memory tools (workstream A). All four degrade cleanly when no store is
@@ -777,7 +1259,7 @@ class MCPServer:
         """Project a ``MemoryRecord`` to a JSON-safe result dict."""
 
         layer = getattr(record, "layer", None)
-        return {
+        result: dict[str, Any] = {
             "id": getattr(record, "id", None),
             "layer": getattr(layer, "value", layer),
             "key": getattr(record, "key", None),
@@ -785,6 +1267,13 @@ class MCPServer:
             "confidence": getattr(record, "confidence", None),
             "tags": list(getattr(record, "tags", []) or []),
         }
+        run_id = getattr(record, "run_id", None)
+        provenance = getattr(record, "provenance", None)
+        if run_id is not None:
+            result["run_id"] = run_id
+        if provenance is not None:
+            result["provenance"] = provenance
+        return result
 
     def _handle_memory_save(self, params: dict[str, Any]) -> dict[str, Any]:
         """Persist a memory record to the live store (A-REQ-2/3/4)."""
@@ -801,13 +1290,19 @@ class MCPServer:
 
         record_id = store.write(record)
         backend, degraded = _resolve_backend(store, record.layer.value)
-        return {
+        result: dict[str, Any] = {
             "id": record_id or record.id,
             "layer": record.layer.value,
             "key": record.key,
             "backend": backend,
             "degraded": degraded,
         }
+        # Echo provenance only when supplied — keeps the response shape stable.
+        if record.run_id is not None:
+            result["run_id"] = record.run_id
+        if record.provenance is not None:
+            result["provenance"] = record.provenance
+        return result
 
     def _handle_memory_search(self, params: dict[str, Any]) -> dict[str, Any]:
         """Search the memory store, optionally scoped to a layer (A-REQ-5)."""

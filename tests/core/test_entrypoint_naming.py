@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 
+import opencontext_core
 from opencontext_core import personas
 from opencontext_core.mcp_stdio import MCPServer
 
@@ -37,7 +38,9 @@ from opencontext_core.mcp_stdio import MCPServer
 # but is still a legitimate OpenContext entry point.
 _ALLOWLISTED_SKILL_NAMES = {"opencontext-agent"}
 
-_TEMPLATES_DIR = Path(personas.__file__).resolve().parent / "skills" / "templates"
+# Derived from the core package root (``personas`` became a sub-package in PR-006,
+# so its ``__file__`` is no longer a proxy for the package dir).
+_TEMPLATES_DIR = Path(opencontext_core.__file__).resolve().parent / "skills" / "templates"
 
 
 def _shipped_skill_names() -> list[str]:
@@ -50,9 +53,10 @@ def _shipped_skill_names() -> list[str]:
 
 
 def _shipped_mcp_tool_names(tmp_path: Path) -> list[str]:
-    """MCP tool names from the live default allowlist (no runtime needed)."""
+    """Every exposed MCP tool name (the handler map), not just the safe default
+    allowlist — so code-write/run tools stay prefix-guarded too."""
     server = MCPServer(db_path=tmp_path / "naming-guard.db", runtime=None)
-    return list(server._default_tool_names())
+    return list(server._handlers())
 
 
 def _shipped_persona_ids() -> list[str]:

@@ -45,8 +45,8 @@ jobs:
         run: ruff check .
       - name: Format check
         run: ruff format --check .
-      - name: Type check core
-        run: mypy packages/opencontext_core
+      - name: Type check (core + api + cli + profiles)
+        run: mypy packages/opencontext_core packages/opencontext_api packages/opencontext_cli packages/opencontext_profiles
       - name: Test
         run: pytest
       - name: Build distributions

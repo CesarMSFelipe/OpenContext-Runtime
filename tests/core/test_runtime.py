@@ -55,7 +55,9 @@ def test_runtime_sets_up_project_without_cli(tmp_path: Path) -> None:
 
     result = runtime.setup_project(project_root)
 
-    assert result.files == 3
+    # opencontext.yaml is in DEFAULT_IGNORE_PATTERNS so it is not counted as
+    # a project source file; create_sample_project creates 2 source files.
+    assert result.files == 2
     assert result.symbols > 0
     assert (project_root / "opencontext.yaml").exists()
     assert (project_root / ".opencontext/agents/README.md").exists()

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -15,7 +14,7 @@ from opencontext_core.adapters.agent_manifest import AgentTarget
 from opencontext_core.agent_installer import AgentInstaller
 from opencontext_core.agent_installer import AgentTarget as GlobalAgentTarget
 from opencontext_core.configurator import KNOWN_AGENTS, Configurator
-from opencontext_core.dx.console_styles import show_logo
+from opencontext_core.dx.console_styles import console, show_logo
 from opencontext_core.runtime import OpenContextRuntime
 from opencontext_core.sdd_runtime import write_sdd_context
 from opencontext_core.setup.plan import InstallAction, build_plan
@@ -27,7 +26,24 @@ from opencontext_core.setup.presets import (
 )
 from opencontext_core.user_prefs import UserConfigStore
 
-console = Console()
+
+def _save_install_ledger(report: dict[str, Any]) -> None:
+    """Persist written file paths to InstallState so uninstall --full can clean up."""
+    try:
+        from opencontext_core.install_manager import InstallationManager, InstallState
+
+        all_files = [f for r in report.get("results", []) for f in r.get("files", [])]
+        if not all_files:
+            return
+        mgr = InstallationManager()
+        existing = mgr._load_state()
+        existing_files = existing.files if existing else []
+        merged = list(dict.fromkeys([*existing_files, *all_files]))
+        state = existing if existing else InstallState()
+        state.files = merged
+        mgr._save_state(state)
+    except Exception:
+        pass
 
 
 def _wizard_clear(
@@ -282,6 +298,9 @@ def _run_configurator(args: Any) -> None:
     requested = _parse_setup_agents(getattr(args, "agents", None))
     want_all = getattr(args, "all_agents", False)
 
+    if not json_output:
+        console.header("Configure Agents")
+
     configurator = Configurator(project_root=root)
 
     if want_all:
@@ -308,7 +327,7 @@ def _run_configurator(args: Any) -> None:
 
     yes = _resolve_flag(getattr(args, "yes", False), "OPENCONTEXT_YES")
     if not _confirm_configure(valid, scope, yes=yes, json_output=json_output):
-        console.print("[yellow]Setup cancelled.[/]")
+        console.warning("Setup cancelled.")
         return
 
     report = configurator.configure(valid, scope=scope)
@@ -316,6 +335,7 @@ def _run_configurator(args: Any) -> None:
         report["skipped"] = unknown
     _maybe_write_stack_standards(root, scope, report)
     _maybe_write_gitignore(root, scope)
+    _save_install_ledger(report)
     _report_configured(report, unknown, json_output)
 
 
@@ -338,7 +358,7 @@ def _maybe_write_gitignore(root: Any, scope: str) -> None:
         existing = path.read_text(encoding="utf-8") if path.exists() else ""
         merged = inject_managed_lines(existing, "storage", [".storage/", ".opencontext/"])
         if write_text_atomic(path, merged):
-            console.print("[green]Updated[/] .gitignore (keeps the local index out of git).")
+            console.success("Updated .gitignore (keeps the local index out of git).")
     except Exception:
         return
 
@@ -361,7 +381,7 @@ def _maybe_write_stack_standards(root: Any, scope: str, report: dict[str, Any]) 
         return
     if changed and chosen:
         report["stack_standards"] = chosen
-        console.print(f"[green]Prepared AGENTS.md[/] with standards for: {', '.join(chosen)}")
+        console.success(f"Prepared AGENTS.md with standards for: {', '.join(chosen)}")
 
 
 def _confirm_configure(agents: list[str], scope: str, *, yes: bool, json_output: bool) -> bool:
@@ -392,12 +412,12 @@ def _report_no_agents(source: str, unknown: list[str], json_output: bool) -> Non
         print(json.dumps({"status": "no_agents", "agents_configured": 0, "skipped": unknown}))
         return
     if unknown:
-        console.print(f"[yellow]Unknown agent(s), skipped:[/] {', '.join(unknown)}")
+        console.warning(f"Unknown agent(s), skipped: {', '.join(unknown)}")
     elif source == "detected":
-        console.print("[yellow]No installed agents detected.[/]")
+        console.info("No installed agents detected.")
     else:
-        console.print("[yellow]No agents to configure.[/]")
-    console.print(f"  Name an agent or use [cyan]--all[/]. Known agents: {', '.join(KNOWN_AGENTS)}")
+        console.info("No agents to configure.")
+    console.dim(f"  Name an agent or use --all. Known agents: {', '.join(KNOWN_AGENTS)}")
 
 
 def _report_dry_run(
@@ -417,7 +437,7 @@ def _report_dry_run(
             )
         )
         return
-    console.print("[bold yellow]Dry run — no changes made.[/]")
+    console.warning("Dry run — no changes made.")
     console.print(f"  Scope: [cyan]{scope}[/]")
     console.print("  Would configure:")
     for agent in agents:
@@ -443,7 +463,7 @@ def _report_configured(report: dict[str, Any], unknown: list[str], json_output: 
         for file_path in result.get("files", []):
             console.print(f"    [dim]{file_path}[/]")
     for agent in unknown:
-        console.print(f"  [yellow]- {agent} (unknown, skipped)[/]")
+        console.warning(f"- {agent} (unknown, skipped)")
 
 
 def _run_interactive(
@@ -517,11 +537,11 @@ def _run_interactive(
         console.print(f"[bold]Orchestrator profile:[/] {orchestrator_profile}")
 
     if dry_run:
-        console.print("\n[bold yellow]── Dry run — no changes made ──[/]")
+        console.warning("Dry run — no changes made.")
         return
 
     if not prompts.confirm("Apply this plan?", default=True):
-        console.print("[yellow]Setup cancelled.[/]")
+        console.warning("Setup cancelled.")
         return
 
     # ── Execute (spinners) ───────────────────────────────────────────────
@@ -565,6 +585,7 @@ def _run_automated(
     artifact_mode: str = "hybrid",
 ) -> None:
     """Run automated setup (non-interactive)."""
+    console.header("Setup")
     _check_first_run()
 
     if not preset and not components:
@@ -593,14 +614,14 @@ def _run_automated(
         execution_mode,
         artifact_mode,
     )
-    console.print("[green]✓ Setup complete.[/]")
+    console.success("Setup complete.")
 
 
 def _choose_preset() -> str:
     """Interactive preset selection."""
     presets = get_available_presets()
 
-    def preset_sort_key(p):
+    def preset_sort_key(p: Any) -> tuple[int, str]:
         if p.id == "context-first":
             return (0, p.id)
         return (1, p.id)
@@ -626,10 +647,12 @@ def _choose_preset() -> str:
         )
     console.print(table)
 
-    return prompts.select(
-        "Select preset",
-        [(p.id, f"{p.name} — {p.description}") for p in sorted_presets],
-        default=sorted_presets[0].id,
+    return str(
+        prompts.select(
+            "Select preset",
+            [(p.id, f"{p.name} — {p.description}") for p in sorted_presets],
+            default=sorted_presets[0].id,
+        )
     )
 
 
@@ -647,16 +670,18 @@ def _choose_profile(preset: str | None = None) -> str:
     default = suggestions.get(preset or "", "developer")
     default_idx = next((i for i, p in enumerate(profiles) if p.id == default), 0)
 
-    return prompts.select(
-        "Select profile",
-        [
-            (
-                p.id,
-                f"{p.name} — {p.description}" + (" (recommended)" if p.id == default else ""),
-            )
-            for p in profiles
-        ],
-        default=profiles[default_idx].id,
+    return str(
+        prompts.select(
+            "Select profile",
+            [
+                (
+                    p.id,
+                    f"{p.name} — {p.description}" + (" (recommended)" if p.id == default else ""),
+                )
+                for p in profiles
+            ],
+            default=profiles[default_idx].id,
+        )
     )
 
 
@@ -690,10 +715,12 @@ def _choose_tdd_mode(default: str) -> str:
         "strict": "strict — tests first whenever a harness exists",
         "off": "off — SDD still works but TDD is optional",
     }
-    return prompts.select(
-        "TDD behavior",
-        [(mode, label) for mode, label in labels.items()],
-        default=default if default in labels else "ask",
+    return str(
+        prompts.select(
+            "TDD behavior",
+            [(mode, label) for mode, label in labels.items()],
+            default=default if default in labels else "ask",
+        )
     )
 
 
@@ -704,10 +731,12 @@ def _choose_sdd_profile() -> str:
         "hybrid": "hybrid — mix of cheap and premium models per phase",
         "premium": "premium — strongest models for all phases",
     }
-    return prompts.select(
-        "SDD model profile",
-        [(p, label) for p, label in labels.items()],
-        default="default",
+    return str(
+        prompts.select(
+            "SDD model profile",
+            [(p, label) for p, label in labels.items()],
+            default="default",
+        )
     )
 
 
@@ -895,7 +924,7 @@ def _execute_plan(
 
     # ── Summary ─────────────────────────────────────────────────────────
     for w in agent_warnings:
-        console.print(f"[yellow]⚠ {w}[/]")
+        console.warning(w)
 
     strict_tdd = getattr(sdd_context, "strict_tdd", False) if sdd_context else False
     index_line = (

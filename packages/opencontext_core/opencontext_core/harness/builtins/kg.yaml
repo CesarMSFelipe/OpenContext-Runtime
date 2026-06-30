@@ -1,0 +1,18 @@
+# Knowledge Graph Harness (PR-006, book doc 07 §20) — keep the KG accurate.
+schema_version: opencontext.harness.v1
+id: kg
+version: "1.0"
+type: kg
+description: Keep the knowledge graph accurate after execution (incremental reindex).
+default_mode: strict
+required_capabilities: [kg_write]
+inputs: [changed_paths]
+outputs: [graph_delta]
+gates:
+  - graph_delta_created
+  - changed_symbols_reindexed
+  - kg_consistency_checked
+  - owners_resolved_or_recorded_unknown
+metrics: [symbols_reindexed]
+receipts: [graph_update_receipt]
+failure_modes: [kg_inconsistent]

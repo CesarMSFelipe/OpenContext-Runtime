@@ -1,0 +1,222 @@
+[
+  {
+    "query": "JWT authentication middleware implementation",
+    "relevant": [
+      "auth:jwt_middleware",
+      "auth:token_validation",
+      "auth:bearer_token",
+      "auth:jwt_decode",
+      "auth:refresh_token"
+    ],
+    "metadata": {"phase": "apply", "domain": "auth"}
+  },
+  {
+    "query": "database connection pool configuration",
+    "relevant": [
+      "db:connection_pool",
+      "db:pool_config",
+      "db:pool_size",
+      "db:pool_timeout",
+      "db:pool_max_overflow"
+    ],
+    "metadata": {"phase": "apply", "domain": "database"}
+  },
+  {
+    "query": "test suite fails on CI environment",
+    "relevant": [
+      "failure:ci_test_failure",
+      "failure:env_mismatch",
+      "failure:ci_env_var",
+      "failure:ci_path",
+      "failure:ci_dependency"
+    ],
+    "metadata": {"phase": "verify", "domain": "testing"}
+  },
+  {
+    "query": "context pack builder token budget exceeded",
+    "relevant": [
+      "budget:token_limit",
+      "budget:pack_overflow",
+      "budget:token_cap",
+      "budget:context_truncation",
+      "budget:budget_exceeded"
+    ],
+    "metadata": {"phase": "explore", "domain": "context"}
+  },
+  {
+    "query": "memory harvest from agent trace",
+    "relevant": [
+      "episodic:harvest_run",
+      "episodic:agent_trace",
+      "episodic:trace_capture",
+      "episodic:harvest_memory",
+      "episodic:agent_session"
+    ],
+    "metadata": {"phase": "archive", "domain": "memory"}
+  },
+  {
+    "query": "SQLite WAL mode connection discipline",
+    "relevant": [
+      "procedural:sqlite_wal",
+      "procedural:connection_pattern",
+      "procedural:sqlite_journal",
+      "procedural:wal_checkpoint",
+      "procedural:sqlite_lock"
+    ],
+    "metadata": {"phase": "design", "domain": "storage"}
+  },
+  {
+    "query": "phase boundary PHASE_START emission",
+    "relevant": [
+      "episodic:phase_start",
+      "capture:phase_boundary",
+      "capture:phase_event",
+      "episodic:phase_lifecycle",
+      "capture:start_event"
+    ],
+    "metadata": {"phase": "apply", "domain": "lifecycle"}
+  },
+  {
+    "query": "knowledge graph indexing slow on large repo",
+    "relevant": [
+      "failure:kg_timeout",
+      "procedural:kg_indexing",
+      "procedural:kg_performance",
+      "failure:kg_slow",
+      "procedural:kg_batch"
+    ],
+    "metadata": {"phase": "verify", "domain": "kg"}
+  },
+  {
+    "query": "agent lease acquire and release round trip",
+    "relevant": [
+      "procedural:lease_acquire",
+      "procedural:coordination",
+      "procedural:lease_release",
+      "procedural:lease_ttl",
+      "procedural:lease_roundtrip"
+    ],
+    "metadata": {"phase": "design", "domain": "coordination"}
+  },
+  {
+    "query": "ruff mypy linting errors new module",
+    "relevant": [
+      "failure:lint_error",
+      "procedural:ruff_mypy",
+      "failure:type_error",
+      "procedural:lint_config",
+      "failure:mypy_strict"
+    ],
+    "metadata": {"phase": "verify", "domain": "quality"}
+  },
+  {
+    "query": "context substrate builder indexed detection",
+    "relevant": [
+      "procedural:substrate_index",
+      "procedural:substrate_build",
+      "procedural:index_detection",
+      "procedural:sqlite_probe",
+      "procedural:substrate_probe"
+    ],
+    "metadata": {"phase": "explore", "domain": "context"}
+  },
+  {
+    "query": "archive gate fails when harness report missing",
+    "relevant": [
+      "failure:archive_blocked",
+      "procedural:archive_gate",
+      "failure:harness_missing",
+      "procedural:gate_validate",
+      "failure:gate_check"
+    ],
+    "metadata": {"phase": "archive", "domain": "pipeline"}
+  },
+  {
+    "query": "memory benchmark recall precision at k",
+    "relevant": [
+      "procedural:benchmark_recall",
+      "procedural:benchmark_precision",
+      "procedural:recall_at_k",
+      "procedural:mrr_score",
+      "procedural:benchmark_run"
+    ],
+    "metadata": {"phase": "verify", "domain": "memory"}
+  },
+  {
+    "query": "agentic flow mode observe only skip apply",
+    "relevant": [
+      "procedural:flow_mode",
+      "procedural:observe_only",
+      "procedural:skip_apply",
+      "procedural:flow_config",
+      "procedural:agentic_mode"
+    ],
+    "metadata": {"phase": "explore", "domain": "agentic"}
+  },
+  {
+    "query": "opencontext install workspace scope isolation",
+    "relevant": [
+      "procedural:install_workspace",
+      "procedural:install_scope",
+      "procedural:workspace_isolation",
+      "procedural:install_config",
+      "procedural:scope_boundary"
+    ],
+    "metadata": {"phase": "apply", "domain": "install"}
+  },
+  {
+    "query": "phase result envelope status blocked error",
+    "relevant": [
+      "procedural:phase_envelope",
+      "procedural:envelope_status",
+      "failure:phase_blocked",
+      "procedural:phase_result",
+      "failure:envelope_error"
+    ],
+    "metadata": {"phase": "verify", "domain": "conductor"}
+  },
+  {
+    "query": "oc new conductor mark done receipt",
+    "relevant": [
+      "procedural:conductor_mark_done",
+      "procedural:agentic_receipt",
+      "procedural:conductor_advance",
+      "procedural:receipt_write",
+      "procedural:conductor_store"
+    ],
+    "metadata": {"phase": "archive", "domain": "conductor"}
+  },
+  {
+    "query": "embeddings index prune compaction stale",
+    "relevant": [
+      "procedural:embeddings_prune",
+      "procedural:index_compaction",
+      "failure:stale_index",
+      "procedural:prune_strategy",
+      "failure:index_growth"
+    ],
+    "metadata": {"phase": "design", "domain": "storage"}
+  },
+  {
+    "query": "security scan findings severity high none",
+    "relevant": [
+      "procedural:security_scan",
+      "procedural:scan_findings",
+      "procedural:severity_level",
+      "failure:security_finding",
+      "procedural:scan_result"
+    ],
+    "metadata": {"phase": "verify", "domain": "security"}
+  },
+  {
+    "query": "workflow __all__ lease symbols provisional",
+    "relevant": [
+      "procedural:workflow_exports",
+      "procedural:lease_provisional",
+      "procedural:all_exports",
+      "procedural:symbol_scope",
+      "procedural:provisional_api"
+    ],
+    "metadata": {"phase": "design", "domain": "workflow"}
+  }
+]

@@ -101,6 +101,30 @@ class ContextRanker:
         return item.model_copy(update={"score": round(score, 6), "metadata": metadata})
 
 
+def usefulness_score(item: ContextItem, *, used: bool) -> float:
+    """Post-hoc usefulness in [0,1] (PR-010 CTX-CONV §Context usefulness scoring).
+
+    An item that was actually delivered/used scores ``0.5 + 0.5*relevance`` so a
+    high-relevance used item approaches 1.0; an unused item scores 0.0 so it is
+    down-weighted on later runs. (Real per-token usage feedback lands in PR-011 —
+    this is the deterministic delivered-vs-omitted proxy.)
+    """
+    if not used:
+        return 0.0
+    rel = max(0.0, min(1.0, item.score))
+    return round(0.5 + 0.5 * rel, 6)
+
+
+def attach_usefulness(items: list[ContextItem], *, used: bool = True) -> list[ContextItem]:
+    """Return copies of ``items`` with ``metadata['usefulness']`` set (post-hoc)."""
+    out: list[ContextItem] = []
+    for item in items:
+        metadata = dict(item.metadata)
+        metadata["usefulness"] = usefulness_score(item, used=used)
+        out.append(item.model_copy(update={"metadata": metadata}))
+    return out
+
+
 def _retrieval_weights_from_config(cfg: RankingWeightsConfig) -> RetrievalWeights:
     """Derive a 14-field ``RetrievalWeights`` from the legacy 4-field config.
 

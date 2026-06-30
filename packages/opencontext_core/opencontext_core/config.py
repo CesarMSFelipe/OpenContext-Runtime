@@ -8,9 +8,10 @@ from typing import Any, Literal
 import yaml
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+from opencontext_core.agentic.config import BudgetMode, FlowMode, MemoryMode
 from opencontext_core.compat import StrEnum
 from opencontext_core.errors import ConfigurationError
-from opencontext_core.models.context import CompressionStrategy
+from opencontext_core.models.context import CompressionStrategy, ContextProfile
 
 DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     ".git",
@@ -43,6 +44,15 @@ DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     "*.min.css",
     ".claude/worktrees",
     ".claude/plugins/cache",
+    # OpenContext-generated and configuration files — excluded from context retrieval
+    # so OC's own config never appears as context for user tasks.
+    ".mcp.json",
+    ".claude/agents/oc-*.md",
+    ".claude/agents/.opencontext-delegates/**",
+    ".claude/commands/oc-*.md",
+    "opencontext.yaml",
+    "harness.yaml",
+    "openspec/changes/**/receipt.json",
 )
 
 
@@ -451,6 +461,41 @@ class ContextConfig(BaseModel):
     sections: ContextSectionConfig = Field(description="Per-section budgets.")
     ranking: RankingConfig = Field(description="Ranking settings.")
     compression: CompressionConfig = Field(description="Compression settings.")
+    budget_mode: BudgetMode = Field(
+        default=BudgetMode.WARN,
+        description="Token budget enforcement strategy (off/warn/strict/adaptive/ask).",
+    )
+    # --- PR-010 Context Engine v2 (OC-CONTEXT-001 §Configuration) ----------------
+    # All defaulted so an unset config resolves to today's behaviour byte-for-byte;
+    # the engine is additionally gated behind ``runtime.context_engine_enabled``.
+    profile: ContextProfile = Field(
+        default=ContextProfile.BALANCED,
+        description="Context profile tuning retrieval/compression/limits (balanced=today).",
+    )
+    budgets: dict[str, int] = Field(
+        default_factory=dict,
+        description="Optional per-workflow context budget overrides (book §Context Budget).",
+    )
+    semantic_gc: bool = Field(
+        default=False,
+        description="Enable incremental context garbage collection (book §Garbage Collection).",
+    )
+    receipts: bool = Field(
+        default=False,
+        description="Emit the four typed retrieval receipts out-of-band.",
+    )
+    kg_first: bool = Field(
+        default=True, description="Consult the knowledge graph before repository traversal."
+    )
+    symbol_first: bool = Field(
+        default=True, description="Prefer symbols over whole files during retrieval."
+    )
+    full_file_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Relevance threshold below which a whole file is not loaded.",
+    )
 
 
 class CompressionPolicyConfig(BaseModel):
@@ -508,6 +553,35 @@ class MCPCacheConfig(BaseModel):
     cache_ttl_seconds: int = Field(default=3600, ge=0, description="MCP response cache TTL.")
 
 
+class RuntimeCacheConfig(BaseModel):
+    """Unified typed cache layer + Runtime Optimizer controls (PR-000.3).
+
+    Default-conservative: with ``enabled=False`` the typed caches
+    (tool/ast/provider/kg/memory) stay pass-through (every lookup recomputes) and
+    the optimizer emits no recommendations. The whole PR-000.3 layer is reverted
+    by leaving this off.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable the unified typed cache layer (off = pass-through recompute).",
+    )
+    backend: Literal["memory", "sqlite"] = Field(
+        default="memory", description="Default CacheStore backend (reuses ccr_cache backends)."
+    )
+    default_ttl_seconds: int = Field(
+        default=3600, ge=0, description="Default TTL for typed cache entries."
+    )
+    semantic_threshold: float = Field(
+        default=0.95, ge=0.0, le=1.0, description="Semantic-cache similarity threshold."
+    )
+    optimizer_enabled: bool = Field(
+        default=False, description="Enable the recommend-only Runtime Optimizer."
+    )
+
+
 class CacheConfig(BaseModel):
     """Runtime cache configuration."""
 
@@ -516,6 +590,7 @@ class CacheConfig(BaseModel):
     exact: ExactCacheConfig = Field(default_factory=ExactCacheConfig)
     semantic: SemanticCacheConfig = Field(default_factory=SemanticCacheConfig)
     mcp: MCPCacheConfig = Field(default_factory=MCPCacheConfig)
+    runtime: RuntimeCacheConfig = Field(default_factory=RuntimeCacheConfig)
 
 
 class SecretScanningConfig(BaseModel):
@@ -568,6 +643,27 @@ class SecurityConfig(BaseModel):
     external_providers_enabled: bool = Field(default=False)
 
 
+class PolicyConfig(BaseModel):
+    """Unified Policy Engine settings (PR-005).
+
+    ``preset`` selects one of the four postures (``permissive``/``balanced``/
+    ``restricted``/``air_gapped``); ``balanced`` is the default and preserves the
+    current fail-closed behaviour. ``command_enforcement`` wires the (previously
+    inert) ``forbidden_commands`` deny-list into real enforcement; set it ``False``
+    to revert to the legacy advisory-only behaviour.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    preset: str = Field(default="balanced", description="Active policy preset.")
+    engine_enabled: bool = Field(
+        default=True, description="Route governed operations through the unified PolicyEngine."
+    )
+    command_enforcement: bool = Field(
+        default=True, description="Enforce forbidden_commands on the command path (CMD-1)."
+    )
+
+
 class ProvidersConfig(BaseModel):
     """Provider availability defaults."""
 
@@ -576,6 +672,25 @@ class ProvidersConfig(BaseModel):
     external_enabled: bool = Field(
         default=False,
         description="External providers disabled by default.",
+    )
+    # PR-012 Provider Gateway knobs (book §25). All defaulted so existing configs
+    # validate unchanged; ``strategy=balanced`` reproduces today's routing.
+    strategy: str = Field(
+        default="balanced",
+        description=(
+            "Provider routing strategy: cheapest / fastest / balanced / "
+            "highest_quality / local_first / enterprise."
+        ),
+    )
+    retry_limit: int = Field(
+        default=2, ge=0, description="Bounded provider fallback retries on error/timeout/quota."
+    )
+    fallback: bool = Field(
+        default=True,
+        description="Fall back to an alternate provider on error/timeout/quota/unsupported.",
+    )
+    streaming: bool = Field(
+        default=False, description="Streaming transport (delivered by a later provider PR)."
     )
 
 
@@ -670,6 +785,30 @@ class ToolsConfig(BaseModel):
     mcp: McpToolsConfig = Field(default_factory=McpToolsConfig)
 
 
+class LoopConfig(BaseModel):
+    """Post-run Learning Loop gate (PR-000.4, SPEC DL-006).
+
+    Default OFF and fully revertible: with ``enabled=False`` the harness runs the
+    legacy propose-only evolution hook unchanged and writes no Decision Log
+    artifact. The loop is always best-effort/non-blocking.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description="Run the post-run LearningLoop (Decision Log + learning candidates).",
+    )
+    feed_runtime_intelligence: bool = Field(
+        default=True,
+        description="Feed learning outcomes to Runtime Intelligence via the feedback substrate.",
+    )
+    require_benchmark_evidence: bool = Field(
+        default=True,
+        description="Block promotion of any improvement proposal lacking a benchmark-evidence ref.",
+    )
+
+
 class LearningConfig(BaseModel):
     """Self-improvement (learning orchestrator) gate.
 
@@ -686,6 +825,10 @@ class LearningConfig(BaseModel):
         default=True,
         description="Whether the self-improvement learning orchestrator is active.",
     )
+    loop: LoopConfig = Field(
+        default_factory=LoopConfig,
+        description="Post-run Learning Loop settings (PR-000.4; default off).",
+    )
 
 
 class MemoryPolicyConfig(BaseModel):
@@ -694,6 +837,10 @@ class MemoryPolicyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(default=True, description="Local memory layer enabled.")
+    mode: MemoryMode = Field(
+        default=MemoryMode.AUTO,
+        description="Memory backend mode (auto/engram/local/off/hybrid/engram_only).",
+    )
     provider: str = Field(
         default="local",
         description=(
@@ -898,6 +1045,125 @@ class WorkflowConfig(BaseModel):
     )
 
 
+class RetentionConfig(BaseModel):
+    """Durable-evidence retention policy (PR-002, doc 24 §20).
+
+    Each value is a retention rule: ``always`` (never auto-pruned),
+    ``until_archive``, ``until_success``, or a duration like ``30d``. Auto-pruning
+    beyond this documented table is out of scope for PR-002 (no sweeper ships yet).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    summaries: str = Field(default="always")
+    receipts: str = Field(default="always")
+    patches: str = Field(default="always")
+    checkpoints: str = Field(default="until_archive")
+    logs: str = Field(default="30d")
+    ephemeral_context: str = Field(default="until_success")
+
+
+class RuntimeMigrationConfig(BaseModel):
+    """Per-subsystem dual-run migration flags (pr-000-0 compatibility layer).
+
+    Each ``*_enabled`` flag defaults to the legacy path, so a subsystem is switched
+    to the vNext substrate by flipping exactly one flag (CL-005). ``registry_enabled``
+    is the PR-003 rollback switch: when ``False`` the Runtime resolves workflows via
+    the legacy ``_WORKFLOW_TRACK_ALIASES``/``WORKFLOW_TRACKS`` path unchanged.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_wrapper: bool = Field(
+        default=True, description="Bracket legacy runs with a RuntimeApi session."
+    )
+    registry_enabled: bool = Field(
+        default=True,
+        description=(
+            "Resolve workflows through the PR-003 WorkflowRegistry. Flipped to vNext "
+            "(VDM-003/004): the legacy-track parity gap is closed (no spurious "
+            "workflow.validation.failed); the registry emits resolution AUDIT events on "
+            "success (EVT1) while the EXECUTED-PHASE ledger stays identical to legacy."
+        ),
+    )
+    persona_registry_enabled: bool = Field(
+        default=True,
+        description="Resolve personas through the PR-006 PersonaRegistry/Resolver.",
+    )
+    skill_registry_enabled: bool = Field(
+        default=True,
+        description="Resolve skills through the PR-006 SkillRegistryV2 (bundles/tiers).",
+    )
+    harness_registry_enabled: bool = Field(
+        default=True,
+        description="Resolve harnesses through the PR-006 HarnessRegistry.",
+    )
+    gateway_enabled: bool = Field(
+        default=True, description="Route provider calls through the unified gateway."
+    )
+    context_engine_enabled: bool = Field(
+        default=True, description="Build context through the PR-010 ContextEngine."
+    )
+    execution_profile: str = Field(
+        default="balanced",
+        description=(
+            "Built-in execution profile (PR-000.2) that binds token budget / "
+            "retries / harness strictness / provider routing: one of 'balanced', "
+            "'low-cost', 'enterprise', 'research', 'performance'. An empty string "
+            "disables profile influence and restores legacy behaviour (the "
+            "capability graph is still reported read-only by 'doctor')."
+        ),
+    )
+    durable_artifacts: bool = Field(
+        default=True,
+        description=(
+            "Persist the PR-002 durable evidence layer "
+            "(.opencontext/sessions/<id>/runs/<id>/{artifacts,receipts,checkpoints,patches}"
+            " + manifest). Off (default) reproduces the PR-001 flat .opencontext/runs dump."
+        ),
+    )
+    retention: RetentionConfig = Field(
+        default_factory=RetentionConfig,
+        description="Durable-evidence retention policy (doc 24 §20).",
+    )
+    sdd_strict: bool = Field(
+        default=False,
+        description=(
+            "Block an SDD phase whose output is a detected scaffold/placeholder "
+            "(report FAILED and stop the run) instead of merely WARNing. Off "
+            "(default) preserves the legacy advisory scaffold reporting "
+            "(spec PR-004 SDD-CONV: scaffold blocking in strict mode)."
+        ),
+    )
+    oc_flow_enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable the PR-007 OC Flow operational workflow "
+            '(`opencontext run "<task>" --workflow oc-flow`). Off (default-legacy) '
+            "until the localized-bugfix benchmark passes; flip one flag to enable."
+        ),
+    )
+    kg_v2_enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable the PR-008 Knowledge Graph v2 retrieval path (task-aware "
+            "KgQueryPlanner -> budgeted ContextSubgraph consulted before broad file "
+            "reads). Off (default-legacy) restores the RetrievalPlanner path verbatim; "
+            "flip one flag to enable."
+        ),
+    )
+    memory_v2_enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable the PR-009 Memory v2 governance path: route all durable memory "
+            "promotion through the single MemoryHarness (8-step write lifecycle, "
+            "evidence/no-CoT promotion policy, MemoryReceipt + named memory events). "
+            "Off (default-legacy) keeps the 18-verb memory subsystem and the direct "
+            "harvester writes verbatim; flip one flag to enable."
+        ),
+    )
+
+
 class ArtifactStoreMode(StrEnum):
     """Artifact store backend mode."""
 
@@ -960,6 +1226,10 @@ class SDDConfig(BaseModel):
     artifact_store: ArtifactStoreConfig = Field(default_factory=ArtifactStoreConfig)
     delivery_strategy: DeliveryStrategy = Field(default=DeliveryStrategy.PLAN_ONLY)
     chain_strategy: ChainStrategy = Field(default=ChainStrategy.STACKED_TO_MAIN)
+    flow_mode: FlowMode = Field(
+        default=FlowMode.HYBRID,
+        description="Pause and execution policy for the agentic flow.",
+    )
     track: str = Field(
         default="full",
         description=(
@@ -1175,10 +1445,90 @@ class HarnessSettingsConfig(BaseModel):
     )
 
 
+class RuntimeBrainConfig(BaseModel):
+    """Advisory Runtime Brain controls (PR-000.1).
+
+    The Brain *recommends*; the deterministic State Machine always governs
+    transitions. When ``enabled`` is False (the default) the runtime uses the
+    legacy implicit selectors directly and writes no Decision Log — the layer is
+    inert and instantly revertible.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable advisory Runtime Brain decision recording. Off restores the "
+            "legacy implicit selectors with no Decision Log writes; the State "
+            "Machine governs transitions regardless of this flag."
+        ),
+    )
+
+
+class PluginHostConfig(BaseModel):
+    """Plugin host configuration (PR-015, book §12 Configuration).
+
+    Types the previously open ``plugins`` v2 section. ``extra="allow"`` keeps the
+    v2 open-section contract (unknown keys still validate and round-trip) while
+    giving the documented knobs typed defaults. Defaults match book §12:
+    discovery on, auto-update off, signatures off, benchmark-on-install on.
+    ``contracts_enabled`` is the rollout guard (off routes the legacy
+    ``load()``/``register_commands`` path; mirrors PR-003's registry guard).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    auto_discovery: bool = Field(default=True, description="Discover installed plugins.")
+    auto_update: bool = Field(default=False, description="Auto-update plugins.")
+    require_signatures: bool = Field(
+        default=False, description="Require signed plugin distributions (PR-016)."
+    )
+    benchmark_on_install: bool = Field(
+        default=True, description="Run a plugin's benchmark suite before activation."
+    )
+    contracts_enabled: bool = Field(
+        default=True,
+        description="Route plugins through the typed-contract lifecycle (rollout guard).",
+    )
+    marketplace_enabled: bool = Field(
+        default=False,
+        description=(
+            "Route multi-asset marketplace bundles through the PR-016 install "
+            "enforcement (compat/signature/trust/receipt). Off ⇒ legacy single-asset "
+            "install path only (rollback guard); marketplace stays optional."
+        ),
+    )
+
+
 class OpenContextConfig(BaseModel):
     """Top-level runtime configuration."""
 
     model_config = ConfigDict(extra="forbid")
+
+    # opencontext.yaml schema version (PR-013). A v1 file (no ``version`` key)
+    # resolves to ``1`` and keeps loading unchanged; ``version: 2`` opts a config
+    # into the sectioned v2 envelope. The v2-only sections below are optional and
+    # defaulted, so a v1 config round-trips and a v2 config validates without a
+    # Studio/runtime-intelligence implementation having to exist yet.
+    version: int = Field(default=1, description="opencontext.yaml schema version (1 or 2).")
+
+    # Selected built-in configuration profile (PR-013, SPEC-CLI-013-02). One of
+    # balanced/low-cost/enterprise/research/performance. Resolved against the
+    # seven-level resolver (``config_resolver``); ``balanced`` is the default.
+    profile: str = Field(default="balanced", description="Active configuration profile.")
+
+    # Test/dev provider override for deterministic OC Flow mutation without live
+    # credentials (PROD-002). When ``provider == "test_stub"`` and ``edits_file``
+    # resolves under the project root, the CLI builds a TestStubGateway executor.
+    # Test-only: a normal config leaves these None and never activates the stub.
+    provider: str | None = Field(
+        default=None,
+        description="Provider override (test/dev: 'test_stub' for deterministic mutation).",
+    )
+    edits_file: str | None = Field(
+        default=None, description="JSON ApplyEdit file used by the test_stub provider."
+    )
 
     project: ProjectConfig = Field(description="Project configuration.")
     models: ModelConfigMap = Field(description="Model aliases.")
@@ -1191,6 +1541,7 @@ class OpenContextConfig(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    policy: PolicyConfig = Field(default_factory=PolicyConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     provider_policies: list[ProviderPolicyConfig] = Field(default_factory=list)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -1234,6 +1585,58 @@ class OpenContextConfig(BaseModel):
     harness: HarnessSettingsConfig = Field(
         default_factory=HarnessSettingsConfig,
         description="Agentic harness governance settings (TDD / approval pre-gates).",
+    )
+    runtime_brain: RuntimeBrainConfig = Field(
+        default_factory=RuntimeBrainConfig,
+        description="Advisory Runtime Brain decision-layer controls (default off).",
+    )
+    runtime: RuntimeMigrationConfig = Field(
+        default_factory=RuntimeMigrationConfig,
+        description="Per-subsystem dual-run migration flags (legacy <-> Runtime vNext).",
+    )
+    runtime_intelligence_enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable the Runtime Intelligence layer (PR-011): cost/confidence/"
+            "simulation/profiler/benchmark/health/evolution reports. Optional and "
+            "first-class; default off (advisory — recommends, never overrides)."
+        ),
+    )
+
+    # ── opencontext.yaml v2 section envelope (PR-013) ────────────────────────
+    # The book's v2 schema groups settings into named sections. The sections
+    # already modelled above (project/context/memory/compression/providers/
+    # observability/skills/workflows/sdd/knowledge_graph/harness/runtime/...)
+    # keep their existing typed models for backward compatibility. The sections
+    # below are v2-only and have no legacy v1 equivalent, so they are accepted as
+    # open mappings (validated, carried into the resolved snapshot) until a
+    # downstream PR gives each its own typed model. ``studio`` is reserved here
+    # (SPEC-CLI-013-18); the Studio surface itself ships in PR-014.
+    workflow: dict[str, Any] = Field(
+        default_factory=dict,
+        description="v2 workflow-defaults section (selection/lane defaults).",
+    )
+    personas: dict[str, Any] = Field(default_factory=dict, description="v2 personas section.")
+    harnesses: dict[str, Any] = Field(
+        default_factory=dict, description="v2 harnesses section (registry overlay)."
+    )
+    policies: dict[str, Any] = Field(
+        default_factory=dict, description="v2 policies section (overlay over `policy`)."
+    )
+    capabilities: dict[str, Any] = Field(
+        default_factory=dict, description="v2 capabilities section (capability graph)."
+    )
+    runtime_intelligence: dict[str, Any] = Field(
+        default_factory=dict,
+        description="v2 runtime_intelligence section (cost/confidence/simulator knobs).",
+    )
+    plugins: PluginHostConfig = Field(
+        default_factory=PluginHostConfig,
+        description="v2 plugins section (plugin host config, PR-015).",
+    )
+    studio: dict[str, Any] = Field(
+        default_factory=dict,
+        description="v2 studio section — reserved for PR-014 (validates, no impl required).",
     )
 
 
@@ -1719,4 +2122,36 @@ def default_config_data() -> dict[str, Any]:
             ],
         },
         "ui_language": "en",
+        "runtime": {
+            "session_wrapper": True,
+            "registry_enabled": True,
+            "persona_registry_enabled": True,
+            "skill_registry_enabled": True,
+            "harness_registry_enabled": True,
+            "gateway_enabled": True,
+            "context_engine_enabled": True,
+            "execution_profile": "balanced",
+            "durable_artifacts": True,
+            "oc_flow_enabled": True,
+            "kg_v2_enabled": True,
+            "memory_v2_enabled": True,
+            "retention": {
+                "summaries": "always",
+                "receipts": "always",
+                "patches": "always",
+                "checkpoints": "until_archive",
+                "logs": "30d",
+                "ephemeral_context": "until_success",
+            },
+            "sdd_strict": False,
+        },
+        # Runtime Intelligence layer (PR-011): vNext-default (parity-gated flip,
+        # tests/compat/flip_baseline/runtime_intelligence.json). Advisory — recommends,
+        # never overrides. Top-level flag (not under ``runtime``).
+        "runtime_intelligence_enabled": True,
+        # Studio surface (PR-014). Optional + default off: the runtime/CLI/MCP run
+        # headless with no Studio (SPEC-STU-014-12). The local read-only web shell
+        # is launched explicitly via ``opencontext studio``; this flag records
+        # whether the surface is enabled and is surfaced read-only by Studio.
+        "studio": {"enabled": False},
     }

@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 from opencontext_core.dx.console_styles import console
@@ -20,6 +21,7 @@ def add_kg_parser(subparsers: Any) -> None:
     kg_search = kg_sub.add_parser("search", help="Search for symbols.")
     kg_search.add_argument("query", help="Search query.")
     kg_search.add_argument("--limit", type=int, default=20)
+    kg_search.add_argument("--root", default=".", help="Project root (default: cwd).")
     kg_search.add_argument("--json", action="store_true")
 
     kg_query = kg_sub.add_parser("query", help="Query graph by kind.")
@@ -62,9 +64,15 @@ def add_kg_parser(subparsers: Any) -> None:
     kg_node.add_argument(
         "--code", action="store_true", help="Include the symbol's exact source code."
     )
+    kg_node.add_argument("--root", default=".", help="Project root (default: cwd).")
     kg_node.add_argument("--json", action="store_true")
 
     kg_sub.add_parser("status", help="Check index status.")
+
+    from opencontext_cli.commands.migration_cmd import add_migrate_subparser
+
+    add_migrate_subparser(kg_sub, "kg")
+    kg_sub.add_parser("rebuild", help="Rebuild the KG from source (`index .`).")
 
     kg_trace = kg_sub.add_parser("trace", help="Trace path between two symbols.")
     kg_trace.add_argument("source", help="Source symbol name.")
@@ -103,17 +111,27 @@ def add_kg_parser(subparsers: Any) -> None:
 def handle_kg(args: Any) -> None:
     """Handle knowledge-graph commands."""
     command = args.kg_command
+
+    if command == "migrate":
+        from opencontext_cli.commands.migration_cmd import handle_migrate
+
+        raise SystemExit(handle_migrate("kg", args))
+    if command == "rebuild":
+        print("KG rebuild: run `opencontext index .` to rebuild the graph from source.")
+        return
     query = getattr(args, "query", "")
     symbol = getattr(args, "symbol", "")
     task = getattr(args, "task", "")
     limit = getattr(args, "limit", 20)
     depth = getattr(args, "depth", 2)
     radius = getattr(args, "radius", 2)
-    getattr(args, "max_nodes", 20)
     json_output = getattr(args, "json", False)
-    getattr(args, "root", ".")
+    # Project-scoped commands (search/node) accept an explicit `--root PATH`; the
+    # graph store lives under `<root>/.storage/opencontext`, matching `index`. For
+    # commands without --root this resolves to cwd — identical to the old default.
+    root = getattr(args, "root", ".")
 
-    kg = KnowledgeGraph()
+    kg = KnowledgeGraph(db_path=Path(root) / ".storage" / "opencontext" / "context_graph.db")
 
     # Graph-reading commands need an index; if it's empty, say so rather than
     # returning a bare "No results" (indistinguishable from "indexed, no match").
@@ -149,9 +167,22 @@ def handle_kg(args: Any) -> None:
                 console.print(f"  [bold]{r.get('name', '?')}[/]")
 
     elif command == "context":
-        console.header(f"Context: {task}")
-        console.info("Context building uses the indexed knowledge graph.")
-        console.info("Run 'opencontext pack' for full context generation.")
+        # Build real, token-aware context with the same engine `opencontext pack`
+        # uses (runtime.build_context_pack), instead of pointing at another command.
+        # Imported lazily because main imports this module at load time.
+        from opencontext_cli.main import (
+            _default_config_path,
+            _render_pack_markdown,
+            _runtime,
+        )
+
+        ctx_runtime = _runtime(_default_config_path())
+        pack = ctx_runtime.build_context_pack(task)
+        if json_output:
+            print(pack.model_dump_json(indent=2))
+        else:
+            console.header(f"Context: {task}")
+            print(_render_pack_markdown(pack, query=task, mode="context"))
 
     elif command == "callers":
         console.header(f"Callers: {symbol}")

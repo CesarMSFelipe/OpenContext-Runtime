@@ -10,7 +10,12 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from opencontext_core.models.agent_memory import DecayPolicy, MemoryLayer, MemoryRecord
+from opencontext_core.models.agent_memory import (
+    DecayPolicy,
+    MemoryLayer,
+    MemoryLifecycle,
+    MemoryRecord,
+)
 from opencontext_core.models.evidence import EvidenceRef
 
 _SCHEMA = """
@@ -32,7 +37,10 @@ CREATE TABLE IF NOT EXISTS memory_records (
     superseded_by TEXT,
     access_count INTEGER NOT NULL DEFAULT 0,
     last_accessed_at TEXT,
-    last_reviewed_at TEXT
+    last_reviewed_at TEXT,
+    run_id TEXT,
+    provenance TEXT,
+    lifecycle TEXT NOT NULL DEFAULT 'candidate'
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts
     USING fts5(id UNINDEXED, layer, key, content, tags,
@@ -96,6 +104,13 @@ def _row_to_record(row: sqlite3.Row) -> MemoryRecord:
         superseded_by=row["superseded_by"] if "superseded_by" in columns else None,
         topic_key=row["topic_key"] if "topic_key" in columns else None,
         revision_count=row["revision_count"] if "revision_count" in columns else 0,
+        run_id=row["run_id"] if "run_id" in columns else None,
+        provenance=row["provenance"] if "provenance" in columns else None,
+        lifecycle=(
+            MemoryLifecycle(row["lifecycle"])
+            if "lifecycle" in columns and row["lifecycle"]
+            else MemoryLifecycle.CANDIDATE
+        ),
     )
 
 
@@ -156,6 +171,13 @@ class SQLiteMemoryBackend:
             conn.execute(
                 "ALTER TABLE memory_records ADD COLUMN revision_count INTEGER NOT NULL DEFAULT 0"
             )
+        for column in ("run_id", "provenance"):
+            if column not in existing:
+                conn.execute(f"ALTER TABLE memory_records ADD COLUMN {column} TEXT")
+        if "lifecycle" not in existing:
+            conn.execute(
+                "ALTER TABLE memory_records ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'candidate'"
+            )
 
     def store(self, record: MemoryRecord) -> list[str]:
         """Upsert a MemoryRecord. Returns IDs of any records flagged as contradicted."""
@@ -172,7 +194,7 @@ class SQLiteMemoryBackend:
             ).fetchall()
             if existing_rows:
                 existing = [_row_to_record(r) for r in existing_rows]
-                contradicted_ids = ContradictionDetector().detect(record, existing)
+                contradicted_ids = ContradictionDetector().detect_ids(record, existing)
                 if contradicted_ids:
                     now = datetime.now(tz=UTC).isoformat()
                     for cid in contradicted_ids:
@@ -194,8 +216,9 @@ class SQLiteMemoryBackend:
                 INSERT OR REPLACE INTO memory_records
                 (id, layer, key, content, confidence, source_refs, tags,
                  linked_nodes, supersedes, contradicted_by, created_at, updated_at,
-                 valid_from, invalid_at, superseded_by, topic_key, revision_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 valid_from, invalid_at, superseded_by, topic_key, revision_count,
+                 run_id, provenance, lifecycle)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -215,6 +238,9 @@ class SQLiteMemoryBackend:
                     record.superseded_by,
                     record.topic_key,
                     record.revision_count,
+                    record.run_id,
+                    record.provenance,
+                    record.lifecycle.value,
                 ),
             )
         return contradicted_ids

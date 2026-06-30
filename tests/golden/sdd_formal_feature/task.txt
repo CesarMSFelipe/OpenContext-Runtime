@@ -1,0 +1,3 @@
+Design and implement a new public authentication API: add OAuth2 login, migrate the
+user database schema, run a security review, and define a staged rollout plan with a
+rollback procedure.

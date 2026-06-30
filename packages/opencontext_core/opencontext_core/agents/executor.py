@@ -13,11 +13,95 @@ behavior whenever no real model is configured.
 
 from __future__ import annotations
 
+from enum import StrEnum
+from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from opencontext_core.agents.delegation import DelegationMode, SubAgentDelegate
 from opencontext_core.llm.gateway import LLMGateway
 from opencontext_core.models.llm import LLMRequest
+
+
+class ApplyOperation(StrEnum):
+    REPLACE_RANGE = "replace_range"
+    INSERT_AFTER = "insert_after"
+    DELETE_RANGE = "delete_range"
+    CREATE_FILE = "create_file"
+
+
+class ApplyEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    operation: ApplyOperation
+    start_line: int | None = None
+    end_line: int | None = None
+    after_line: int | None = None
+    content: str = ""
+    reason: str = ""
+    requirement_refs: list[str] = Field(default_factory=list)
+    task_refs: list[str] = Field(default_factory=list)
+    # Additive risk marker for the OC Flow productive executor (AVH-015). Default
+    # "low" keeps every existing call-site valid; the field is purely descriptive.
+    risk: str = "low"
+
+
+class AppliedEditReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    operation: ApplyOperation
+    changed: bool
+
+
+def apply_edit(root: Path, edit: ApplyEdit) -> AppliedEditReceipt:
+    path = (root / edit.path).resolve()
+    # Safety: ensure path is under root
+    try:
+        path.relative_to(root.resolve())
+    except ValueError as err:
+        raise RuntimeError(f"Path escape attempt: {edit.path}") from err
+
+    if edit.operation == ApplyOperation.CREATE_FILE:
+        if path.exists():
+            raise RuntimeError(f"Cannot create existing file: {edit.path}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(edit.content, encoding="utf-8")
+        return AppliedEditReceipt(path=edit.path, operation=edit.operation, changed=True)
+
+    if not path.exists():
+        raise RuntimeError(f"File not found: {edit.path}")
+
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    if edit.operation == ApplyOperation.REPLACE_RANGE:
+        if edit.start_line is None or edit.end_line is None:
+            raise RuntimeError("replace_range requires start_line and end_line")
+        start = edit.start_line - 1  # 1-based to 0-based
+        end = edit.end_line  # exclusive
+        new_content = edit.content if edit.content.endswith("\n") else edit.content + "\n"
+        new_lines = [*lines[:start], new_content, *lines[end:]]
+
+    elif edit.operation == ApplyOperation.INSERT_AFTER:
+        if edit.after_line is None:
+            raise RuntimeError("insert_after requires after_line")
+        idx = edit.after_line  # insert after line N (1-based) = index N
+        new_content = edit.content if edit.content.endswith("\n") else edit.content + "\n"
+        new_lines = [*lines[:idx], new_content, *lines[idx:]]
+
+    elif edit.operation == ApplyOperation.DELETE_RANGE:
+        if edit.start_line is None or edit.end_line is None:
+            raise RuntimeError("delete_range requires start_line and end_line")
+        new_lines = lines[: edit.start_line - 1] + lines[edit.end_line :]
+
+    else:
+        raise RuntimeError(f"Unsupported operation: {edit.operation}")
+
+    path.write_text("".join(new_lines), encoding="utf-8")
+    return AppliedEditReceipt(path=edit.path, operation=edit.operation, changed=True)
+
 
 # Phases that produce an LLM-authored artifact through the delegation seam.
 WORK_PRODUCING_PHASES: tuple[str, ...] = ("spec", "design", "tasks")
@@ -82,22 +166,31 @@ def _phase_handler(gateway: LLMGateway, phase: str, provider: str, model: str) -
 
 _APPLY_INSTRUCTION = (
     "Implement the task below as concrete file edits. Output ONLY a JSON array — "
-    'each element an object with "path" (repository-relative) and "content" (the '
-    "FULL intended file contents after the edit, i.e. whole-file replacement or "
-    "create). No prose, no Markdown fences, nothing outside the array."
+    "primary shape is ApplyEdit: "
+    '{"path":"...","operation":"replace_range|insert_after|delete_range|create_file",'
+    '"start_line":1,"end_line":3,"content":"..."}. '
+    "Use surgical ApplyEdit operations for changed lines/blocks; do not rewrite "
+    'unchanged sections. Legacy whole-file {"path","content"} is only a fallback '
+    "when surgical edit is impossible (e.g. heavily restructured content). "
+    "No prose, no Markdown fences, nothing outside the array."
 )
 
 
-def parse_file_edits(text: str) -> list[dict[str, str]]:
-    """Parse a model response into ``[{"path", "content"}, ...]`` edits.
+def parse_file_edits(text: str) -> list[dict[str, str] | ApplyEdit]:
+    """Parse a model response into file-edit objects.
 
-    Tolerant of surrounding prose / code fences: it scans for the outermost JSON
-    array. Any element missing a string ``path``/``content`` is dropped. Returns
-    ``[]`` when nothing parseable is found, so a malformed response yields no
-    edits (ApplyPhase then reports planned, never a bad write).
+    Returns a mixed list: elements with an ``"operation"`` key are validated
+    and returned as :class:`ApplyEdit` objects (dropped on ``ValidationError``);
+    legacy ``{"path", "content"}`` elements are returned as plain dicts. The
+    two shapes can coexist in the same response — this function is additive.
+
+    Tolerant of surrounding prose / code fences: it scans for the outermost
+    JSON array. Returns ``[]`` when nothing parseable is found.
     """
     import json
     import re
+
+    from pydantic import ValidationError
 
     start = text.find("[")
     end = text.rfind("]")
@@ -120,21 +213,32 @@ def parse_file_edits(text: str) -> list[dict[str, str]]:
             data = json.loads(repaired)
         except json.JSONDecodeError:
             return []
-    edits: list[dict[str, str]] = []
+    edits: list[dict[str, str] | ApplyEdit] = []
     for item in data if isinstance(data, list) else []:
-        path = item.get("path") if isinstance(item, dict) else None
-        content = item.get("content") if isinstance(item, dict) else None
-        if isinstance(path, str) and path and isinstance(content, str):
-            edits.append({"path": path, "content": content})
+        if not isinstance(item, dict):
+            continue
+        if "operation" in item:
+            # ApplyEdit-shaped: validate and include, or drop on error.
+            try:
+                edits.append(ApplyEdit(**item))
+            except (ValidationError, TypeError):
+                pass
+        else:
+            # Legacy whole-file edit: require string path and content.
+            path = item.get("path")
+            content = item.get("content")
+            if isinstance(path, str) and path and isinstance(content, str):
+                edits.append({"path": path, "content": content})
     return edits
 
 
 def generate_apply_edits(
     gateway: LLMGateway, context: dict[str, Any], *, provider: str, model: str
-) -> list[dict[str, str]]:
+) -> list[dict[str, str] | ApplyEdit]:
     """Ask the model to produce concrete file edits for the apply phase.
 
-    Returns ``[{"path","content"}]`` dicts for ApplyPhase to write (it enforces
+    Returns a list of ``{"path","content"}`` dicts (legacy whole-file) or
+    :class:`ApplyEdit` objects (surgical) for ApplyPhase to write (it enforces
     forbidden_paths and rolls back on error). The builder persona drives it.
     """
     from opencontext_core.personas import persona_for_phase

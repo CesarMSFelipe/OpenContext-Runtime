@@ -20,6 +20,8 @@ htmlcov/
 # Build and packaging outputs
 dist/
 build/
+packages/*/build/
+packages/*/dist/
 *.egg-info/
 pip-wheel-metadata/
 site/
@@ -32,8 +34,8 @@ tmp/opencontext-proof/
 # Generated knowledge graph viewer (created by `opencontext knowledge-graph view`)
 opencontext-kg-view.html
 
-# SDD development workspace (local only)
-openspec/
+# SDD development workspace (local only — root only, not source packages)
+/openspec/
 
 # Local agent harness state and generated analysis output
 .agents/
@@ -58,3 +60,5 @@ Thumbs.db
 
 # Claude Code agent worktrees (transient, not project-owned)
 .claude/worktrees/
+.tools/*
+.sdd
