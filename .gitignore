@@ -62,3 +62,8 @@ Thumbs.db
 .claude/worktrees/
 .tools/*
 .sdd
+
+# opencontext:storage:start
+.storage/
+.opencontext/
+# opencontext:storage:end
