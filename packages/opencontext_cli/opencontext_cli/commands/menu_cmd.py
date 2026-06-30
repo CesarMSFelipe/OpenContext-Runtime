@@ -33,6 +33,9 @@ def _action_header(title: str) -> None:
 
 def run_main_menu() -> None:
     """Show the main OpenContext menu and delegate to the selected command."""
+    from opencontext_core.i18n import load_language_from_config
+
+    load_language_from_config(".")  # open the menu in the project's configured language
 
     # NOTE: CockpitScreen is the default bare-opencontext entry point.
     # Falls back to HomeScreen, then to the text-only message.
@@ -69,6 +72,10 @@ def run_config_menu() -> None:
     the user at the non-interactive equivalents rather than spawning a second,
     parallel selector — duplicate menus are exactly what this unification removes.
     """
+    from opencontext_core.i18n import load_language_from_config
+
+    load_language_from_config(".")  # open the menu in the project's configured language
+
     try:
         from opencontext_cli.tui import run_config_tui
 
