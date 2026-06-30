@@ -30,6 +30,8 @@ dependencies = [
   # prompts.py drives every interactive selector through InquirerPy; it pulls
   # prompt-toolkit transitively, so core degrades to arrow keys, not just Rich.
   "InquirerPy>=0.3.4",
+  # XDG / %LOCALAPPDATA% path resolution for user-mode storage (PR user-dir-storage).
+  "platformdirs>=4.0",
 ]
 
 [project.urls]

@@ -144,6 +144,13 @@ from opencontext_core.runtime.workflow_runner import (
     WorkflowRunner,
     WorkflowSpec,
 )
+from opencontext_core.paths import (
+    StorageMode,
+    detect_legacy,
+    resolve_storage_path,
+    resolve_workspace_path,
+    write_manifest,
+)
 from opencontext_core.safety.firewall import ContextFirewall
 from opencontext_core.safety.trace_sanitizer import TraceSanitizer
 from opencontext_core.trace.logger import LocalTraceLogger
@@ -262,19 +269,73 @@ class ProjectSetupResult(BaseModel):
 class OpenContextRuntime:
     """Facade for project indexing and configured workflow execution."""
 
+    #: Sentinel used to detect when the caller did not pass ``storage_path``.
+    _STORAGE_PATH_UNSET: object = object()
+
     def __init__(
         self,
         config_path: str | Path | None = None,
         config: OpenContextConfig | None = None,
-        storage_path: str | Path = ".storage/opencontext",
+        storage_path: "str | Path | object" = _STORAGE_PATH_UNSET,
         memory_store: ProjectMemoryStore | None = None,
         llm_gateway: LLMGateway | None = None,
         technology_profiles: list[TechnologyProfile] | None = None,
         embedding_worker: AsyncEmbeddingWorker | None = None,
     ) -> None:
+        import logging as _logging
+
         self.config_path = Path(config_path) if config_path is not None else None
         self.config = config or self._load_config_or_defaults(self.config_path)
-        self.storage_path = Path(storage_path)
+
+        # --- Path resolution (user-dir-storage PR Phase 1) ---
+        # Derive the project root from config so the resolver can compute
+        # the XDG/LOCALAPPDATA project directory.  Callers that pass an
+        # explicit ``storage_path`` retain full backward compatibility — their
+        # value wins and the resolver is NOT called.
+        _root = Path(self.config.project_index.root)
+
+        if storage_path is OpenContextRuntime._STORAGE_PATH_UNSET:
+            # No explicit override — use the resolver.
+            _storage_config = self.config.storage
+            self.storage_path = resolve_storage_path(
+                _root, _storage_config.mode, _storage_config.custom_path
+            )
+            self.workspace_path = resolve_workspace_path(
+                _root, _storage_config.mode, _storage_config.custom_path
+            )
+            # Ensure the storage directory exists and write the ownership manifest.
+            _manifest_first_write = not self.storage_path.exists()
+            self.storage_path.mkdir(parents=True, exist_ok=True)
+            try:
+                from importlib.metadata import version as _pkg_version
+
+                _oc_version = _pkg_version("opencontext-core")
+            except Exception:
+                _oc_version = "unknown"
+            write_manifest(self.storage_path, _root, _oc_version)
+            # Legacy detection — warn if old in-repo state dirs exist.
+            _legacy = detect_legacy(_root)
+            if _legacy is not None:
+                _legacy_paths = [
+                    str(p)
+                    for p in [_legacy.storage_path, _legacy.workspace_path]
+                    if p is not None
+                ]
+                _legacy_str = " and ".join(_legacy_paths)
+                warnings.warn(
+                    f"legacy local state detected at {_legacy_str}; "
+                    "run `opencontext storage migrate` to move it",
+                    stacklevel=2,
+                )
+                _logging.getLogger("opencontext").warning(
+                    "legacy local state detected at %s; "
+                    "run `opencontext storage migrate` to move it",
+                    _legacy_str,
+                )
+        else:
+            # Explicit storage_path passed — backward-compat path; resolver skipped.
+            self.storage_path = Path(storage_path)  # type: ignore[arg-type]
+            self.workspace_path = _root / ".opencontext"
         self.memory_store = memory_store or LocalProjectMemoryStore(self.storage_path)
         # Parsed-manifest cache (stat-signature keyed). Parsing the whole-repo
         # manifest JSON through Pydantic is query-independent and was repeated on

@@ -12,6 +12,7 @@ from opencontext_core.agentic.config import BudgetMode, FlowMode, MemoryMode
 from opencontext_core.compat import StrEnum
 from opencontext_core.errors import ConfigurationError
 from opencontext_core.models.context import CompressionStrategy, ContextProfile
+from opencontext_core.paths import StorageMode
 
 DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     ".git",
@@ -1501,6 +1502,47 @@ class PluginHostConfig(BaseModel):
     )
 
 
+class StorageConfig(BaseModel):
+    """Storage location configuration for runtime-generated state.
+
+    Controls where OpenContext writes KG, memory, traces, embeddings, and
+    workspace artifacts. Defaults to ``user`` mode (XDG / %LOCALAPPDATA%).
+    Override via ``OPENCONTEXT_STORAGE_MODE=local`` env var or ``mode: local``
+    in ``opencontext.yaml`` to restore legacy in-repo layout.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: StorageMode = Field(
+        default=StorageMode.user,
+        description=(
+            "Storage mode: 'user' writes to XDG/LOCALAPPDATA user dirs; "
+            "'local' writes to .storage/opencontext inside the project repo."
+        ),
+    )
+    custom_path: str | None = Field(
+        default=None,
+        description=(
+            "Absolute path override for storage. When set, overrides both "
+            "mode and XDG computation."
+        ),
+    )
+
+    @classmethod
+    def from_env_and_config(
+        cls,
+        mode: StorageMode = StorageMode.user,
+        custom_path: str | None = None,
+    ) -> "StorageConfig":
+        """Build a StorageConfig, honouring OPENCONTEXT_STORAGE_MODE env var."""
+        import os
+
+        env_val = os.environ.get("OPENCONTEXT_STORAGE_MODE", "").strip().lower()
+        if env_val == "local":
+            mode = StorageMode.local
+        return cls(mode=mode, custom_path=custom_path)
+
+
 class OpenContextConfig(BaseModel):
     """Top-level runtime configuration."""
 
@@ -1571,6 +1613,13 @@ class OpenContextConfig(BaseModel):
     )
     testing: TestingConfig = Field(
         default_factory=TestingConfig, description="Testing configuration."
+    )
+    storage: StorageConfig = Field(
+        default_factory=StorageConfig,
+        description=(
+            "Storage mode configuration: 'user' (default) writes generated state to "
+            "XDG/LOCALAPPDATA; 'local' writes to .storage/opencontext in the repo."
+        ),
     )
     context_planning: ContextPlanningConfig = Field(
         default_factory=ContextPlanningConfig, description="Context planning configuration."
