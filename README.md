@@ -66,10 +66,10 @@ OpenContext is the layer **between your coding agent and your codebase** — it 
 | **Your model, per persona** | Pick the model for each SDD phase in `opencontext.yaml`; it is sent to your agent as an MCP sampling hint. |
 | **Persistent memory** | Local store by default (seven layers); co-resident Engram coexistence is opt-in. Progressive, token-aware recall. |
 | **Security by default** | Redaction, secret scanning, fail-closed posture, offline-first. |
-| **32 MCP tools** | Search, context, call graph, impact, symbol edits, memory, quality, session steps, workflow/profile explain, config doctor — inside Claude Code, OpenCode, Codex. |
+| **Live MCP tool registry** | Search, context, call graph, impact, symbol edits, memory, quality, session steps, workflow/profile explain, config doctor — inside Claude Code, OpenCode, Codex. |
 
 <p align="center">
-  <img src="docs/assets/all-systems.svg" alt="OpenContext, all systems at a glance: it sits between your coding agent and your codebase. The runtime holds six systems — context and code graph, controlled SDD loop, model per persona, persistent memory, security by default, and 32 MCP tools. The codebase is indexed once and queried offline." width="100%">
+  <img src="docs/assets/all-systems.svg" alt="OpenContext, all systems at a glance: it sits between your coding agent and your codebase. The runtime holds six systems — context and code graph, controlled SDD loop, model per persona, persistent memory, security by default, and the live MCP tool registry. The codebase is indexed once and queried offline." width="100%">
 </p>
 
 <p align="center">
@@ -324,7 +324,7 @@ opencontext bridges scan . --type HTTP --json
 
 ### Agent Interface
 
-32 MCP tools. OpenContext ships adapters for 20+ agent clients (Claude Code, OpenCode, Cursor, Copilot, Windsurf, Codex, Gemini CLI, Zed, Aider, Cline, and more). Support level varies by client — some get MCP + instruction files, others get documented setup patterns.
+The MCP tool registry is generated from the live server. OpenContext ships adapters for 20+ agent clients (Claude Code, OpenCode, Cursor, Copilot, Windsurf, Codex, Gemini CLI, Zed, Aider, Cline, and more). Support level varies by client — some get MCP + instruction files, others get documented setup patterns.
 
 `opencontext install` writes the **three public OC personas** — Orchestrator, Professor, Reviewer — to your editor's agents directory as switchable subagents (in OpenCode press **Tab**; in Claude Code they appear as subagents), plus **twelve hidden delegation personas** the harness adopts automatically. Each SDD phase runs as the persona suited to it:
 
@@ -367,11 +367,11 @@ Two independent axes, both delivered as sampling hints: **phases** (≙ personas
 > **After `opencontext install`:** reload your shell (`source ~/.bashrc`) if PATH changed, then **restart your agent** so it loads the OpenContext MCP server.
 
 <p align="center">
-  <img src="docs/assets/mcp-tools.svg" alt="32 MCP tools: 9 read tools (search, context, callers, callees, impact, node, files, status, trace), 4 symbol-level edit tools, an in-process agentic run tool, 4 memory tools (save, search, context, judge), 1 architecture-quality tool, 8 session step tools (start, next, observe, apply, inspect, status, resume, archive), 4 workflow/profile meta tools (workflow list/explain, profile list/explain), and 1 config-doctor tool" width="100%">
+  <img src="docs/assets/mcp-tools.svg" alt="MCP tool registry: read tools, symbol-level edits, agentic run, memory, quality, session steps, workflow/profile metadata, and config doctor" width="100%">
 </p>
 
 <p align="center">
-  <sub>Agent Interface · 32 MCP tools · 9 read + 4 symbol-level edits + 1 agentic run + 4 memory + 1 quality + 8 session + 4 workflow/profile meta + 1 config doctor</sub>
+  <sub>Agent Interface · live MCP registry · read + edit + run + memory + quality + session + workflow/profile + doctor tools</sub>
 </p>
 
 ```bash
