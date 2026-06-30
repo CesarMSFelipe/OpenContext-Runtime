@@ -125,7 +125,12 @@ def test_sdd_run_includes_phase_metadata(server: MCPServer, tmp_path: Path, monk
     assert out["verification_outcome"] == "warning"
 
 
-def test_mcp_sdd_junk_phase_output_blocks(server: MCPServer, tmp_path: Path, monkeypatch) -> None:
+def test_mcp_sdd_junk_phase_output_surfaces_warning(server: MCPServer, tmp_path: Path, monkeypatch) -> None:
+    """Junk spec output raises a phase_contract WARNING visible in gates.
+
+    Hard blocking only occurs in sdd_strict mode; standard workflow surfaces
+    the warning without stopping the run.
+    """
     class _JunkDelegate:
         def delegate(self, phase: str, context: dict[str, object]) -> object:
             return SimpleNamespace(status="success", output="ok")
@@ -136,6 +141,8 @@ def test_mcp_sdd_junk_phase_output_blocks(server: MCPServer, tmp_path: Path, mon
 
     out = server._handle_run({"task": "do formal work", "workflow": "standard", "root": str(tmp_path)})
 
-    assert out["status"] == "blocked"
-    assert out["phase_status"]["spec"] == "failed"
-    assert any(g["status"] == "failed" for g in out["gates"].values())
+    gates = out.get("gates", {})
+    assert any(
+        gate_id == "phase_contract" and gate["status"] == "warning"
+        for gate_id, gate in gates.items()
+    ), "phase_contract WARNING must appear in gates for junk spec output"
