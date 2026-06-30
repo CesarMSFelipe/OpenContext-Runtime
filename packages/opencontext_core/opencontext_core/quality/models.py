@@ -206,6 +206,14 @@ class QualityReport:
         delta = self.health.delta(self.baseline_health) if self.baseline_health is not None else 0
         applicable = passed + failed
         status = "not_applicable" if applicable == 0 else self.status.value
+        # Coherent Quality Result Fields (spec ahe-010-quality-semantics):
+        # ``success`` claims a real pass only when at least one rule RAN (so the
+        # verdict is grounded in measurement) AND zero rules failed. A verdict
+        # derived from zero verdicts (``applicable == 0``) cannot honestly claim
+        # success — nothing was measured, so ``success`` is False. This is what
+        # blocks the contradictory "not_applicable + success=True" surface
+        # where nothing ran but the gate reads as green.
+        success = applicable > 0 and failed == 0
 
         return {
             "status": status,
@@ -215,7 +223,7 @@ class QualityReport:
                 "failed": failed,
                 "warnings": warnings,
                 "errors": errors,
-                "success": failed == 0 and self.status.is_ok,
+                "success": success,
                 "status": status,
             },
             "results": results,
