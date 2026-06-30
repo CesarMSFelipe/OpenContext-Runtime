@@ -201,13 +201,17 @@ def _config_profile_names() -> list[str]:
 
 
 def _get_version() -> str:
-    """Get installed version via importlib.metadata, with fallback."""
+    """Get installed version, preferring bundled metadata inside zipapps."""
+    from opencontext_cli._version import VERSION
+
+    if ".pyz/" in __file__:
+        return VERSION
     try:
         import importlib.metadata
 
         return importlib.metadata.version("opencontext-cli")
     except (importlib.metadata.PackageNotFoundError, ImportError):
-        return "0.0.0"
+        return VERSION
 
 
 __version__ = _get_version()
