@@ -48,16 +48,20 @@ def test_design_and_tasks_validators_accept_contract_outputs() -> None:
     ).passed
 
 
-def test_sdd_harness_blocks_junk_spec_output(tmp_path, monkeypatch) -> None:
+def test_sdd_harness_surfaces_junk_spec_output_as_warning(tmp_path, monkeypatch) -> None:
+    """Junk spec output raises a phase_contract WARNING (not FAILED).
+
+    Hard blocking only occurs in sdd_strict mode via contract_blocked in the runner.
+    This test verifies the warning is surfaced; separate strict-mode tests cover blocking.
+    """
     monkeypatch.setattr(HarnessRunner, "_build_executor", lambda self: _JunkDelegate())
 
     result = HarnessRunner(root=tmp_path).run("standard", "add feature")
 
-    assert result.status.value == "failed"
     assert any(
         gate.id == "phase_contract"
         and gate.phase == "spec"
-        and gate.status.value == "failed"
+        and gate.status.value == "warning"
         and gate.message == "phase output failed contract validation"
         for gate in result.gates
     )

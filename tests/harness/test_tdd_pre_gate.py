@@ -92,7 +92,8 @@ class TestTddPreGate:
         assert not blocking
         assert target.read_text(encoding="utf-8") == "x = 2\n"
 
-    def test_tdd_ask_fails_safe_noninteractive(self, tmp_path: Path) -> None:
+    def test_tdd_ask_fails_safe_noninteractive(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.delenv("OPENCONTEXT_TDD_MODE", raising=False)
         target = tmp_path / "feature.py"
         target.write_text("x = 1\n", encoding="utf-8")
         (tmp_path / "tests").mkdir()
