@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import re
-
-import pytest
-
 from opencontext_sdd.dispatcher import (
     RenderDispatcherMarkdown,
     RenderNativePhasePrompt,
 )
 from opencontext_sdd.status import Status
-
 
 # ---------------------------------------------------------------------------
 # REQ-OSS-004 — RenderDispatcherMarkdown
@@ -64,26 +59,20 @@ def test_REQ_OSS_004_dispatcher_markdown_artifact_path_pointer() -> None:
 
 def test_REQ_OSS_005_prompt_embeds_trace_id_and_phase() -> None:
     """Prompt contains ``trace_id=<id>`` AND ``phase=apply``."""
-    prompt = RenderNativePhasePrompt(
-        "apply", change="demo", trace_id="tr-abc123"
-    )
+    prompt = RenderNativePhasePrompt("apply", change="demo", trace_id="tr-abc123")
     assert "trace_id=tr-abc123" in prompt
     assert "phase=apply" in prompt
 
 
 def test_REQ_OSS_005_prompt_embeds_tdd_rule_when_strict() -> None:
     """Strict TDD mode embeds the test-first rule string."""
-    prompt = RenderNativePhasePrompt(
-        "apply", change="demo", trace_id="tr-abc", tdd_mode="strict"
-    )
+    prompt = RenderNativePhasePrompt("apply", change="demo", trace_id="tr-abc", tdd_mode="strict")
     assert "tdd-strict: write the closest failing test first" in prompt
 
 
 def test_REQ_OSS_005_prompt_omits_tdd_rule_when_not_strict() -> None:
     """Non-strict mode does NOT embed the test-first rule string."""
-    prompt = RenderNativePhasePrompt(
-        "apply", change="demo", trace_id="tr-abc", tdd_mode="ask"
-    )
+    prompt = RenderNativePhasePrompt("apply", change="demo", trace_id="tr-abc", tdd_mode="ask")
     assert "tdd-strict: write the closest failing test first" not in prompt
 
 
@@ -115,9 +104,7 @@ def test_REQ_GAS_005_deterministic_per_phase() -> None:
 
 def test_REQ_GAS_005_prompt_contains_trace_id_and_tdd_rule_when_strict() -> None:
     """Combined assertion: trace_id + TDD rule coexist when strict."""
-    prompt = RenderNativePhasePrompt(
-        "apply", change="demo", trace_id="tr-xyz", tdd_mode="strict"
-    )
+    prompt = RenderNativePhasePrompt("apply", change="demo", trace_id="tr-xyz", tdd_mode="strict")
     assert "trace_id=tr-xyz" in prompt
     assert "phase=apply" in prompt
     assert "tdd-strict: write the closest failing test first" in prompt

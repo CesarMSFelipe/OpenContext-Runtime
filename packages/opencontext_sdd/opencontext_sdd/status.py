@@ -63,7 +63,7 @@ _UNICODE_GLYPHS = re.compile(r"[\u2705\u274C\u26A0\uFE0F]")
 def parse_verify_report(path: Path) -> tuple[str, list[str]]:
     """Return ``(verdict, failure_reasons)`` from a verify-report.
 
-    Strips unicode marks (``\u2705`` / ``\u274C`` / ``\u26A0\uFE0F``) before
+    Strips unicode marks (``\u2705`` / ``\u274c`` / ``\u26a0\ufe0f``) before
     pattern matching. Missing file or missing ``verdict:`` line → ``("missing", [])``.
     """
     if not path.exists():
@@ -110,9 +110,9 @@ def _list_changes(changes_root: Path) -> list[str]:
     return sorted(p.name for p in changes_root.iterdir() if p.is_dir())
 
 
-def _scan_artifacts(change_root: Path, cwd: Path) -> tuple[
-    dict[str, str], dict[str, ArtifactState], list[str]
-]:
+def _scan_artifacts(
+    change_root: Path, cwd: Path
+) -> tuple[dict[str, str], dict[str, ArtifactState], list[str]]:
     """Walk the change dir, return (paths, states, blocked_reasons)."""
     paths: dict[str, str] = {}
     states: dict[str, ArtifactState] = {}
@@ -208,7 +208,7 @@ def Resolve(change: str | None, *, cwd: str) -> Status:
         names = _list_changes(changes_root)
         if len(names) != 1:
             return Status(
-                artifactStore=artifact_store,  # type: ignore[arg-type]
+                artifactStore=artifact_store,
                 actionContext={"tdd_mode": tdd_mode},
                 changeName=None,
                 nextRecommended="select-change",
@@ -219,7 +219,7 @@ def Resolve(change: str | None, *, cwd: str) -> Status:
     change_root = changes_root / change
     if not change_root.exists():
         return Status(
-            artifactStore=artifact_store,  # type: ignore[arg-type]
+            artifactStore=artifact_store,
             changeName=change,
             actionContext={"tdd_mode": tdd_mode},
             nextRecommended="select-change",
@@ -231,7 +231,7 @@ def Resolve(change: str | None, *, cwd: str) -> Status:
 
     return Status(
         changeName=change,
-        artifactStore=artifact_store,  # type: ignore[arg-type]
+        artifactStore=artifact_store,
         changeRoot=str(change_root.relative_to(cwd_path)),
         artifactPaths=paths,
         artifacts=artifacts,

@@ -18,9 +18,7 @@ class PhaseRef(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: Literal[
-        "explore", "propose", "spec", "design", "tasks", "apply", "verify", "archive"
-    ]
+    name: Literal["explore", "propose", "spec", "design", "tasks", "apply", "verify", "archive"]
     state: ArtifactState = "missing"
     path: str | None = None
 

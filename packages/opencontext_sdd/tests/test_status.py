@@ -14,10 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from opencontext_sdd.status import Resolve, Status, parse_verify_report
-
 
 # ---------------------------------------------------------------------------
 # REQ-OSS-001 — schemaName and 14-field round-trip (T1.5)
@@ -107,9 +104,7 @@ def test_REQ_OSS_002_resolve_all_done_with_pass_verdict_returns_archive(
     (changes / "tasks.md").write_text("- [x] done\n", encoding="utf-8")
     (changes / "specs" / "demo-cap").mkdir(parents=True)
     (changes / "specs" / "demo-cap" / "spec.md").write_text("# spec\n", encoding="utf-8")
-    (changes / "verify-report.md").write_text(
-        "verdict: PASS\n", encoding="utf-8"
-    )
+    (changes / "verify-report.md").write_text("verdict: PASS\n", encoding="utf-8")
 
     status = Resolve("demo", cwd=str(tmp_path))
     assert status.nextRecommended == "archive"
@@ -184,12 +179,8 @@ def test_REQ_OSS_003_resolve_fail_verdict_appears_in_blocked_reasons(
     (changes / "tasks.md").write_text("- [x] done\n", encoding="utf-8")
     (changes / "specs" / "demo-cap").mkdir(parents=True)
     (changes / "specs" / "demo-cap" / "spec.md").write_text("# spec\n", encoding="utf-8")
-    (changes / "verify-report.md").write_text(
-        "verdict: FAIL\n- ❌ test_one\n", encoding="utf-8"
-    )
+    (changes / "verify-report.md").write_text("verdict: FAIL\n- ❌ test_one\n", encoding="utf-8")
 
     status = Resolve("demo", cwd=str(tmp_path))
     assert status.nextRecommended == "verify"
-    assert any(
-        r.startswith("verify_report:FAIL:") for r in status.blockedReasons
-    )
+    assert any(r.startswith("verify_report:FAIL:") for r in status.blockedReasons)
